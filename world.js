@@ -1,21 +1,45 @@
 /* ============================================================
-   crazyhouse: the world (house, yard, fence, trees).
+   crazyhouse: the world.
 
-   Every solid is black faces + white edges. The black faces are
-   what make it read: parts hide whatever is behind them, so you
-   get a clean line drawing instead of a see-through tangle.
+   The house is built straight off blueprint.png. Every plan
+   coordinate in this file is a PIXEL on that image, so you can
+   open it in any image editor, hover a wall, and find the same
+   numbers here. X() and Z() turn pixels into feet (27.42 px per
+   foot, taken from the plan's 42' and 34' dimensions). Heights
+   are in feet.
 
-   Units are roughly metres. The house sits at the origin with
-   its front door facing +z.
+   Every solid is black faces + white edges, so walls hide what's
+   behind them and you get a clean line drawing, inside and out.
 
-   Each top-level piece has a .name so later code can find it
-   with scene.getObjectByName('shed') and mess with it.
+   Walls are extruded from their elevation, so windows are real
+   holes and doorways are real gaps. Where two walls meet at a
+   corner, both ends are cut on the diagonal (a mitre) so no
+   stray seam lines show up on the faces.
+
+   Top-level pieces have a .name (sofa, bed, door-front, ...) so
+   later code can grab one with scene.getObjectByName() and mess
+   with it.
    ============================================================ */
 
 import * as THREE from '../vendor/three-r186/three.module.js';
 
+/* ─── units ─────────────────────────────────── */
+
+const K = 27.42;                          // blueprint pixels per foot
+const X = px => (px - 680.5) / K;         // blueprint x → feet (house centred on 0)
+const Z = py => (py - 620.5) / K;         // blueprint y → feet
+
+export const FLOOR = 2.5;                 // main floor, feet above the yard
+export const CEIL = FLOOR + 8;            // 8' ceilings
+const SLAB = 0.4;                         // ceiling thickness
+const EAVE = CEIL + SLAB;                 // where the roofs start
+const DOOR_H = 6.8;
+
+/* ─── materials ─────────────────────────────── */
+
 const FILL = new THREE.MeshBasicMaterial({
   color: 0x000000,
+  side: THREE.DoubleSide,
   // push faces back a hair so their own edges draw on top cleanly
   polygonOffset: true,
   polygonOffsetFactor: 1,
@@ -36,24 +60,6 @@ function solid(geo, [x, y, z] = [0, 0, 0], rot) {
   return g;
 }
 
-const box = (w, h, d, pos, rot) => solid(new THREE.BoxGeometry(w, h, d), pos, rot);
-
-// Loose lines from a list of [a, b] point pairs.
-function lines(pairs, mat = EDGE) {
-  const pts = pairs.flat().map(p => new THREE.Vector3(p[0], p[1], p[2]));
-  return new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(pts), mat);
-}
-
-// Rectangle outline in the local XY plane, centred on (x, y).
-function rect(w, h, x = 0, y = 0) {
-  const l = x - w / 2, r = x + w / 2, b = y - h / 2, t = y + h / 2;
-  return [
-    [[l, b, 0], [r, b, 0]], [[r, b, 0], [r, t, 0]],
-    [[r, t, 0], [l, t, 0]], [[l, t, 0], [l, b, 0]]
-  ];
-}
-
-// Group a list of parts under one name.
 function named(name, ...parts) {
   const g = new THREE.Group();
   g.name = name;
@@ -61,215 +67,539 @@ function named(name, ...parts) {
   return g;
 }
 
-/* ─── house dimensions ──────────────────────── */
+// Loose lines from a list of [a, b] point pairs (feet).
+function lines(pairs, mat = EDGE) {
+  const pts = pairs.flat().map(p => new THREE.Vector3(p[0], p[1], p[2]));
+  return new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(pts), mat);
+}
 
-const W = 8;        // width (x)
-const D = 6;        // depth (z)
-const BASE = 0.3;   // foundation height
-const WALL = 3;     // wall height
-const RISE = 2.2;   // gable height
-const EAVE = BASE + WALL;
-const RIDGE = EAVE + RISE;
+// Rewrite every vertex of a geometry through fn(x, y, z) → [x, y, z].
+function remap(geo, fn) {
+  const p = geo.attributes.position;
+  for (let i = 0; i < p.count; i++) {
+    const [a, b, c] = fn(p.getX(i), p.getY(i), p.getZ(i));
+    p.setXYZ(i, a, b, c);
+  }
+  p.needsUpdate = true;
+  geo.computeBoundingSphere();
+  return geo;
+}
 
-/* Flat details (windows, doors) are drawn facing +z in local space,
-   then stuck to a wall with this. `along` is left-right as you face
-   that wall from outside, `y` is height from the ground. */
-function onWall(obj, side, along, y) {
-  const off = 0.02;
-  const spot = {
-    front: [along, y, D / 2 + off, 0],
-    back:  [-along, y, -D / 2 - off, Math.PI],
-    right: [W / 2 + off, y, -along, Math.PI / 2],
-    left:  [-W / 2 - off, y, along, -Math.PI / 2]
-  }[side];
-  obj.position.set(spot[0], spot[1], spot[2]);
-  obj.rotation.y = spot[3];
+/* A box from blueprint pixels (x0..x1, y0..y1) and heights h0..h1.
+   Heights are above the main floor unless you pass base = 0. */
+function block(x0, x1, y0, y1, h1, h0 = 0, base = FLOOR) {
+  const w = X(x1) - X(x0), d = Z(y1) - Z(y0), h = h1 - h0;
+  return solid(new THREE.BoxGeometry(w, h, d),
+    [(X(x0) + X(x1)) / 2, base + h0 + h / 2, (Z(y0) + Z(y1)) / 2]);
+}
+
+// Something round, centred on blueprint pixel (cx, cy). r is in feet.
+function round(cx, cy, r, h1, h0 = 0, segs = 12, rTop = r) {
+  const h = h1 - h0;
+  return solid(new THREE.CylinderGeometry(rTop, r, h, segs), [X(cx), FLOOR + h0 + h / 2, Z(cy)]);
+}
+
+// A flat slab from a blueprint polygon, with optional holes, between heights y0..y1.
+function slab(outline, holes, y0, y1) {
+  const v = ([px, py]) => new THREE.Vector2(X(px), Z(py));
+  const shape = new THREE.Shape(outline.map(v));
+  for (const h of holes) shape.holes.push(new THREE.Path(h.map(v)));
+  const geo = new THREE.ExtrudeGeometry(shape, { depth: y1 - y0, bevelEnabled: false });
+  return solid(remap(geo, (x, y, z) => [x, y0 + z, y]));
+}
+
+// Rectangle outline in the plane of a wall, for mirrors and glass.
+function rectOn(P, u0, u1, y0, y1) {
+  return [[P(u0, y0), P(u1, y0)], [P(u1, y0), P(u1, y1)], [P(u1, y1), P(u0, y1)], [P(u0, y1), P(u0, y0)]];
+}
+
+/* ─── walls ─────────────────────────────────── */
+
+const win  = (from, to, sill, head = 7) => [from, to, sill, head];
+const door = (from, to, head = DOOR_H) => [from, to, 0, head];
+
+/* One straight wall.
+   dir 'h' runs left-right on the plan, c0..c1 are the rows of its
+   two faces (top face = a, bottom face = b).
+   dir 'v' runs up-down, c0..c1 are the columns (left face = a,
+   right face = b).
+   a = [start, end] of face a along the wall, b = the same for face
+   b. They only differ at a mitred corner; leave b out otherwise.
+   openings: win() / door() ranges along the wall, in pixels. */
+function wall(dir, c0, c1, a, b, openings = [], { bottom = FLOOR, top = CEIL } = {}) {
+  b = b || a;
+  const M = dir === 'h' ? X : Z;          // along the wall
+  const N = dir === 'h' ? Z : X;          // across it
+  const a0 = M(a[0]), a1 = M(a[1]), b0 = M(b[0]), b1 = M(b[1]);
+  const w0 = N(c0), t = N(c1) - N(c0);
+  const place = dir === 'h'
+    ? (u, y, w) => [u, y, w0 + w]
+    : (u, y, w) => [w0 + w, y, u];
+
+  const ops = openings
+    .map(o => ({ u0: M(o[0]), u1: M(o[1]), sill: o[2], head: o[3] }))
+    .sort((p, q) => p.u0 - q.u0);
+
+  // elevation: doorways are notches in the outline, windows are holes
+  const shape = new THREE.Shape();
+  shape.moveTo(a0, bottom);
+  for (const o of ops) if (o.sill <= 0) {
+    shape.lineTo(o.u0, bottom);
+    shape.lineTo(o.u0, bottom + o.head);
+    shape.lineTo(o.u1, bottom + o.head);
+    shape.lineTo(o.u1, bottom);
+  }
+  shape.lineTo(a1, bottom);
+  shape.lineTo(a1, top);
+  shape.lineTo(a0, top);
+  for (const o of ops) if (o.sill > 0) {
+    const hole = new THREE.Path();
+    hole.moveTo(o.u0, bottom + o.sill);
+    hole.lineTo(o.u1, bottom + o.sill);
+    hole.lineTo(o.u1, bottom + o.head);
+    hole.lineTo(o.u0, bottom + o.head);
+    shape.holes.push(hole);
+  }
+
+  const geo = new THREE.ExtrudeGeometry(shape, { depth: t, bevelEnabled: false });
+  remap(geo, (u, y, w) => {
+    // mitre: slide the end vertices so face b starts/ends where it should
+    const f = w / t;
+    if (Math.abs(u - a0) < 1e-5) u = a0 + (b0 - a0) * f;
+    else if (Math.abs(u - a1) < 1e-5) u = a1 + (b1 - a1) * f;
+    return place(u, y, w);
+  });
+
+  // glass: a frame and mullions in the middle of each window hole
+  const glass = [];
+  const P = (u, y) => place(u, y, t / 2);
+  for (const o of ops) if (o.sill > 0) {
+    const i = 0.12, u0 = o.u0 + i, u1 = o.u1 - i;
+    const y0 = bottom + o.sill + i, y1 = bottom + o.head - i;
+    glass.push(...rectOn(P, u0, u1, y0, y1));
+    const panes = Math.ceil((o.u1 - o.u0) / 3.2);
+    for (let k = 1; k < panes; k++) {
+      const u = u0 + (u1 - u0) * k / panes;
+      glass.push([P(u, y0), P(u, y1)]);
+    }
+  }
+
+  const g = solid(geo);
+  if (glass.length) g.add(lines(glass));
+  return g;
+}
+
+function walls() {
+  const W = [];
+  const add = (...args) => W.push(wall(...args));
+
+  // exterior
+  add('h', 154, 173, [295, 738], [315, 719], [win(348, 494, 2), win(539, 685, 2)]);            // living room, north
+  add('v', 295, 315, [154, 558], [173, 566], [win(211, 429, 2)]);                               // living room, west
+  add('v', 719, 738, [173, 364], [154, 345], [win(186, 332, 2)]);                               // living room, east (porch)
+  add('h', 345, 364, [738, 1256], [719, 1237], [door(774, 1024), win(1099, 1172, 3)]);          // kitchen, north: patio doors
+  add('v', 1237, 1256, [364, 1068], [345, 1087], [win(416, 607, 3.6), win(826, 1016, 2.5)]);    // east: sink + master windows
+  add('h', 1068, 1087, [315, 1237], [295, 1256],
+    [win(487, 588, 4.2), win(839, 912, 3), win(1087, 1159, 3)]);                                // south: bath + master windows
+  add('v', 295, 315, [645, 1087], [650, 1068], [win(928, 969, 4.2)]);                           // west of the stairs, storage, bath
+
+  // foyer
+  add('h', 482, 501, [105, 295], [124, 295]);                                                   // north
+  add('v', 105, 124, [482, 814], [501, 794], [door(571, 666), win(670, 725, 0.3, DOOR_H)]);     // west: front door + sidelight
+  add('h', 794, 814, [124, 295], [105, 295], [win(163, 263, 3)]);                               // south
+  add('h', 558, 566, [124, 295], [124, 315], [door(141, 284)]);                                 // coat closet front
+
+  // stairs, storage, bathroom, laundry
+  add('h', 645, 650, [295, 428], [315, 428], [], { bottom: -2.6 });                             // between the two flights
+  add('h', 731, 740, [315, 428], [315, 419]);                                                   // storage, north
+  add('v', 419, 428, [740, 902], [731, 902], [door(746, 800)]);                                 // storage, east (pocket door)
+  add('h', 853, 861, [315, 419]);                                                               // storage, south
+  add('h', 810, 825, [428, 807], null, [door(438, 511)]);                                       // bathroom + laundry, north
+  add('v', 605, 614, [825, 1068], null, [door(830, 979)]);                                      // bathroom | laundry
+
+  // master, kitchen, pantry
+  add('v', 807, 815, [715, 1068], [724, 1068], [door(732, 805), door(830, 979)]);               // master, west
+  add('h', 715, 724, [807, 1063], [815, 1063]);                                                 // kitchen | master
+  add('v', 1063, 1072, [661, 789], [669, 780]);                                                 // pantry, west
+  add('h', 661, 669, [1063, 1237], [1072, 1237], [door(1104, 1230)]);                           // pantry, north
+  add('h', 780, 789, [1072, 1237], [1063, 1237]);                                               // pantry, south
+
+  return named('walls', ...W);
+}
+
+/* ─── doors ─────────────────────────────────── */
+
+/* A door leaf. Hinge at blueprint (hx, hy), latch edge at (ex, ey)
+   when shut. open = degrees, swinging toward the point (tx, ty). */
+function leaf(name, hx, hy, ex, ey, open = 0, tx = 0, ty = 0) {
+  const x0 = X(hx), z0 = Z(hy), dx = X(ex) - x0, dz = Z(ey) - z0;
+  const w = Math.hypot(dx, dz), h = DOOR_H - 0.1;
+  let th = Math.atan2(dz, dx);
+  if (open) {
+    const toward = Math.atan2(Z(ty) - z0, X(tx) - x0);
+    th += Math.sign(Math.sin(toward - th)) * open * Math.PI / 180;
+  }
+  const g = named(name,
+    solid(new THREE.BoxGeometry(w, h, 0.15), [w / 2, FLOOR + h / 2, 0]),
+    solid(new THREE.BoxGeometry(0.12, 0.12, 0.4), [w - 0.28, FLOOR + 3, 0])      // knob
+  );
+  g.position.set(x0, 0, z0);
+  g.rotation.y = -th;
+  return g;
+}
+
+function doors() {
+  return named('doors',
+    leaf('door-front', 114, 571, 114, 666),
+    leaf('door-patio-left', 776, 355, 857, 355),
+    leaf('door-patio-right', 939, 355, 858, 355),
+    leaf('door-master', 811, 733, 811, 804, 75, 900, 733),
+    // coat closet bifolds, shut
+    block(141, 212, 559, 565, DOOR_H - 0.1),
+    block(213, 284, 559, 565, DOOR_H - 0.1),
+    lines([[[X(176), FLOOR, Z(562)], [X(176), FLOOR + DOOR_H - 0.1, Z(562)]],
+           [[X(248), FLOOR, Z(562)], [X(248), FLOOR + DOOR_H - 0.1, Z(562)]]]),
+    // pantry slider, half open, on the kitchen side
+    named('door-pantry', block(1104, 1170, 652, 658, DOOR_H - 0.1)),
+    // fixed glass beside the patio doors
+    lines(rectOn((u, y) => [u, y, Z(354.5)], X(942), X(1021), FLOOR + 0.2, FLOOR + DOOR_H - 0.1))
+  );
+}
+
+/* ─── floor, ceilings, roof ─────────────────── */
+
+// The stairwell cut into the floor for the basement stairs.
+const WELL = [[295, 566], [428, 566], [428, 645], [295, 645]];
+// The opening in the ceiling above the loft stairs.
+const SHAFT = [[315, 650], [428, 650], [428, 731], [315, 731]];
+
+function shell() {
+  const parts = [];
+
+  // foundation: yard level up to the floor, main house + foyer in one piece
+  parts.push(named('foundation', slab([
+    [295, 154], [738, 154], [738, 345], [1256, 345], [1256, 1087],
+    [295, 1087], [295, 814], [105, 814], [105, 482], [295, 482]
+  ], [WELL], 0, FLOOR)));
+
+  // ceilings
+  parts.push(slab([[295, 154], [1256, 154], [1256, 1087], [295, 1087]], [SHAFT], CEIL, EAVE));
+  parts.push(slab([[0, 482], [295, 482], [295, 814], [0, 814]], [], CEIL, EAVE));
+
+  // a dark box over the loft stairs, so the shaft reads as going somewhere
+  parts.push(
+    block(315, 428, 640, 650, EAVE + 5, EAVE, 0),
+    block(315, 428, 731, 741, EAVE + 5, EAVE, 0),
+    block(428, 438, 640, 741, EAVE + 5, EAVE, 0),
+    block(315, 438, 640, 741, EAVE + 5.2, EAVE + 5, 0)
+  );
+
+  // main roof: ridge runs left-right on the plan, gables at both ends
+  const main = gableRoof({ z0: Z(154), z1: Z(1087), x0: X(295) - 1.5, x1: X(1256) + 1.5, over: 1.5 });
+  parts.push(named('roof', main.roof,
+    gable(Z(154), Z(1087), X(295), X(315), main.ridge),
+    gable(Z(154), Z(1087), X(1237), X(1256), main.ridge)));
+
+  // foyer + front porch roof, a smaller gable butting into the main one
+  const foyer = gableRoof({ z0: Z(482), z1: Z(814), x0: X(0) - 1, x1: X(295), over: 1 });
+  parts.push(named('foyer-roof', foyer.roof, gable(Z(482), Z(814), X(0), X(11), foyer.ridge)));
+
+  return named('shell', ...parts);
+}
+
+/* Gable roof with its ridge running along x, between z0 and z1,
+   from x0 to x1. Built as one solid with a chevron cross-section
+   so the ridge is clean. 6-in-12 pitch. */
+function gableRoof({ z0, z1, x0, x1, over, pitch = 0.5, thick = 0.35 }) {
+  const zc = (z0 + z1) / 2, half = (z1 - z0) / 2;
+  const ridge = EAVE + half * pitch;
+  const th = Math.atan(pitch), s = Math.sin(th), c = Math.cos(th);
+  const run = (half + over) / c;
+  const tz = c * run, ty = ridge - s * run;
+  const shape = new THREE.Shape([
+    [0, ridge], [tz, ty], [tz + s * thick, ty + c * thick],
+    [0, ridge + thick / c], [-tz - s * thick, ty + c * thick], [-tz, ty]
+  ].map(([u, y]) => new THREE.Vector2(u, y)));
+  const geo = new THREE.ExtrudeGeometry(shape, { depth: x1 - x0, bevelEnabled: false });
+  return { roof: solid(remap(geo, (u, y, w) => [x0 + w, y, zc + u])), ridge };
+}
+
+// The triangle of wall under a gable, x0..x1 thick.
+function gable(z0, z1, x0, x1, ridge) {
+  const zc = (z0 + z1) / 2;
+  const shape = new THREE.Shape([
+    new THREE.Vector2(z0 - zc, EAVE), new THREE.Vector2(z1 - zc, EAVE), new THREE.Vector2(0, ridge)
+  ]);
+  const geo = new THREE.ExtrudeGeometry(shape, { depth: x1 - x0, bevelEnabled: false });
+  return solid(remap(geo, (u, y, w) => [x0 + w, y, zc + u]));
+}
+
+/* ─── stairs + railings ─────────────────────── */
+
+// Railing along a line: top rail, end posts, balusters as plain lines.
+function rail(dir, at, from, to, h = 3, base = FLOOR) {
+  const parts = [];
+  const pairs = [];
+  if (dir === 'h') {
+    parts.push(block(from, to, at - 3, at + 3, h, h - 0.2, base));
+    parts.push(block(from, from + 7, at - 4, at + 4, h, 0, base), block(to - 7, to, at - 4, at + 4, h, 0, base));
+    for (let x = from + 13; x < to - 9; x += 12) pairs.push([[X(x), base, Z(at)], [X(x), base + h - 0.2, Z(at)]]);
+  } else {
+    parts.push(block(at - 3, at + 3, from, to, h, h - 0.2, base));
+    parts.push(block(at - 4, at + 4, from, from + 7, h, 0, base), block(at - 4, at + 4, to - 7, to, h, 0, base));
+    for (let y = from + 13; y < to - 9; y += 12) pairs.push([[X(at), base, Z(y)], [X(at), base + h - 0.2, Z(y)]]);
+  }
+  parts.push(lines(pairs));
+  return named('railing', ...parts);
+}
+
+function stairs() {
+  const parts = [];
+  // down to the basement: from the foyer, heading right on the plan
+  const dn = (428 - 295) / 7;
+  for (let i = 0; i < 7; i++) {
+    parts.push(block(295 + i * dn, 295 + (i + 1) * dn, 566, 645, FLOOR - 0.6 * (i + 1), -2.6, 0));
+  }
+  // the pit around them, below the yard
+  parts.push(
+    block(285, 295, 556, 650, 0, -2.6, 0),
+    block(295, 428, 556, 566, 0, -2.6, 0),
+    block(428, 438, 556, 650, 0, -2.6, 0)
+  );
+  // up to the loft: from the living room, heading left on the plan
+  const up = (428 - 315) / 7;
+  for (let i = 0; i < 7; i++) {
+    parts.push(block(428 - (i + 1) * up, 428 - i * up, 650, 731, 0.65 * (i + 1)));
+  }
+  // railing around the top of the basement stairs
+  parts.push(rail('h', 562, 315, 428), rail('v', 425, 566, 645));
+  return named('stairs', ...parts);
+}
+
+/* ─── furniture, room by room ───────────────── */
+
+// A simple chair facing +z in its own space: seat, back, four legs.
+function chair(w = 1.5, seat = 1.5, back = 3) {
+  const t = 0.12, l = 0.12, g = new THREE.Group();
+  g.add(solid(new THREE.BoxGeometry(w, t, w), [0, seat, 0]));
+  g.add(solid(new THREE.BoxGeometry(w, back - seat, t), [0, seat + (back - seat) / 2, -w / 2 + t / 2]));
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+    g.add(solid(new THREE.BoxGeometry(l, seat - t / 2, l), [sx * (w / 2 - l), (seat - t / 2) / 2, sz * (w / 2 - l)]));
+  }
+  return g;
+}
+
+// Put something at blueprint (cx, cy) on the floor, facing an angle (degrees, 0 = down the plan).
+function at(obj, cx, cy, face = 0, y = FLOOR) {
+  obj.position.set(X(cx), y, Z(cy));
+  obj.rotation.y = face * Math.PI / 180;
   return obj;
 }
 
-function windowPane(w = 1.1, h = 1.1) {
-  return named('window',
-    lines([
-      ...rect(w, h),
-      ...rect(w - 0.16, h - 0.16),
-      [[0, -h / 2 + 0.08, 0], [0, h / 2 - 0.08, 0]],
-      [[-w / 2 + 0.08, 0, 0], [w / 2 - 0.08, 0, 0]]
-    ]),
-    box(w + 0.24, 0.07, 0.16, [0, -h / 2 - 0.035, 0.07])   // sill
+function livingRoom() {
+  const armchair = new THREE.Group();
+  armchair.add(
+    solid(new THREE.BoxGeometry(2.6, 1.4, 2.6), [0, 0.7, 0]),
+    solid(new THREE.BoxGeometry(2.6, 1.4, 0.55), [0, 2.1, -1.02]),
+    solid(new THREE.BoxGeometry(0.5, 0.7, 2.6), [-1.05, 1.75, 0]),
+    solid(new THREE.BoxGeometry(0.5, 0.7, 2.6), [1.05, 1.75, 0])
+  );
+  const table = named('dining-table',
+    block(655, 735, 455, 590, 2.5, 2.35),
+    block(659, 666, 459, 466, 2.35), block(724, 731, 459, 466, 2.35),
+    block(659, 666, 579, 586, 2.35), block(724, 731, 579, 586, 2.35)
+  );
+  return named('living-room',
+    named('sofa',
+      block(342, 405, 318, 535, 1.4),           // long seat
+      block(405, 530, 478, 535, 1.4),           // return seat
+      block(322, 342, 305, 555, 2.7),           // back along the wall
+      block(342, 530, 535, 555, 2.7),           // back of the return
+      block(342, 405, 300, 318, 2.1)            // arm
+    ),
+    named('armchair', at(armchair, 650, 262, -45)),
+    named('side-table', block(555, 598, 193, 237, 2)),
+    table,
+    named('dining-chairs',
+      at(chair(), 644, 492, 90), at(chair(), 644, 555, 90),
+      at(chair(), 746, 492, -90), at(chair(), 746, 555, -90),
+      at(chair(), 695, 443, 0), at(chair(), 695, 602, 180)
+    ),
+    named('wood-stove',
+      block(588, 706, 722, 806, 0.12),           // hearth
+      block(603, 690, 740, 796, 2.3, 0.35),      // firebox
+      block(606, 614, 790, 796, 0.35), block(679, 687, 790, 796, 0.35),
+      block(606, 614, 740, 746, 0.35), block(679, 687, 740, 746, 0.35),
+      round(646, 752, 0.28, 8, 2.3, 6)           // stovepipe to the ceiling
+    ),
+    named('post', block(511, 522, 568, 579, 8))
   );
 }
 
-function door(w = 1, h = 2.1) {
-  return named('door',
-    lines([
-      ...rect(w + 0.16, h + 0.08, 0, 0.04),        // trim
-      ...rect(w, h),
-      ...rect(w - 0.34, h * 0.3, 0, h * 0.2),      // upper panel
-      ...rect(w - 0.34, h * 0.3, 0, -h * 0.2)      // lower panel
-    ]),
-    box(0.08, 0.08, 0.08, [w / 2 - 0.15, -0.06, 0.04])   // knob
+function kitchen() {
+  const stool = () => solid(new THREE.CylinderGeometry(0.62, 0.5, 2.4, 8), [0, 1.2, 0]);
+  const top = FLOOR + 3.01;
+  const sink = rectOn((u, v) => [u, top, v], X(1192), X(1230), Z(478), Z(508))
+    .concat(rectOn((u, v) => [u, top, v], X(1192), X(1230), Z(514), Z(544)));
+  const cooktop = rectOn((u, v) => [u, top, v], X(945), X(1015), Z(508), Z(560));
+  return named('kitchen',
+    named('island', block(868, 1087, 470, 565, 3), lines(cooktop)),
+    named('stools', at(stool(), 902, 452), at(stool(), 947, 452), at(stool(), 993, 452), at(stool(), 1047, 452)),
+    named('counter-east', block(1183, 1237, 364, 660, 3), lines(sink)),
+    named('counter-south', block(807, 980, 660, 715, 3)),
+    named('fridge', block(980, 1060, 655, 715, 6.3)),
+    named('pantry-shelves', block(1190, 1237, 669, 780, 6.5), block(1072, 1190, 748, 780, 6.5))
   );
 }
 
-function roundVent(r = 0.34) {
-  return named('vent',
-    new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.CircleGeometry(r, 18)), EDGE),
-    lines([[[-r, 0, 0], [r, 0, 0]], [[0, -r, 0], [0, r, 0]]])
+function master() {
+  const lamp = (cx, cy) => named('lamp',
+    round(cx, cy, 0.08, 2.9, 2.1, 6),
+    round(cx, cy, 0.6, 3.6, 2.9, 10, 0.42));
+  const tub = (cx, cy) => named('tub-chair',
+    round(cx, cy, 1.0, 1.4, 0, 12, 1.05),
+    block(cx + 10, cx + 25, cy - 24, cy + 24, 2.6));
+  const bedTop = FLOOR + 1.92;
+  return named('master',
+    named('bed',
+      block(930, 1065, 893, 1060, 1.9),
+      block(925, 1070, 1060, 1068, 3.6),                    // headboard
+      block(945, 992, 1022, 1052, 2.3, 1.9),                // pillows
+      block(1003, 1050, 1022, 1052, 2.3, 1.9),
+      lines([[[X(930), bedTop, Z(985)], [X(1065), bedTop, Z(985)]]])   // turned-down sheet
+    ),
+    named('nightstands', block(875, 925, 1022, 1068, 2.1), block(1075, 1125, 1022, 1068, 2.1)),
+    lamp(900, 1045), lamp(1100, 1045),
+    named('dresser', block(940, 1055, 728, 762, 3)),
+    tub(1195, 862), tub(1195, 1002),
+    named('round-table', round(1208, 932, 0.7, 1.9, 0, 12))
   );
 }
 
-/* ─── the house ─────────────────────────────── */
+function bathroom() {
+  const top = FLOOR + 2.81;
+  const basin = rectOn((u, v) => [u, top, v], X(505), X(565), Z(1024), Z(1058));
+  const glassN = rectOn((u, y) => [u, y, Z(985)], X(322), X(460), FLOOR + 0.35, FLOOR + 6.6);
+  const glassE = rectOn((v, y) => [X(460), y, v], Z(985), Z(1066), FLOOR + 0.35, FLOOR + 6.6);
+  const mirror = rectOn((u, y) => [u, y, Z(1068) - 0.02], X(490), X(580), FLOOR + 3.8, FLOOR + 6.3);
+  // oval bowl: a cylinder squashed front to back
+  const bowlGeo = new THREE.CylinderGeometry(0.62, 0.45, 1.35, 14);
+  bowlGeo.scale(1, 1, 1.45);
+  const bowl = solid(bowlGeo, [X(365), FLOOR + 0.675, Z(903)]);
+  return named('bathroom',
+    named('toilet', block(338, 392, 861, 877, 2.6, 1.2), bowl),
+    named('shower', block(320, 460, 985, 1068, 0.35), lines([...glassN, ...glassE])),
+    named('vanity', block(468, 600, 1012, 1068, 2.8), lines([...basin, ...mirror]))
+  );
+}
 
-function house() {
+function laundry() {
+  // round window on the front of each machine
+  const porthole = cx => {
+    const ring = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.CircleGeometry(0.62, 18)), EDGE);
+    ring.position.set(X(cx), FLOOR + 1.5, Z(905) + 0.01);
+    return ring;
+  };
+  return named('laundry',
+    named('washer', block(620, 680, 848, 905, 3), porthole(650)),
+    named('dryer', block(686, 746, 848, 905, 3), porthole(716)),
+    named('shelf', block(614, 807, 825, 845, 5.4, 5.2)),
+    // walk-in closet shelves + hanging rods
+    named('closet-shelves', block(614, 642, 985, 1068, 6.1, 5.9), block(780, 807, 985, 1068, 6.1, 5.9),
+      lines([[[X(630), FLOOR + 5.5, Z(985)], [X(630), FLOOR + 5.5, Z(1068)]],
+             [[X(792), FLOOR + 5.5, Z(985)], [X(792), FLOOR + 5.5, Z(1068)]]]))
+  );
+}
+
+function foyer() {
+  return named('foyer', named('bench', block(155, 270, 745, 780, 1.6)));
+}
+
+/* ─── porches ───────────────────────────────── */
+
+function porches() {
   const parts = [];
+  const beamLo = CEIL - 0.8;
 
-  parts.push(box(W + 0.4, BASE, D + 0.4, [0, BASE / 2, 0]));        // foundation
-  parts.push(box(W, WALL, D, [0, BASE + WALL / 2, 0]));             // walls
+  // back porch (top right of the plan)
+  parts.push(block(738, 1256, 154, 345, FLOOR, FLOOR - 0.6, 0));                  // deck
+  parts.push(block(982, 993, 158, 169, beamLo, 0, 0), block(1241, 1253, 158, 169, beamLo, 0, 0));
+  parts.push(block(738, 1256, 154, 173, CEIL, beamLo, 0), block(1237, 1256, 173, 345, CEIL, beamLo, 0));
+  parts.push(rail('h', 163, 738, 815), rail('h', 163, 905, 982), rail('h', 163, 993, 1241), rail('v', 1247, 169, 345));
+  for (let i = 0; i < 3; i++) {                                                   // steps down to the yard
+    parts.push(block(815, 905, 154 - (i + 1) * K, 154 - i * K, FLOOR - 0.625 * (i + 1), 0, 0));
+  }
+  const table = named('porch-table', round(1167, 250, 1.7, 2.4, 2.25, 16), round(1167, 250, 0.15, 2.25, 0, 6));
+  parts.push(table,
+    at(chair(), 1167, 202, 0), at(chair(), 1167, 298, 180), at(chair(), 1120, 250, 90), at(chair(), 1214, 250, -90));
 
-  // attic: the triangle that fills each gable end
-  const tri = new THREE.Shape([
-    new THREE.Vector2(-D / 2, 0), new THREE.Vector2(D / 2, 0), new THREE.Vector2(0, RISE)
-  ]);
-  const attic = new THREE.ExtrudeGeometry(tri, { depth: W, bevelEnabled: false });
-  attic.rotateY(Math.PI / 2);
-  attic.translate(-W / 2, EAVE, 0);
-  parts.push(solid(attic));
-
-  // roof: one solid with a chevron cross-section, so the ridge is clean
-  const th = Math.atan2(RISE, D / 2);
-  const s = Math.sin(th), c = Math.cos(th);
-  const T = 0.14;                                  // roof thickness
-  const run = Math.hypot(D / 2, RISE) + 0.55;      // slope length incl. overhang
-  const tz = c * run, ty = RIDGE - s * run;        // bottom tip of each slope
-  const chevron = new THREE.Shape([
-    new THREE.Vector2(0, RIDGE),
-    new THREE.Vector2(tz, ty),
-    new THREE.Vector2(tz + s * T, ty + c * T),
-    new THREE.Vector2(0, RIDGE + T / c),
-    new THREE.Vector2(-tz - s * T, ty + c * T),
-    new THREE.Vector2(-tz, ty)
-  ]);
-  const LEN = W + 0.9;
-  const roof = new THREE.ExtrudeGeometry(chevron, { depth: LEN, bevelEnabled: false });
-  roof.rotateY(Math.PI / 2);
-  roof.translate(-LEN / 2, 0, 0);
-  parts.push(named('roof', solid(roof)));
-
-  // chimney, poking out of the back slope
-  parts.push(named('chimney',
-    box(0.7, 1.9, 0.7, [2.4, 5.15, -1.3]),
-    box(0.86, 0.12, 0.86, [2.4, 6.16, -1.3])
-  ));
-
-  // front: door off to the left, a small window, a wide picture window
-  const DOOR_X = -1.4;
-  parts.push(onWall(door(), 'front', DOOR_X, BASE + 1.05));
-  parts.push(onWall(windowPane(1.1, 1.1), 'front', -3.05, 2.0));
-  parts.push(onWall(windowPane(2.2, 1.2), 'front', 1.9, 1.95));
-  parts.push(named('awning', box(1.6, 0.07, 0.75, [DOOR_X, BASE + 2.4, D / 2 + 0.36], [0.22, 0, 0])));
-  parts.push(named('step', box(1.8, 0.3, 0.9, [DOOR_X, 0.15, D / 2 + 0.65])));
-
-  // sides
-  parts.push(onWall(windowPane(), 'right', -1.4, 2.0));
-  parts.push(onWall(windowPane(), 'right', 1.4, 2.0));
-  parts.push(onWall(windowPane(1.3, 1.1), 'left', 0, 2.0));
-  parts.push(onWall(roundVent(), 'right', 0, EAVE + 0.95));
-  parts.push(onWall(roundVent(), 'left', 0, EAVE + 0.95));
-
-  // back: a back door and two windows
-  parts.push(onWall(door(0.95, 2.05), 'back', 2.0, BASE + 1.025));
-  parts.push(onWall(windowPane(), 'back', -0.4, 2.0));
-  parts.push(onWall(windowPane(), 'back', -2.6, 2.0));
-  parts.push(box(1.4, 0.3, 0.8, [-2.0, 0.15, -D / 2 - 0.6]));        // back step
-
-  return named('house', ...parts);
+  // front porch (far left of the plan)
+  parts.push(block(0, 105, 482, 814, FLOOR, FLOOR - 0.6, 0));
+  parts.push(block(0, 11, 485, 497, beamLo, 0, 0), block(0, 11, 799, 811, beamLo, 0, 0));
+  parts.push(block(0, 11, 482, 814, CEIL, beamLo, 0));
+  for (let i = 0; i < 3; i++) {
+    parts.push(block(-(i + 1) * K, -i * K, 563, 673, FLOOR - 0.625 * (i + 1), 0, 0));
+  }
+  return named('porches', ...parts);
 }
 
 /* ─── the yard ──────────────────────────────── */
 
 function ground() {
+  // black ground so nothing below the yard shows, with a hole under the stairwell
+  const R = 150;
+  const shape = new THREE.Shape([[-R, -R], [R, -R], [R, R], [-R, R]].map(([x, z]) => new THREE.Vector2(x, z)));
+  shape.holes.push(new THREE.Path(WELL.map(([px, py]) => new THREE.Vector2(X(px), Z(py)))));
+  const geo = remap(new THREE.ExtrudeGeometry(shape, { depth: 0.2, bevelEnabled: false }), (x, y, z) => [x, z - 0.2, y]);
+  const plane = new THREE.Mesh(geo, FILL);
+
   const pairs = [];
-  const R = 26, STEP = 2;
-  for (let v = -R; v <= R; v += STEP) {
-    pairs.push([[v, 0, -R], [v, 0, R]]);
-    pairs.push([[-R, 0, v], [R, 0, v]]);
+  for (let v = -R; v <= R; v += 6) {
+    pairs.push([[v, 0.01, -R], [v, 0.01, R]]);
+    pairs.push([[-R, 0.01, v], [R, 0.01, v]]);
   }
-  return named('ground', lines(pairs, FAINT));
+  return named('ground', plane, lines(pairs, FAINT));
 }
 
 function path() {
-  // paving slabs from the front step out to the sidewalk
-  const x = -1.4, hw = 0.6, y = 0.01, z0 = D / 2 + 1.1, z1 = 14;
-  const pairs = [[[x - hw, y, z0], [x - hw, y, z1]], [[x + hw, y, z0], [x + hw, y, z1]]];
-  for (let z = z0; z <= z1; z += 1.2) pairs.push([[x - hw, y, z], [x + hw, y, z]]);
+  // paving slabs from the front steps out to the street
+  const z = Z(618), hw = 2, y = 0.02, x0 = X(-3 * K), x1 = -72;
+  const pairs = [[[x0, y, z - hw], [x1, y, z - hw]], [[x0, y, z + hw], [x1, y, z + hw]]];
+  for (let x = x0; x >= x1; x -= 4) pairs.push([[x, y, z - hw], [x, y, z + hw]]);
   return named('path', lines(pairs));
 }
 
 function mailbox() {
-  return named('mailbox',
-    box(0.12, 1.1, 0.12, [0, 0.55, 0]),
-    box(0.36, 0.34, 0.6, [0, 1.27, 0]),
-    box(0.03, 0.3, 0.1, [0.2, 1.4, -0.12])          // the little flag
+  const g = new THREE.Group();
+  g.add(
+    solid(new THREE.BoxGeometry(0.4, 3.6, 0.4), [0, 1.8, 0]),
+    solid(new THREE.BoxGeometry(2, 1.1, 1.2), [0, 4.15, 0]),
+    solid(new THREE.BoxGeometry(0.33, 1, 0.1), [-0.4, 4.6, 0.66])
   );
+  return named('mailbox', g);
 }
 
 function leafyTree() {
-  const canopy = new THREE.IcosahedronGeometry(1.7, 0);
+  const canopy = new THREE.IcosahedronGeometry(5.6, 0);
   canopy.scale(1, 1.15, 1);
   return named('tree',
-    solid(new THREE.CylinderGeometry(0.16, 0.24, 2.3, 6), [0, 1.15, 0]),
-    solid(canopy, [0, 3.5, 0])
-  );
+    solid(new THREE.CylinderGeometry(0.5, 0.8, 7.5, 6), [0, 3.75, 0]),
+    solid(canopy, [0, 11.5, 0]));
 }
 
 function pineTree() {
   return named('pine',
-    solid(new THREE.CylinderGeometry(0.12, 0.18, 1.2, 6), [0, 0.6, 0]),
-    solid(new THREE.ConeGeometry(1.5, 3.2, 7), [0, 2.6, 0]),
-    solid(new THREE.ConeGeometry(1.1, 2.4, 7), [0, 4.1, 0], [0, 0.4, 0])
-  );
+    solid(new THREE.CylinderGeometry(0.4, 0.6, 4, 6), [0, 2, 0]),
+    solid(new THREE.ConeGeometry(5, 10.5, 7), [0, 8.5, 0]),
+    solid(new THREE.ConeGeometry(3.6, 8, 7), [0, 13.5, 0], [0, 0.4, 0]));
 }
 
 function bush() {
-  return named('bush', solid(new THREE.DodecahedronGeometry(0.75, 0), [0, 0.6, 0]));
+  return named('bush', solid(new THREE.DodecahedronGeometry(2.3, 0), [0, 1.9, 0]));
 }
 
-function shed() {
-  const w = 2.6, h = 2.1, d = 2.2;
-  const doorLines = lines([
-    ...rect(0.9, 1.7),
-    [[-0.45, -0.85, 0], [0.45, 0.85, 0]]              // the Z brace, sort of
-  ]);
-  doorLines.position.set(0, 0.85, d / 2 + 0.02);
-  return named('shed',
-    box(w, h, d, [0, h / 2, 0]),
-    box(w + 0.4, 0.1, d + 0.5, [0, h + 0.18, 0], [-0.16, 0, 0]),
-    doorLines
-  );
-}
-
-function fence() {
-  const parts = [];
-  const Z = -12, X = 13, POST = 0.12, H = 1.3;
-  const post = (x, z) => parts.push(box(POST, H, POST, [x, H / 2, z]));
-  // back run
-  for (let x = -X; x <= X; x += 2) post(x, Z);
-  parts.push(box(X * 2, 0.08, 0.05, [0, 0.45, Z]));
-  parts.push(box(X * 2, 0.08, 0.05, [0, 1.05, Z]));
-  // side runs, from the back corners up to level with the house front
-  for (const x of [-X, X]) {
-    for (let z = Z + 2; z <= 4; z += 2) post(x, z);
-    const len = 4 - Z;
-    parts.push(box(0.05, 0.08, len, [x, 0.45, Z + len / 2]));
-    parts.push(box(0.05, 0.08, len, [x, 1.05, Z + len / 2]));
-  }
-  return named('fence', ...parts);
-}
-
-function at(obj, x, z, rotY = 0) {
-  obj.position.x = x;
-  obj.position.z = z;
-  obj.rotation.y = rotY;
+function yardAt(obj, x, z) {
+  obj.position.set(x, 0, z);
   return obj;
 }
 
@@ -278,23 +608,28 @@ function at(obj, x, z, rotY = 0) {
 export function buildWorld() {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x000000);
-  // distant lines fade into the dark, which does most of the depth work
-  scene.fog = new THREE.Fog(0x000000, 16, 46);
+  // distant lines fade into the dark, which does most of the depth work outside
+  scene.fog = new THREE.Fog(0x000000, 90, 240);
 
-  // The cams sit out on the diagonals, so props go off the house's
-  // sides (not its corners) and stay within ~9m. Anywhere else and
-  // they end up blocking a cam's view of the house.
   scene.add(
     ground(),
-    house(),
     path(),
-    fence(),
-    at(mailbox(), 0.1, 8.6),
-    at(leafyTree(), -6.8, -0.5),
-    at(pineTree(), 7.4, -1.2),
-    at(bush(), 2.3, 4.1),
-    at(bush(), 3.5, 3.9),
-    at(shed(), 1.0, -8.2)
+    shell(),
+    walls(),
+    doors(),
+    stairs(),
+    porches(),
+    livingRoom(),
+    kitchen(),
+    master(),
+    bathroom(),
+    laundry(),
+    foyer(),
+    yardAt(mailbox(), -38, -4.5),
+    yardAt(leafyTree(), -28, -22),
+    yardAt(pineTree(), 30, 30),
+    yardAt(bush(), -28, -12),
+    yardAt(bush(), -28, 12)
   );
   return scene;
 }

@@ -3,15 +3,20 @@
    ============================================================ */
 
 import * as THREE from '../vendor/three-r186/three.module.js';
-import { buildWorld } from './world.js?v=1';
+import { buildWorld, CEIL } from './world.js?v=3';
 
-/* The four cams, in order around the house. Pressing right moves to
-   the next one, which is also the one to your right. */
+/* The cams, in the order left/right steps through them. Positions
+   are in feet (see world.js: the house is centred on 0, the front
+   door faces -x). Inside cams hang just under the ceiling in a room
+   corner and look across the room, like real ones do. */
+const HIGH = CEIL - 0.4;
 const CAMS = [
-  { name: 'front yard', pos: [-10.5, 6.6, 11.5], look: [0.6, 2.1, 0.4], fov: 52 },
-  { name: 'side yard',  pos: [ 12.0, 6.9,  9.0], look: [-0.4, 2.2, -0.8], fov: 50 },
-  { name: 'backyard',   pos: [ 11.0, 6.4, -11.0], look: [-0.6, 2.0, -1.2], fov: 54 },
-  { name: 'back fence', pos: [-11.5, 6.8, -9.5], look: [0.4, 2.2, 0.2], fov: 50 }
+  { name: 'front yard',     pos: [-78, 27, 50],       look: [-5, 5, 1],          fov: 32 },
+  { name: 'foyer',          pos: [-17.2, HIGH, 6.0],  look: [-17.2, 3.5, -2.5],  fov: 64 },
+  { name: 'living room',    pos: [-6.0, HIGH, -15.9], look: [-5.5, 3, -2],       fov: 64 },
+  { name: 'kitchen',        pos: [2.6, HIGH, -8.9],   look: [13, 3, -1],         fov: 64 },
+  { name: 'master bedroom', pos: [5.4, HIGH, 4.3],    look: [14, 3.5, 13],       fov: 64 },
+  { name: 'bathroom',       pos: [-3.2, HIGH, 15.9],  look: [-10.5, 3.5, 10.5],  fov: 64 }
 ];
 
 const $ = id => document.getElementById(id);
@@ -40,7 +45,7 @@ function setup() {
   }
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   scene = buildWorld();
-  camera = new THREE.PerspectiveCamera(52, 16 / 9, 0.1, 200);
+  camera = new THREE.PerspectiveCamera(52, 16 / 9, 0.1, 600);
 
   const fit = () => {
     const w = canvas.clientWidth, h = canvas.clientHeight;
@@ -53,6 +58,11 @@ function setup() {
   fit();
 
   CAMS.forEach(() => dots.appendChild(document.createElement('i')));
+
+  // add ?debug to the URL to poke at the scene from the browser console
+  if (new URLSearchParams(location.search).has('debug')) {
+    window.crazyhouse = { THREE, scene, camera, renderer, CAMS, showCam };
+  }
 
   renderer.setAnimationLoop(() => {
     if (state !== 'playing') return;
