@@ -1,25 +1,14 @@
 /* ============================================================
    crazyhouse: title screen, the security cams, input, and
-   keeping ghoul1 walking.
+   keeping ghoul1 walking (and drawing him through the ghost pass).
    ============================================================ */
 
 import * as THREE from '../vendor/three-r186/three.module.js';
-import { buildWorld, CEIL } from './world.js?v=4';
-import { createGhoul } from './ghoul.js?v=1';
+import { buildWorld } from './world.js?v=5';
+import { CAMS, camAt } from './cams.js?v=1';
+import { createGhoul } from './ghoul.js?v=3';
+import { createGhostPass, GHOST_LAYER } from './ghost.js?v=1';
 
-/* The cams, in the order left/right steps through them. Positions
-   are in feet (see world.js: the house is centred on 0, the front
-   door faces -x). Inside cams hang just under the ceiling in a room
-   corner and look across the room, like real ones do. */
-const HIGH = CEIL - 0.4;
-const CAMS = [
-  { name: 'front yard',     pos: [-78, 27, 50],       look: [-5, 5, 1],          fov: 32 },
-  { name: 'foyer',          pos: [-17.2, HIGH, 6.0],  look: [-17.2, 3.5, -2.5],  fov: 64 },
-  { name: 'living room',    pos: [-6.0, HIGH, -15.9], look: [-5.5, 3, -2],       fov: 64 },
-  { name: 'kitchen',        pos: [2.6, HIGH, -8.9],   look: [13, 3, -1],         fov: 64 },
-  { name: 'master bedroom', pos: [5.4, HIGH, 4.3],    look: [14, 3.5, 13],       fov: 64 },
-  { name: 'bathroom',       pos: [-3.2, HIGH, 15.9],  look: [-10.5, 3.5, 10.5],  fov: 64 }
-];
 
 const $ = id => document.getElementById(id);
 const frame   = $('frame');
@@ -33,15 +22,22 @@ const dots    = $('dots');
 
 let state = 'title';       // 'title' | 'playing'
 let camIndex = 0;
-let renderer, scene, camera, ghoul;
+let renderer, scene, camera, ghoul, ghost;
+const buffer = new THREE.Vector2();
 let shiftStart = 0;
 let lastFrame = 0;
 
-// where a cam is, by name, so ghoul1 knows where to stare
-const camAt = name => {
-  const c = CAMS.find(c => c.name === name);
-  return c ? c.pos : null;
-};
+// is ghoul1 anywhere in front of the current cam? (skips the ghost pass if not)
+const frustum = new THREE.Frustum(), viewProj = new THREE.Matrix4(), around = new THREE.Sphere();
+function ghoulInView() {
+  viewProj.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+  frustum.setFromProjectionMatrix(viewProj);
+  around.center.copy(ghoul.object.position);
+  around.center.y += 3;
+  around.radius = 4;
+  return frustum.intersectsSphere(around);
+}
+
 
 /* ─── setup (runs once, on the first START) ─── */
 
@@ -55,13 +51,19 @@ function setup() {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   scene = buildWorld();
   ghoul = createGhoul();
+  // he lives on his own layer: the normal render skips him and the
+  // ghost pass draws him, so he can blur and fade
+  ghoul.object.traverse(o => o.layers.set(GHOST_LAYER));
   scene.add(ghoul.object);
+  ghost = createGhostPass(renderer);
   camera = new THREE.PerspectiveCamera(52, 16 / 9, 0.1, 600);
 
   const fit = () => {
     const w = canvas.clientWidth, h = canvas.clientHeight;
     if (!w || !h) return;
     renderer.setSize(w, h, false);
+    renderer.getDrawingBufferSize(buffer);
+    ghost.setSize(buffer.x, buffer.y);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
   };
@@ -83,6 +85,8 @@ function setup() {
     ghoul.update(dt, camAt);
     tickClock();
     renderer.render(scene, camera);
+    // blur scales with the picture, so it looks the same at any size
+    if (ghoulInView()) ghost.render(scene, camera, ghoul.presence, ghoul.blur * buffer.y * 0.022);
   });
   return true;
 }

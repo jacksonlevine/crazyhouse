@@ -1,10 +1,10 @@
 /* ============================================================
    crazyhouse: the world.
 
-   The house is built straight off blueprint.png. Every plan
-   coordinate in this file is a PIXEL on that image, so you can
-   open it in any image editor, hover a wall, and find the same
-   numbers here. X() and Z() turn pixels into feet (27.42 px per
+   The house started out built straight off blueprint.png, and
+   it's free to drift from it now. Every plan coordinate in this
+   file is still a PIXEL on that image, so you can open it in any
+   image editor, hover a spot, and find the same numbers here. X() and Z() turn pixels into feet (27.42 px per
    foot, taken from the plan's 42' and 34' dimensions). Heights
    are in feet.
 
@@ -39,12 +39,13 @@ const DOOR_H = 6.8;
    which cam (by its name in main.js) covers it. First match wins.
    The hall where the stairs used to be counts as the living room. */
 export const ROOMS = [
+  { name: 'patio',          cam: 'patio',          rects: [[738, 1256, 0, 345]] },
   { name: 'foyer',          cam: 'foyer',          rects: [[105, 295, 482, 814]] },
   { name: 'living room',    cam: 'living room',    rects: [[295, 790, 154, 806], [790, 807, 715, 806]] },
   { name: 'kitchen',        cam: 'kitchen',        rects: [[790, 1256, 345, 715]] },
   { name: 'master bedroom', cam: 'master bedroom', rects: [[807, 1256, 715, 1087]] },
   { name: 'bathroom',       cam: 'bathroom',       rects: [[295, 605, 806, 1087]] },
-  { name: 'laundry',        cam: null,             rects: [[605, 807, 806, 1087]] }
+  { name: 'laundry',        cam: 'laundry',        rects: [[605, 807, 806, 1087]] }
 ];
 
 export function roomAt(x, z) {
@@ -225,7 +226,7 @@ function walls() {
 
   // foyer
   add('h', 482, 501, [105, 295], [124, 295]);                                                   // north
-  add('v', 105, 124, [482, 814], [501, 794], [door(571, 666), win(670, 725, 0.3, DOOR_H)]);     // west: front door + sidelight
+  add('v', 105, 124, [482, 814], [501, 794], [door(571, 666)]);                                // west: front door
   add('h', 794, 814, [124, 295], [105, 295], [win(163, 263, 3)]);                               // south
   add('h', 558, 566, [124, 295], [124, 315], [door(141, 284)]);                                 // coat closet front
 
@@ -252,7 +253,7 @@ function walls() {
    when shut. open = degrees, swinging toward the point (tx, ty). */
 function leaf(name, hx, hy, ex, ey, open = 0, tx = 0, ty = 0) {
   const x0 = X(hx), z0 = Z(hy), dx = X(ex) - x0, dz = Z(ey) - z0;
-  const w = Math.hypot(dx, dz), h = DOOR_H - 0.1;
+  const w = Math.hypot(dx, dz), h = DOOR_H - 0.01;     // fills the opening, no double edge
   let th = Math.atan2(dz, dx);
   if (open) {
     const toward = Math.atan2(Z(ty) - z0, X(tx) - x0);
@@ -269,7 +270,8 @@ function leaf(name, hx, hy, ex, ey, open = 0, tx = 0, ty = 0) {
 
 function doors() {
   return named('doors',
-    leaf('door-front', 114, 571, 114, 666),
+    // flush with the outside face, so from the yard it reads as one door
+    leaf('door-front', 107, 571, 107, 666),
     leaf('door-patio-left', 776, 355, 857, 355),
     leaf('door-patio-right', 939, 355, 858, 355),
     leaf('door-master', 811, 733, 811, 804, 75, 900, 733),

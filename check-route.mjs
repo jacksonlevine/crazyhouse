@@ -8,13 +8,15 @@
 
      node games/crazyhouse/check-route.mjs
 
-   Takes about a minute. Not part of the website (it's listed
+   Add a number to walk him more laps (node ... check-route.mjs 2).
+   Takes about a minute a lap. Not part of the website (it's listed
    in .assetsignore).
    ============================================================ */
 
 import * as THREE from '../vendor/three-r186/three.module.js';
-import { buildWorld } from './world.js?v=4';
+import { buildWorld } from './world.js?v=5';
 import { createGhoul } from './ghoul.js';
+import { camAt } from './cams.js?v=1';
 
 const scene = buildWorld();
 scene.updateMatrixWorld(true);
@@ -24,7 +26,8 @@ scene.traverse(o => { if (o.isMesh) meshes.push(o); });
 const ghoul = createGhoul();
 const length = ghoul.curve.getLength();
 const dt = 1 / 30;
-const frames = Math.ceil(length / 1.7 / dt) + 30;
+const laps = Number(process.argv[2]) || 1;           // e.g. `node check-route.mjs 2`
+const frames = Math.ceil(laps * length / 1.5 / dt) + 30;
 const toPx = p => [Math.round(p.x * 27.42 + 680.5), Math.round(p.z * 27.42 + 620.5)];
 const nameOf = o => { while (o && !o.name) o = o.parent; return o ? o.name : 'something'; };
 
@@ -34,8 +37,8 @@ const clips = new Map();
 const rooms = {};
 
 for (let f = 0; f < frames; f++) {
-  // any cam position will do here; it only steers his head
-  const room = ghoul.update(dt, () => [0, 10, 0]);
+  // the real cams, so his head (and hair) turn exactly as in the game
+  const room = ghoul.update(dt, camAt);
   rooms[room || 'between rooms'] = (rooms[room || 'between rooms'] || 0) + dt;
   ghoul.object.updateMatrixWorld(true);
   const centre = ghoul.object.position;
@@ -56,7 +59,7 @@ for (let f = 0; f < frames; f++) {
   });
 }
 
-console.log(`Loop: ${length.toFixed(0)} ft, about ${(length / 1.7).toFixed(0)} seconds per lap.`);
+console.log(`Loop: ${length.toFixed(0)} ft, about ${(length / 1.5).toFixed(0)} seconds per lap, ${laps} lap(s) checked.`);
 console.log('Seconds in each room:', Object.fromEntries(Object.entries(rooms).map(([k, s]) => [k, Math.round(s)])));
 if (clips.size) {
   console.log(`\nHe clips into something at ${clips.size} spots (blueprint px of his centre):`);
