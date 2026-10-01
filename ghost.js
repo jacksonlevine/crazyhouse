@@ -12,8 +12,8 @@
       clear background.
    2. Blur that image with a Gaussian blur, a horizontal pass then a
       vertical pass, repeated for bigger blurs.
-   3. Lay it over the screen: his white lines add light, his black
-      body covers whatever's behind him, both scaled by strength.
+   3. Lay it over the screen: his lit body covers whatever's behind
+      him, scaled by strength.
       At full strength and no blur it looks exactly like drawing
       him normally.
    ============================================================ */
@@ -44,23 +44,32 @@ const BLUR = /* glsl */ `
   }
 `;
 
-// Lay the (premultiplied) ghost over the frame. gain keeps a blurred
-// line visible as a glow instead of thinning out to nothing.
+// Lay the (premultiplied) ghost over the frame. The offscreen image
+// holds raw light values, so it gets the same tone mapping and colour
+// conversion the main view gets. gain thickens his blurred outline so
+// a smear doesn't thin out to nothing.
 const COMPOSITE = /* glsl */ `
   uniform sampler2D tex;
   uniform float strength;
   uniform float gain;
   varying vec2 vUv;
   void main() {
-    vec4 c = min(texture2D(tex, vUv) * gain, vec4(1.0));
-    gl_FragColor = c * strength;
+    vec4 c = texture2D(tex, vUv);
+    float a = min(c.a * gain, 1.0) * strength;
+    vec3 col = c.a > 0.0001 ? c.rgb / c.a : vec3(0.0);
+    gl_FragColor = vec4(col, 1.0);
+    #include <tonemapping_fragment>
+    #include <colorspace_fragment>
+    gl_FragColor = vec4(gl_FragColor.rgb * a, a);
   }
 `;
 
 export function createGhostPass(renderer) {
-  const sharp = new THREE.WebGLRenderTarget(1, 1, { samples: 4 });   // antialiased, like the main view
-  const pingA = new THREE.WebGLRenderTarget(1, 1);
-  const pingB = new THREE.WebGLRenderTarget(1, 1);
+  // half-float, so bright lamp-lit values survive until tone mapping
+  const opts = { type: THREE.HalfFloatType };
+  const sharp = new THREE.WebGLRenderTarget(1, 1, { ...opts, samples: 4 });   // antialiased, like the main view
+  const pingA = new THREE.WebGLRenderTarget(1, 1, opts);
+  const pingB = new THREE.WebGLRenderTarget(1, 1, opts);
 
   // one big triangle that covers the screen
   const tri = new THREE.BufferGeometry();

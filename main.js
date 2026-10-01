@@ -4,10 +4,10 @@
    ============================================================ */
 
 import * as THREE from '../vendor/three-r186/three.module.js';
-import { buildWorld } from './world.js?v=5';
-import { CAMS, camAt } from './cams.js?v=1';
-import { createGhoul } from './ghoul.js?v=3';
-import { createGhostPass, GHOST_LAYER } from './ghost.js?v=1';
+import { buildWorld } from './world.js?v=7';
+import { CAMS, camAt } from './cams.js?v=3';
+import { createGhoul } from './ghoul.js?v=5';
+import { createGhostPass, GHOST_LAYER } from './ghost.js?v=2';
 
 
 const $ = id => document.getElementById(id);
@@ -22,10 +22,27 @@ const dots    = $('dots');
 
 let state = 'title';       // 'title' | 'playing'
 let camIndex = 0;
-let renderer, scene, camera, ghoul, ghost;
+let renderer, scene, camera, ghoul, ghost, lamps;
+const EXPOSURE = 0.6;          // overall brightness of the picture
 const buffer = new THREE.Vector2();
 let shiftStart = 0;
 let lastFrame = 0;
+
+/* Shadows are drawn once, then only redrawn for lamps near ghoul1, so
+   his shadow moves with him without redrawing every lamp every frame.
+   A lamp he just walked away from gets one more redraw to clear him. */
+const NEAR_LAMP = 18;          // feet
+let nearLamps = new Set();
+const lampAt = new THREE.Vector3();
+function refreshShadows() {
+  const now = new Set();
+  for (const l of lamps) {
+    if (l.isPointLight && l.getWorldPosition(lampAt).distanceTo(ghoul.object.position) < NEAR_LAMP) now.add(l);
+  }
+  for (const l of now) l.shadow.needsUpdate = true;
+  for (const l of nearLamps) if (!now.has(l)) l.shadow.needsUpdate = true;
+  nearLamps = now;
+}
 
 // is ghoul1 anywhere in front of the current cam? (skips the ghost pass if not)
 const frustum = new THREE.Frustum(), viewProj = new THREE.Matrix4(), around = new THREE.Sphere();
@@ -49,12 +66,25 @@ function setup() {
     return false;
   }
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  // real lighting: shadows from every lamp, and film-like tone mapping
+  // so bright lamp light rolls off softly instead of clipping
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFShadowMap;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = EXPOSURE;
   scene = buildWorld();
+  lamps = scene.userData.lamps;
   ghoul = createGhoul();
   // he lives on his own layer: the normal render skips him and the
   // ghost pass draws him, so he can blur and fade
   ghoul.object.traverse(o => o.layers.set(GHOST_LAYER));
   scene.add(ghoul.object);
+  // ...so the lights have to reach that layer too, and their shadows include him
+  scene.traverse(o => {
+    if (!o.isLight) return;
+    o.layers.enable(GHOST_LAYER);
+    if (o.shadow) o.shadow.camera.layers.enable(GHOST_LAYER);
+  });
   ghost = createGhostPass(renderer);
   camera = new THREE.PerspectiveCamera(52, 16 / 9, 0.1, 600);
 
@@ -74,7 +104,7 @@ function setup() {
 
   // add ?debug to the URL to poke at the scene from the browser console
   if (new URLSearchParams(location.search).has('debug')) {
-    window.crazyhouse = { THREE, scene, camera, renderer, CAMS, showCam, ghoul };
+    window.crazyhouse = { THREE, scene, camera, renderer, CAMS, showCam, ghoul, lamps };
   }
 
   renderer.setAnimationLoop(now => {
@@ -83,6 +113,7 @@ function setup() {
     const dt = Math.min((now - lastFrame) / 1000 || 0, 0.1);
     lastFrame = now;
     ghoul.update(dt, camAt);
+    refreshShadows();
     tickClock();
     renderer.render(scene, camera);
     // blur scales with the picture, so it looks the same at any size

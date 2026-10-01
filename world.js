@@ -8,8 +8,10 @@
    foot, taken from the plan's 42' and 34' dimensions). Heights
    are in feet.
 
-   Every solid is black faces + white edges, so walls hide what's
-   behind them and you get a clean line drawing, inside and out.
+   Every solid is a lit grey surface with dark ink edges. Real
+   lights (a lamp in each room, a streetlight, faint moonlight) cast
+   real shadows, so light only reaches what it can actually see:
+   through doorways, out of windows, into the yard.
 
    Walls are extruded from their elevation, so windows are real
    holes and doorways are real gaps. Where two walls meet at a
@@ -58,23 +60,41 @@ export function roomAt(x, z) {
 
 /* ─── materials ─────────────────────────────── */
 
-export const FILL = new THREE.MeshBasicMaterial({
-  color: 0x000000,
-  side: THREE.DoubleSide,
-  // push faces back a hair so their own edges draw on top cleanly
-  polygonOffset: true,
-  polygonOffsetFactor: 1,
-  polygonOffsetUnits: 1
-});
-export const EDGE  = new THREE.LineBasicMaterial({ color: 0xffffff });
-const FAINT = new THREE.LineBasicMaterial({ color: 0x3c3c3c });
+/* A surface that light falls on. Grey only, so the picture stays
+   black and white. Faces are pushed back a hair so their own edges
+   draw on top cleanly. */
+export function surface(color, roughness = 0.9, side = THREE.FrontSide) {
+  return new THREE.MeshStandardMaterial({
+    color, roughness, metalness: 0, side,
+    polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1
+  });
+}
+
+export const MAT = {
+  wall:      surface(0xd4d4d4),
+  ceiling:   surface(0xdedede),
+  floor:     surface(0x8a8a8a, 0.8),
+  roof:      surface(0x404040),
+  door:      surface(0xa6a6a6, 0.7),
+  furniture: surface(0xb0b0b0),
+  dark:      surface(0x585858),          // sofa, armchair, stools, machines
+  soft:      surface(0xe6e6e6),          // bed, toilet, shower, vanity
+  wood:      surface(0x8c8c8c, 0.8),     // decks, porch, posts
+  ground:    surface(0x4a4a4a, 1),
+  tree:      surface(0x5c5c5c, 1),
+  glow:      new THREE.MeshBasicMaterial({ color: 0xffffff })   // lampshades, bulbs: they ARE the light
+};
+
+// dark ink edges: they vanish into the dark, and outline whatever's lit
+export const EDGE  = new THREE.LineBasicMaterial({ color: 0x0b0b0b });
+const FAINT = new THREE.LineBasicMaterial({ color: 0x262626 });
 
 /* ─── building blocks ───────────────────────── */
 
-// A solid: black faces with a white outline.
-export function solid(geo, [x, y, z] = [0, 0, 0], rot) {
+// A solid: a lit surface with an ink outline.
+export function solid(geo, [x, y, z] = [0, 0, 0], rot, mat = MAT.furniture) {
   const g = new THREE.Group();
-  g.add(new THREE.Mesh(geo, FILL));
+  g.add(new THREE.Mesh(geo, mat));
   g.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo, 20), EDGE));
   g.position.set(x, y, z);
   if (rot) g.rotation.set(rot[0], rot[1], rot[2]);
@@ -102,8 +122,37 @@ function remap(geo, fn) {
     p.setXYZ(i, a, b, c);
   }
   p.needsUpdate = true;
+  outwardFaces(geo);
+  geo.computeVertexNormals();
   geo.computeBoundingSphere();
   return geo;
+}
+
+/* Some remaps mirror the geometry (swapping two axes), which turns
+   it inside out. Light and shadows care which way faces point, so
+   if the shape's volume comes out negative, flip every triangle. */
+function outwardFaces(geo) {
+  const p = geo.attributes.position;
+  if (geo.index) return;
+  let vol = 0;
+  for (let i = 0; i < p.count; i += 3) {
+    const ax = p.getX(i), ay = p.getY(i), az = p.getZ(i);
+    const bx = p.getX(i + 1), by = p.getY(i + 1), bz = p.getZ(i + 1);
+    const cx = p.getX(i + 2), cy = p.getY(i + 2), cz = p.getZ(i + 2);
+    vol += ax * (by * cz - bz * cy) - ay * (bx * cz - bz * cx) + az * (bx * cy - by * cx);
+  }
+  if (vol >= 0) return;
+  for (const name of Object.keys(geo.attributes)) {
+    const a = geo.attributes[name], n = a.itemSize;
+    for (let i = 0; i < a.count; i += 3) {
+      for (let k = 0; k < n; k++) {
+        const t = a.array[(i + 1) * n + k];
+        a.array[(i + 1) * n + k] = a.array[(i + 2) * n + k];
+        a.array[(i + 2) * n + k] = t;
+      }
+    }
+    a.needsUpdate = true;
+  }
 }
 
 /* A box from blueprint pixels (x0..x1, y0..y1) and heights h0..h1.
@@ -299,8 +348,9 @@ function shell() {
   ], [], 0, FLOOR)));
 
   // ceilings
-  parts.push(slab([[295, 154], [1256, 154], [1256, 1087], [295, 1087]], [], CEIL, EAVE));
-  parts.push(slab([[0, 482], [295, 482], [295, 814], [0, 814]], [], CEIL, EAVE));
+  parts.push(named('ceiling',
+    slab([[295, 154], [1256, 154], [1256, 1087], [295, 1087]], [], CEIL, EAVE),
+    slab([[0, 482], [295, 482], [295, 814], [0, 814]], [], CEIL, EAVE)));
 
   // main roof: ridge runs left-right on the plan, gables at both ends
   const main = gableRoof({ z0: Z(154), z1: Z(1087), x0: X(295) - 1.5, x1: X(1256) + 1.5, over: 1.5 });
@@ -438,9 +488,6 @@ function kitchen() {
 }
 
 function master() {
-  const lamp = (cx, cy) => named('lamp',
-    round(cx, cy, 0.08, 2.9, 2.1, 6),
-    round(cx, cy, 0.6, 3.6, 2.9, 10, 0.42));
   const tub = (cx, cy) => named('tub-chair',
     round(cx, cy, 1.0, 1.4, 0, 12, 1.05),
     block(cx + 10, cx + 25, cy - 24, cy + 24, 2.6));
@@ -454,7 +501,6 @@ function master() {
       lines([[[X(930), bedTop, Z(985)], [X(1065), bedTop, Z(985)]]])   // turned-down sheet
     ),
     named('nightstands', block(875, 925, 1022, 1068, 2.1), block(1075, 1125, 1022, 1068, 2.1)),
-    lamp(900, 1045), lamp(1100, 1045),
     named('dresser', block(940, 1055, 728, 762, 3)),
     tub(1195, 862), tub(1195, 1002),
     named('round-table', round(1208, 932, 0.7, 1.9, 0, 12))
@@ -533,7 +579,7 @@ function porches() {
 function ground() {
   // black ground so nothing below the yard shows through
   const R = 150;
-  const plane = new THREE.Mesh(new THREE.BoxGeometry(R * 2, 0.2, R * 2), FILL);
+  const plane = new THREE.Mesh(new THREE.BoxGeometry(R * 2, 0.2, R * 2), MAT.ground);
   plane.position.y = -0.1;
 
   const pairs = [];
@@ -586,13 +632,184 @@ function yardAt(obj, x, z) {
   return obj;
 }
 
+/* ─── lights ────────────────────────────────── */
+
+/* Every lamp is two things: a fixture you can see (its shade or bulb
+   glows) and a real light that casts shadows. Shadows are worked out
+   once at the start and only redrawn near ghoul1 (see main.js), which
+   keeps all this affordable. Intensities are by eye; raise or lower
+   them to taste. All lights are white so the picture stays black and
+   white. */
+
+const STREET = [-50, 10];                       // where the streetlight stands, in feet
+
+function shadowed(light, size = 512, far = 40) {
+  light.castShadow = true;
+  light.shadow.mapSize.set(size, size);
+  light.shadow.camera.near = 0.25;
+  light.shadow.camera.far = far;
+  light.shadow.bias = -0.0005;
+  light.shadow.normalBias = 0.04;
+  light.shadow.autoUpdate = false;              // drawn once, then on demand
+  light.shadow.needsUpdate = true;
+  return light;
+}
+
+// a shadow-casting bulb at blueprint (cx, cy), h feet above the floor
+function bulb(lamps, name, cx, cy, h, intensity, dz = 0) {
+  const light = shadowed(new THREE.PointLight(0xffffff, intensity, 0, 2));
+  light.name = name;
+  light.position.set(X(cx), FLOOR + h, Z(cy) + dz);
+  lamps.push(light);
+  return light;
+}
+
+const glow = (geo, x, y, z) => solid(geo, [x, y, z], null, MAT.glow);
+const shadeMat = surface(0x2e2e2e, 0.5, THREE.DoubleSide);   // open metal pendant shades
+
+function floorLamp(lamps, name, cx, cy, intensity) {
+  const x = X(cx), z = Z(cy);
+  return named(name,
+    solid(new THREE.CylinderGeometry(0.42, 0.48, 0.08, 12), [x, FLOOR + 0.04, z]),
+    solid(new THREE.CylinderGeometry(0.04, 0.04, 4.9, 6), [x, FLOOR + 2.5, z]),
+    glow(new THREE.CylinderGeometry(0.42, 0.7, 0.9, 14), x, FLOOR + 5.4, z),
+    bulb(lamps, name + '-light', cx, cy, 5.2, intensity));
+}
+
+function tableLamp(lamps, name, cx, cy, top, intensity) {
+  const x = X(cx), z = Z(cy);
+  const parts = [
+    solid(new THREE.CylinderGeometry(0.1, 0.17, 0.7, 8), [x, FLOOR + top + 0.35, z]),
+    solid(new THREE.CylinderGeometry(0.3, 0.48, 0.6, 12), [x, FLOOR + top + 0.95, z], null,
+      intensity ? MAT.glow : MAT.soft)
+  ];
+  if (intensity) parts.push(bulb(lamps, name + '-light', cx, cy, top + 0.9, intensity));
+  return named(name, ...parts);
+}
+
+function pendant(lamps, name, cx, cy, intensity) {
+  const x = X(cx), z = Z(cy);
+  const shade = new THREE.CylinderGeometry(0.12, 0.75, 0.55, 18, 1, true);
+  return named(name,
+    lines([[[x, CEIL, z], [x, FLOOR + 6.85, z]]]),                              // cord
+    solid(shade, [x, FLOOR + 6.58, z], null, shadeMat),
+    glow(new THREE.SphereGeometry(0.15, 10, 8), x, FLOOR + 6.38, z),
+    bulb(lamps, name + '-light', cx, cy, 6.2, intensity));
+}
+
+function bareBulb(lamps, name, cx, cy, intensity) {
+  const x = X(cx), z = Z(cy);
+  return named(name,
+    lines([[[x, CEIL, z], [x, FLOOR + 7.3, z]]]),
+    glow(new THREE.SphereGeometry(0.13, 10, 8), x, FLOOR + 7.18, z),
+    bulb(lamps, name + '-light', cx, cy, 6.95, intensity));
+}
+
+function roomLamps(lamps) {
+  const wallZ = Z(1068), patioZ = Z(345);
+  return named('lamps',
+    floorLamp(lamps, 'lamp-foyer', 140, 775, 28),
+    tableLamp(lamps, 'lamp-living', 576, 215, 2, 20),
+    pendant(lamps, 'lamp-dining', 695, 522, 36),
+    pendant(lamps, 'lamp-kitchen', 978, 517, 36),
+    tableLamp(lamps, 'lamp-master', 900, 1045, 2.1, 16),
+    tableLamp(lamps, 'lamp-master-off', 1100, 1045, 2.1, 0),             // the other one's off
+    bareBulb(lamps, 'lamp-laundry', 710, 915, 26),
+    // bathroom: a light bar above the mirror
+    named('lamp-bathroom',
+      glow(new THREE.BoxGeometry(2, 0.18, 0.2), X(535), FLOOR + 6.75, wallZ - 0.12),
+      bulb(lamps, 'lamp-bathroom-light', 535, 1068, 6.55, 24, -0.7)),
+    // patio: a lantern on the back wall, beside the patio doors
+    named('lamp-patio',
+      solid(new THREE.BoxGeometry(0.5, 0.75, 0.35), [X(1060), FLOOR + 7, patioZ - 0.2], null, MAT.glow),
+      bulb(lamps, 'lamp-patio-light', 1060, 345, 6.8, 48, -0.75))
+  );
+}
+
+/* A soft halo texture, drawn on a canvas, for the streetlight. (Skipped
+   outside a browser, where there's no canvas.) */
+function halo(size) {
+  if (typeof document === 'undefined') return new THREE.Group();
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const g = c.getContext('2d');
+  const grad = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+  grad.addColorStop(0, 'rgba(255,255,255,0.55)');
+  grad.addColorStop(0.25, 'rgba(255,255,255,0.18)');
+  grad.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 128, 128);
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: new THREE.CanvasTexture(c), blending: THREE.AdditiveBlending,
+    depthWrite: false, transparent: true
+  }));
+  sprite.scale.set(size, size, 1);
+  return sprite;
+}
+
+// The big streetlight by the front walk: pole, arm, head, and a spotlight down on the yard.
+function streetlight(lamps) {
+  const H = 18, reach = 4;
+  const light = shadowed(new THREE.SpotLight(0xffffff, 1900, 0, 0.8, 0.75, 2), 1024, 90);
+  light.name = 'streetlight-light';
+  light.position.set(reach, H - 0.6, 0);
+  light.target.position.set(17, 0, -6);
+  lamps.push(light);
+  const glare = halo(10);
+  glare.position.set(reach, H - 0.7, 0);
+  return named('streetlight',
+    solid(new THREE.CylinderGeometry(0.22, 0.32, H, 8), [0, H / 2, 0], null, MAT.dark),
+    solid(new THREE.BoxGeometry(reach, 0.18, 0.18), [reach / 2, H - 0.1, 0], null, MAT.dark),
+    solid(new THREE.BoxGeometry(1.6, 0.35, 0.8), [reach, H - 0.25, 0], null, MAT.dark),
+    glow(new THREE.BoxGeometry(1.3, 0.06, 0.6), reach, H - 0.45, 0),
+    light, light.target, glare);
+}
+
+// faint moonlight and a whisper of fill, so the dark isn't completely flat
+function sky() {
+  const moon = shadowed(new THREE.DirectionalLight(0xffffff, 0.18), 2048, 240);
+  moon.name = 'moon';
+  moon.position.set(-70, 90, 50);
+  const cam = moon.shadow.camera;
+  cam.left = cam.bottom = -60;
+  cam.right = cam.top = 60;
+  cam.near = 1;
+  moon.shadow.normalBias = 0.08;
+  return named('sky', moon, moon.target, new THREE.HemisphereLight(0xffffff, 0x000000, 0.035));
+}
+
+/* Give each part of the house its own grey, and switch on shadows:
+   every solid casts and catches them, except things that glow. */
+function paint(scene) {
+  const set = (name, mat) => scene.traverse(o => {
+    if (o.name === name) o.traverse(m => { if (m.isMesh) m.material = mat; });
+  });
+  set('walls', MAT.wall);
+  set('ceiling', MAT.ceiling);
+  set('foundation', MAT.floor);
+  set('roof', MAT.roof);
+  set('foyer-roof', MAT.roof);
+  set('doors', MAT.door);
+  set('porches', MAT.wood);
+  for (const n of ['sofa', 'armchair', 'stools', 'washer', 'dryer']) set(n, MAT.dark);
+  for (const n of ['bed', 'toilet', 'shower', 'vanity', 'tub-chair']) set(n, MAT.soft);
+  for (const n of ['tree', 'pine', 'bush']) set(n, MAT.tree);
+  scene.traverse(o => {
+    if (!o.isMesh) return;
+    const glows = o.material.isMeshBasicMaterial;
+    o.castShadow = !glows;
+    o.receiveShadow = !glows;
+  });
+}
+
 /* ─── everything ────────────────────────────── */
 
 export function buildWorld() {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x000000);
-  // distant lines fade into the dark, which does most of the depth work outside
+  // the far yard fades into the night
   scene.fog = new THREE.Fog(0x000000, 90, 240);
+  const lamps = [];
 
   scene.add(
     ground(),
@@ -611,7 +828,12 @@ export function buildWorld() {
     yardAt(leafyTree(), -28, -22),
     yardAt(pineTree(), 30, 30),
     yardAt(bush(), -28, -12),
-    yardAt(bush(), -28, 12)
+    yardAt(bush(), -28, 12),
+    yardAt(streetlight(lamps), STREET[0], STREET[1]),
+    roomLamps(lamps),
+    sky()
   );
+  paint(scene);
+  scene.userData.lamps = lamps;
   return scene;
 }

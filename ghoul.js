@@ -12,12 +12,12 @@
    This file only decides WHEN (api.presence and api.blur); the
    blur itself is drawn by ghost.js.
 
-   Same style as the house: black faces, white edges. Sizes are in
-   feet. His feet are at y = 0 in his own space and he faces +z.
+   Same style as the house: lit grey surfaces, dark ink edges, lit
+   by the room's lamp and casting a real shadow. Sizes are in feet. His feet are at y = 0 in his own space and he faces +z.
    ============================================================ */
 
 import * as THREE from '../vendor/three-r186/three.module.js';
-import { X, Z, FLOOR, FILL, solid, lines, roomAt } from './world.js?v=5';
+import { X, Z, FLOOR, surface, solid, lines, roomAt } from './world.js?v=7';
 
 /* The loop he walks, in blueprint pixels (same as world.js), through
    the doorways and around the furniture. It's smoothed into a curve.
@@ -62,7 +62,11 @@ const SEEN = [7, 16];
 const GONE = [3, 8];
 const FADE = [1.4, 2.4];
 
-const WHITE = new THREE.MeshBasicMaterial({ color: 0xffffff });
+const WHITE  = new THREE.MeshBasicMaterial({ color: 0xffffff });   // pupils: tiny points of light
+const SOCKET = new THREE.MeshBasicMaterial({ color: 0x000000 });   // eye sockets: pure black
+const SKIN   = surface(0xc9c9c9, 0.7);
+const CLOTH  = surface(0x262626, 0.95);
+const HAIR   = surface(0x121212, 0.6, THREE.DoubleSide);
 
 /* ─── a seeded random, so his hair is the same every time ─── */
 function seeded(seed) {
@@ -96,6 +100,14 @@ function eyes() {
       if (last) pairs.push([last, p]);
       last = p;
     }
+    // a black socket lying on the face
+    const p = new THREE.Vector3(...onFace(cx, cy, 1.015));
+    const n = new THREE.Vector3(p.x / HEAD.rx ** 2, p.y / HEAD.ry ** 2, p.z / HEAD.rz ** 2).normalize();
+    const socket = new THREE.Mesh(new THREE.CircleGeometry(1, 16), SOCKET);
+    socket.scale.set(0.05, 0.06, 1);
+    socket.position.copy(p);
+    socket.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), n);
+    g.add(socket);
     const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.016, 6, 4), WHITE);
     pupil.position.set(...onFace(cx, cy - 0.006, 1.05));
     g.add(pupil);
@@ -146,7 +158,8 @@ function hair() {
   for (const s of strands) for (let i = 0; i < s.length - 1; i++) pairs.push([s[i], s[i + 1]]);
 
   const g = new THREE.Group();
-  g.add(new THREE.Mesh(curtain, FILL), lines(pairs));
+  curtain.computeVertexNormals();
+  g.add(new THREE.Mesh(curtain, HAIR), lines(pairs));
   return g;
 }
 
@@ -155,9 +168,9 @@ function hair() {
 const HIP = 3.1, CHEST = 1.95;          // chest = hip to shoulder
 const NECK_UP = 0.36, HEAD_UP = 0.36;
 
-function limb(w, len, d) {
+function limb(w, len, d, mat = CLOTH) {
   // a box hanging down from its pivot
-  return solid(new THREE.BoxGeometry(w, len, d), [0, -len / 2, 0]);
+  return solid(new THREE.BoxGeometry(w, len, d), [0, -len / 2, 0], null, mat);
 }
 
 function pivot(x, y, z, ...kids) {
@@ -182,11 +195,11 @@ export function createGhoul() {
   const legs = [-1, 1].map(side => {
     const leg = pivot(side * 0.15, HIP, 0,
       limb(0.17, HIP - 0.1, 0.2),
-      solid(new THREE.BoxGeometry(0.18, 0.1, 0.46), [0, -HIP + 0.05, 0.1]));      // foot
+      solid(new THREE.BoxGeometry(0.18, 0.1, 0.46), [0, -HIP + 0.05, 0.1], null, CLOTH));      // foot
     body.add(leg);
     return leg;
   });
-  body.add(solid(new THREE.BoxGeometry(0.44, 0.26, 0.26), [0, HIP, 0]));          // hips
+  body.add(solid(new THREE.BoxGeometry(0.44, 0.26, 0.26), [0, HIP, 0], null, CLOTH));          // hips
 
   // everything from the hips up, hunched forward
   const chest = pivot(0, HIP, 0);
@@ -194,7 +207,7 @@ export function createGhoul() {
   const torsoGeo = new THREE.CylinderGeometry(0.34, 0.22, CHEST, 6);
   torsoGeo.rotateY(Math.PI / 6);
   torsoGeo.scale(1, 1, 0.58);
-  chest.add(solid(torsoGeo, [0, CHEST / 2, 0]));
+  chest.add(solid(torsoGeo, [0, CHEST / 2, 0], null, CLOTH));
 
   // arms: shoulder → elbow → wrist, long thin fingers
   const arms = [-1, 1].map(side => {
@@ -204,9 +217,9 @@ export function createGhoul() {
       fingers.push([[x, -0.26, 0], [x * 1.3, -0.78, 0.04]]);
     }
     const wrist = pivot(0, -0.95, 0,
-      solid(new THREE.BoxGeometry(0.14, 0.26, 0.05), [0, -0.13, 0]),
+      solid(new THREE.BoxGeometry(0.14, 0.26, 0.05), [0, -0.13, 0], null, SKIN),
       lines(fingers));
-    const elbow = pivot(0, -1.1, 0, limb(0.1, 0.95, 0.11), wrist);
+    const elbow = pivot(0, -1.1, 0, limb(0.1, 0.95, 0.11, SKIN), wrist);
     const shoulder = pivot(side * 0.39, CHEST - 0.06, 0, limb(0.12, 1.1, 0.13), elbow);
     shoulder.rotation.order = 'YXZ';            // swing forward first, then turn inward
     shoulder.rotation.y = -side * POSE.inward;
@@ -215,7 +228,7 @@ export function createGhoul() {
   });
 
   // neck, jutting forward a little
-  const neck = solid(new THREE.CylinderGeometry(0.06, 0.08, NECK_UP + 0.1, 6), [0, CHEST + NECK_UP / 2, 0.05]);
+  const neck = solid(new THREE.CylinderGeometry(0.06, 0.08, NECK_UP + 0.1, 6), [0, CHEST + NECK_UP / 2, 0.05], null, SKIN);
   chest.add(neck);
 
   // head: yaw (turns) → pitch (nods). Hair goes with the head.
@@ -225,7 +238,7 @@ export function createGhoul() {
   headYaw.add(headPitch);
   const skullGeo = new THREE.SphereGeometry(1, 10, 8);
   skullGeo.scale(HEAD.rx, HEAD.ry, HEAD.rz);
-  headPitch.add(new THREE.Mesh(skullGeo, FILL));     // no facet lines, so the eyes read clean
+  headPitch.add(new THREE.Mesh(skullGeo, SKIN));     // no facet lines, so the eyes read clean
   headPitch.add(eyes(), hair());
 
   /* ─── walking ─── */
@@ -251,7 +264,7 @@ export function createGhoul() {
 
   /* ─── slipping in and out of reality ─── */
   const pick = ([a, b]) => a + Math.random() * (b - a);
-  let state = 'gone', timer = 1.2, fadeLen = 1, fadeT = 0;
+  let state = 'gone', timer = 1.2, fadeLen = 1, fadeT = 0, casting = true;
 
   function phase(dt) {
     timer -= dt;
@@ -275,6 +288,12 @@ export function createGhoul() {
     if (api.forcePresence !== null) p = api.forcePresence;
     api.presence = p;
     api.blur = Math.pow(1 - p, 0.6);
+    // he only throws a shadow while he's mostly here
+    const solidEnough = p > 0.5;
+    if (solidEnough !== casting) {
+      casting = solidEnough;
+      root.traverse(o => { if (o.isMesh && !o.material.isMeshBasicMaterial) o.castShadow = casting; });
+    }
   }
 
   /* camFor(name) → [x, y, z] of that cam, or null. Returns his room. */
