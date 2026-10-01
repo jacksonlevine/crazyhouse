@@ -26,8 +26,8 @@ import * as THREE from '../vendor/three-r186/three.module.js';
 /* ─── units ─────────────────────────────────── */
 
 const K = 27.42;                          // blueprint pixels per foot
-const X = px => (px - 680.5) / K;         // blueprint x → feet (house centred on 0)
-const Z = py => (py - 620.5) / K;         // blueprint y → feet
+export const X = px => (px - 680.5) / K;         // blueprint x → feet (house centred on 0)
+export const Z = py => (py - 620.5) / K;         // blueprint y → feet
 
 export const FLOOR = 2.5;                 // main floor, feet above the yard
 export const CEIL = FLOOR + 8;            // 8' ceilings
@@ -35,9 +35,29 @@ const SLAB = 0.4;                         // ceiling thickness
 const EAVE = CEIL + SLAB;                 // where the roofs start
 const DOOR_H = 6.8;
 
+/* Which room is where, as blueprint rectangles [x0, x1, y0, y1], and
+   which cam (by its name in main.js) covers it. First match wins.
+   The hall where the stairs used to be counts as the living room. */
+export const ROOMS = [
+  { name: 'foyer',          cam: 'foyer',          rects: [[105, 295, 482, 814]] },
+  { name: 'living room',    cam: 'living room',    rects: [[295, 790, 154, 806], [790, 807, 715, 806]] },
+  { name: 'kitchen',        cam: 'kitchen',        rects: [[790, 1256, 345, 715]] },
+  { name: 'master bedroom', cam: 'master bedroom', rects: [[807, 1256, 715, 1087]] },
+  { name: 'bathroom',       cam: 'bathroom',       rects: [[295, 605, 806, 1087]] },
+  { name: 'laundry',        cam: null,             rects: [[605, 807, 806, 1087]] }
+];
+
+export function roomAt(x, z) {
+  const px = x * K + 680.5, py = z * K + 620.5;
+  for (const r of ROOMS) {
+    if (r.rects.some(([x0, x1, y0, y1]) => px >= x0 && px <= x1 && py >= y0 && py <= y1)) return r;
+  }
+  return null;
+}
+
 /* ─── materials ─────────────────────────────── */
 
-const FILL = new THREE.MeshBasicMaterial({
+export const FILL = new THREE.MeshBasicMaterial({
   color: 0x000000,
   side: THREE.DoubleSide,
   // push faces back a hair so their own edges draw on top cleanly
@@ -45,13 +65,13 @@ const FILL = new THREE.MeshBasicMaterial({
   polygonOffsetFactor: 1,
   polygonOffsetUnits: 1
 });
-const EDGE  = new THREE.LineBasicMaterial({ color: 0xffffff });
+export const EDGE  = new THREE.LineBasicMaterial({ color: 0xffffff });
 const FAINT = new THREE.LineBasicMaterial({ color: 0x3c3c3c });
 
 /* ─── building blocks ───────────────────────── */
 
 // A solid: black faces with a white outline.
-function solid(geo, [x, y, z] = [0, 0, 0], rot) {
+export function solid(geo, [x, y, z] = [0, 0, 0], rot) {
   const g = new THREE.Group();
   g.add(new THREE.Mesh(geo, FILL));
   g.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo, 20), EDGE));
@@ -68,7 +88,7 @@ function named(name, ...parts) {
 }
 
 // Loose lines from a list of [a, b] point pairs (feet).
-function lines(pairs, mat = EDGE) {
+export function lines(pairs, mat = EDGE) {
   const pts = pairs.flat().map(p => new THREE.Vector3(p[0], p[1], p[2]));
   return new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(pts), mat);
 }
@@ -201,7 +221,7 @@ function walls() {
   add('v', 1237, 1256, [364, 1068], [345, 1087], [win(416, 607, 3.6), win(826, 1016, 2.5)]);    // east: sink + master windows
   add('h', 1068, 1087, [315, 1237], [295, 1256],
     [win(487, 588, 4.2), win(839, 912, 3), win(1087, 1159, 3)]);                                // south: bath + master windows
-  add('v', 295, 315, [645, 1087], [650, 1068], [win(928, 969, 4.2)]);                           // west of the stairs, storage, bath
+  add('v', 295, 315, [645, 1087], [645, 1068], [win(928, 969, 4.2)]);                           // west of the hall, storage, bath
 
   // foyer
   add('h', 482, 501, [105, 295], [124, 295]);                                                   // north
@@ -209,8 +229,7 @@ function walls() {
   add('h', 794, 814, [124, 295], [105, 295], [win(163, 263, 3)]);                               // south
   add('h', 558, 566, [124, 295], [124, 315], [door(141, 284)]);                                 // coat closet front
 
-  // stairs, storage, bathroom, laundry
-  add('h', 645, 650, [295, 428], [315, 428], [], { bottom: -2.6 });                             // between the two flights
+  // storage, bathroom, laundry (the hall where the stairs were is left open)
   add('h', 731, 740, [315, 428], [315, 419]);                                                   // storage, north
   add('v', 419, 428, [740, 902], [731, 902], [door(746, 800)]);                                 // storage, east (pocket door)
   add('h', 853, 861, [315, 419]);                                                               // storage, south
@@ -268,11 +287,6 @@ function doors() {
 
 /* ─── floor, ceilings, roof ─────────────────── */
 
-// The stairwell cut into the floor for the basement stairs.
-const WELL = [[295, 566], [428, 566], [428, 645], [295, 645]];
-// The opening in the ceiling above the loft stairs.
-const SHAFT = [[315, 650], [428, 650], [428, 731], [315, 731]];
-
 function shell() {
   const parts = [];
 
@@ -280,19 +294,11 @@ function shell() {
   parts.push(named('foundation', slab([
     [295, 154], [738, 154], [738, 345], [1256, 345], [1256, 1087],
     [295, 1087], [295, 814], [105, 814], [105, 482], [295, 482]
-  ], [WELL], 0, FLOOR)));
+  ], [], 0, FLOOR)));
 
   // ceilings
-  parts.push(slab([[295, 154], [1256, 154], [1256, 1087], [295, 1087]], [SHAFT], CEIL, EAVE));
+  parts.push(slab([[295, 154], [1256, 154], [1256, 1087], [295, 1087]], [], CEIL, EAVE));
   parts.push(slab([[0, 482], [295, 482], [295, 814], [0, 814]], [], CEIL, EAVE));
-
-  // a dark box over the loft stairs, so the shaft reads as going somewhere
-  parts.push(
-    block(315, 428, 640, 650, EAVE + 5, EAVE, 0),
-    block(315, 428, 731, 741, EAVE + 5, EAVE, 0),
-    block(428, 438, 640, 741, EAVE + 5, EAVE, 0),
-    block(315, 438, 640, 741, EAVE + 5.2, EAVE + 5, 0)
-  );
 
   // main roof: ridge runs left-right on the plan, gables at both ends
   const main = gableRoof({ z0: Z(154), z1: Z(1087), x0: X(295) - 1.5, x1: X(1256) + 1.5, over: 1.5 });
@@ -334,7 +340,7 @@ function gable(z0, z1, x0, x1, ridge) {
   return solid(remap(geo, (u, y, w) => [x0 + w, y, zc + u]));
 }
 
-/* ─── stairs + railings ─────────────────────── */
+/* ─── railings ──────────────────────────────── */
 
 // Railing along a line: top rail, end posts, balusters as plain lines.
 function rail(dir, at, from, to, h = 3, base = FLOOR) {
@@ -351,29 +357,6 @@ function rail(dir, at, from, to, h = 3, base = FLOOR) {
   }
   parts.push(lines(pairs));
   return named('railing', ...parts);
-}
-
-function stairs() {
-  const parts = [];
-  // down to the basement: from the foyer, heading right on the plan
-  const dn = (428 - 295) / 7;
-  for (let i = 0; i < 7; i++) {
-    parts.push(block(295 + i * dn, 295 + (i + 1) * dn, 566, 645, FLOOR - 0.6 * (i + 1), -2.6, 0));
-  }
-  // the pit around them, below the yard
-  parts.push(
-    block(285, 295, 556, 650, 0, -2.6, 0),
-    block(295, 428, 556, 566, 0, -2.6, 0),
-    block(428, 438, 556, 650, 0, -2.6, 0)
-  );
-  // up to the loft: from the living room, heading left on the plan
-  const up = (428 - 315) / 7;
-  for (let i = 0; i < 7; i++) {
-    parts.push(block(428 - (i + 1) * up, 428 - i * up, 650, 731, 0.65 * (i + 1)));
-  }
-  // railing around the top of the basement stairs
-  parts.push(rail('h', 562, 315, 428), rail('v', 425, 566, 645));
-  return named('stairs', ...parts);
 }
 
 /* ─── furniture, room by room ───────────────── */
@@ -546,12 +529,10 @@ function porches() {
 /* ─── the yard ──────────────────────────────── */
 
 function ground() {
-  // black ground so nothing below the yard shows, with a hole under the stairwell
+  // black ground so nothing below the yard shows through
   const R = 150;
-  const shape = new THREE.Shape([[-R, -R], [R, -R], [R, R], [-R, R]].map(([x, z]) => new THREE.Vector2(x, z)));
-  shape.holes.push(new THREE.Path(WELL.map(([px, py]) => new THREE.Vector2(X(px), Z(py)))));
-  const geo = remap(new THREE.ExtrudeGeometry(shape, { depth: 0.2, bevelEnabled: false }), (x, y, z) => [x, z - 0.2, y]);
-  const plane = new THREE.Mesh(geo, FILL);
+  const plane = new THREE.Mesh(new THREE.BoxGeometry(R * 2, 0.2, R * 2), FILL);
+  plane.position.y = -0.1;
 
   const pairs = [];
   for (let v = -R; v <= R; v += 6) {
@@ -617,7 +598,6 @@ export function buildWorld() {
     shell(),
     walls(),
     doors(),
-    stairs(),
     porches(),
     livingRoom(),
     kitchen(),

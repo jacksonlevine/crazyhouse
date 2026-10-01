@@ -1,9 +1,11 @@
 /* ============================================================
-   crazyhouse: title screen, the four security cams, input.
+   crazyhouse: title screen, the security cams, input, and
+   keeping ghoul1 walking.
    ============================================================ */
 
 import * as THREE from '../vendor/three-r186/three.module.js';
-import { buildWorld, CEIL } from './world.js?v=3';
+import { buildWorld, CEIL } from './world.js?v=4';
+import { createGhoul } from './ghoul.js?v=1';
 
 /* The cams, in the order left/right steps through them. Positions
    are in feet (see world.js: the house is centred on 0, the front
@@ -31,8 +33,15 @@ const dots    = $('dots');
 
 let state = 'title';       // 'title' | 'playing'
 let camIndex = 0;
-let renderer, scene, camera;
+let renderer, scene, camera, ghoul;
 let shiftStart = 0;
+let lastFrame = 0;
+
+// where a cam is, by name, so ghoul1 knows where to stare
+const camAt = name => {
+  const c = CAMS.find(c => c.name === name);
+  return c ? c.pos : null;
+};
 
 /* ─── setup (runs once, on the first START) ─── */
 
@@ -45,6 +54,8 @@ function setup() {
   }
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   scene = buildWorld();
+  ghoul = createGhoul();
+  scene.add(ghoul.object);
   camera = new THREE.PerspectiveCamera(52, 16 / 9, 0.1, 600);
 
   const fit = () => {
@@ -61,11 +72,15 @@ function setup() {
 
   // add ?debug to the URL to poke at the scene from the browser console
   if (new URLSearchParams(location.search).has('debug')) {
-    window.crazyhouse = { THREE, scene, camera, renderer, CAMS, showCam };
+    window.crazyhouse = { THREE, scene, camera, renderer, CAMS, showCam, ghoul };
   }
 
-  renderer.setAnimationLoop(() => {
+  renderer.setAnimationLoop(now => {
     if (state !== 'playing') return;
+    // seconds since the last frame, capped so a hidden tab doesn't make him jump
+    const dt = Math.min((now - lastFrame) / 1000 || 0, 0.1);
+    lastFrame = now;
+    ghoul.update(dt, camAt);
     tickClock();
     renderer.render(scene, camera);
   });
