@@ -267,7 +267,7 @@ export function createGhoul() {
 
   /* ─── slipping in and out of reality ─── */
   const pick = ([a, b]) => a + Math.random() * (b - a);
-  let state = 'gone', timer = FIRST, fadeLen = 1, fadeT = 0, casting = true, leaveFrom = 1;
+  let state = 'gone', timer = FIRST, fadeLen = 1, fadeT = 0, casting = true, leaveFrom = 1, highSide = 1;
 
   function phase(dt) {
     if (state === 'gone') {
@@ -323,6 +323,7 @@ export function createGhoul() {
     body.rotation.z = s * 0.05;
     body.position.y = Math.abs(Math.cos(step)) * 0.05;
     chest.rotation.x = LEAN + Math.abs(s) * 0.04;
+    chest.rotation.y = 0;
     for (const a of arms) {
       a.shoulder.rotation.x = POSE.upper + s * a.side * 0.05;
       a.shoulder.rotation.y = -a.side * POSE.inward;
@@ -359,19 +360,23 @@ export function createGhoul() {
     const shake = () => (Math.random() - 0.5) * 0.08 * k;
     const mix = (a, b) => a + (b - a) * k;
     chest.rotation.x = mix(chest.rotation.x, -0.22) + shake();
-    body.rotation.z = mix(body.rotation.z, 0) + shake() * 0.5;
     body.position.y = mix(body.position.y, 0.08);
     legs[0].rotation.x = mix(legs[0].rotation.x, 0.05);
     legs[1].rotation.x = mix(legs[1].rotation.x, -0.05);
+    // not symmetrical: one arm strains high, the other only half rises,
+    // bent at the elbow, and his body twists and leans toward the high one
     for (const a of arms) {
-      a.shoulder.rotation.x = mix(a.shoulder.rotation.x, -2.95) + shake();
-      a.shoulder.rotation.y = mix(-a.side * POSE.inward, a.side * 0.12);   // spread a little
-      a.elbow.rotation.x = mix(a.elbow.rotation.x, -0.25) + shake();
-      a.wrist.rotation.x = mix(a.wrist.rotation.x, -0.5) + shake();        // fingers clawing at the sky
+      const high = a.side === highSide;
+      a.shoulder.rotation.x = mix(a.shoulder.rotation.x, high ? -2.9 : -2.05) + shake();
+      a.shoulder.rotation.y = mix(-a.side * POSE.inward, a.side * (high ? 0.08 : 0.3));
+      a.elbow.rotation.x = mix(a.elbow.rotation.x, high ? -0.2 : -0.85) + shake();
+      a.wrist.rotation.x = mix(a.wrist.rotation.x, high ? -0.5 : 0.4) + shake();   // high hand claws, low one hangs
     }
-    yaw = mix(yaw, 0);
+    body.rotation.z = mix(body.rotation.z, -highSide * 0.07) + shake() * 0.5;
+    chest.rotation.y = mix(0, highSide * 0.18);
+    yaw = mix(yaw, highSide * 0.25);
     headYaw.rotation.y = yaw;
-    headPitch.rotation.x = mix(headPitch.rotation.x, -0.85) + shake();    // looking straight up
+    headPitch.rotation.x = mix(headPitch.rotation.x, -0.75) + shake();    // looking up, a little off to one side
   }
 
   // Drop him at the closest point on his loop to blueprint pixel (px, py).
@@ -393,6 +398,7 @@ export function createGhoul() {
   function zap() {
     if (state === 'gone' || state === 'leaving') return false;
     leaveFrom = api.presence;
+    highSide = Math.random() < 0.5 ? -1 : 1;          // which arm reaches highest this time
     state = 'leaving';
     fadeLen = ZAPPED;
     fadeT = 0;
