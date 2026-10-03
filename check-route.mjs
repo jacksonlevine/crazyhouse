@@ -6,14 +6,14 @@
    every wall, door and piece of furniture. Run it after changing
    ROUTE in ghoul.js:
 
-     node games/crazyhouse/check-route.mjs
+     node check-route.mjs
 
-   Add a number to walk him more laps (node ... check-route.mjs 2).
-   Takes about a minute a lap. Not part of the website (it's listed
-   in .assetsignore).
+   Add a number to walk him more laps (node check-route.mjs 2).
+   Takes about a minute a lap. It's a tool, not part of the game, so
+   the website leaves it out when it copies the game in.
    ============================================================ */
 
-import * as THREE from '../vendor/three-r186/three.module.js';
+import * as THREE from './vendor/three-r186/three.module.js';
 import { buildWorld } from './world.js?v=7';
 import { createGhoul } from './ghoul.js';
 import { camAt } from './cams.js?v=3';

@@ -16,7 +16,7 @@
    by the room's lamp and casting a real shadow. Sizes are in feet. His feet are at y = 0 in his own space and he faces +z.
    ============================================================ */
 
-import * as THREE from '../vendor/three-r186/three.module.js';
+import * as THREE from './vendor/three-r186/three.module.js';
 import { X, Z, FLOOR, surface, solid, lines, roomAt } from './world.js?v=7';
 
 /* The loop he walks, in blueprint pixels (same as world.js), through

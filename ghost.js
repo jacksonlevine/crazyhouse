@@ -18,7 +18,7 @@
       him normally.
    ============================================================ */
 
-import * as THREE from '../vendor/three-r186/three.module.js';
+import * as THREE from './vendor/three-r186/three.module.js';
 
 export const GHOST_LAYER = 1;
 
