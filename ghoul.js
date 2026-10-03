@@ -62,7 +62,8 @@ const LEAN = 0.26;            // how far forward he's hunched, in radians (~15°
 const FIRST = 10;             // seconds before he first shows up
 const GONE = [25, 50];        // how long he stays gone after being zapped
 const FADE = [1.6, 2.6];      // how long it takes him to fade in
-const ZAPPED = 0.8;           // how fast an EMP knocks him out of reality
+const ZAPPED = 2.4;           // how long his death takes when an EMP hits him
+const AGONY = 0.6;            // seconds to snap into the reaching pose
 
 const WHITE  = new THREE.MeshBasicMaterial({ color: 0xffffff });   // pupils: tiny points of light
 const SOCKET = new THREE.MeshBasicMaterial({ color: 0x000000 });   // eye sockets: pure black
@@ -281,7 +282,9 @@ export function createGhoul() {
     }
 
     const f = THREE.MathUtils.smoothstep(fadeT / fadeLen, 0, 1);
-    let p = state === 'seen' ? 1 : state === 'gone' ? 0 : state === 'arriving' ? f : leaveFrom * (1 - f);
+    // dying: he holds on for the first stretch while he reaches up, then fades
+    const dying = THREE.MathUtils.smoothstep((fadeT / fadeLen - 0.3) / 0.7, 0, 1);
+    let p = state === 'seen' ? 1 : state === 'gone' ? 0 : state === 'arriving' ? f : leaveFrom * (1 - dying);
     const t = fadeT * 9;
     // a little flicker while he's slipping in
     if (state === 'arriving' && Math.sin(t * 3.1) * Math.sin(t * 1.7 + 1.3) > 0.55) p *= 0.45;
@@ -301,7 +304,7 @@ export function createGhoul() {
   /* camFor(name) → [x, y, z] of that cam, or null. Returns his room. */
   function update(dt, camFor) {
     phase(dt);
-    if (!api.paused) dist = (dist + SPEED * dt) % length;
+    if (!api.paused && state !== 'leaving') dist = (dist + SPEED * dt) % length;   // he stops dead when hit
     const u = dist / length;
     curve.getPointAt(u, here);
     curve.getTangentAt(u, tangent);
@@ -322,6 +325,7 @@ export function createGhoul() {
     chest.rotation.x = LEAN + Math.abs(s) * 0.04;
     for (const a of arms) {
       a.shoulder.rotation.x = POSE.upper + s * a.side * 0.05;
+      a.shoulder.rotation.y = -a.side * POSE.inward;
       a.elbow.rotation.x = POSE.forearm;
       a.wrist.rotation.x = POSE.hand + Math.sin(step * 0.5 + a.side) * 0.12;   // limp hands dangle
     }
@@ -342,7 +346,32 @@ export function createGhoul() {
     headYaw.rotation.y = yaw;
     headPitch.rotation.x = -pitch;
 
+    if (state === 'leaving') agony(dt);
+
     return room ? room.name : null;
+  }
+
+  /* Death: blend from wherever he was into the agony pose. He arches
+     back, throws both arms straight up over his head with his hands
+     clawed, and his head tips back to the ceiling, all trembling. */
+  function agony(dt) {
+    const k = THREE.MathUtils.smoothstep(fadeT / AGONY, 0, 1);
+    const shake = () => (Math.random() - 0.5) * 0.08 * k;
+    const mix = (a, b) => a + (b - a) * k;
+    chest.rotation.x = mix(chest.rotation.x, -0.22) + shake();
+    body.rotation.z = mix(body.rotation.z, 0) + shake() * 0.5;
+    body.position.y = mix(body.position.y, 0.08);
+    legs[0].rotation.x = mix(legs[0].rotation.x, 0.05);
+    legs[1].rotation.x = mix(legs[1].rotation.x, -0.05);
+    for (const a of arms) {
+      a.shoulder.rotation.x = mix(a.shoulder.rotation.x, -2.95) + shake();
+      a.shoulder.rotation.y = mix(-a.side * POSE.inward, a.side * 0.12);   // spread a little
+      a.elbow.rotation.x = mix(a.elbow.rotation.x, -0.25) + shake();
+      a.wrist.rotation.x = mix(a.wrist.rotation.x, -0.5) + shake();        // fingers clawing at the sky
+    }
+    yaw = mix(yaw, 0);
+    headYaw.rotation.y = yaw;
+    headPitch.rotation.x = mix(headPitch.rotation.x, -0.85) + shake();    // looking straight up
   }
 
   // Drop him at the closest point on his loop to blueprint pixel (px, py).

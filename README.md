@@ -33,9 +33,13 @@ him on the cams and fire the EMP while you're watching his room.
 - It only hits the room the current cam is watching. Electric arcs
   crackle round that room's edges and the room strobes, so you can see
   where it went.
-- If he's in that room, he's ripped back out of reality and stays gone
-  for 25 to 50 seconds before turning up somewhere else. If he isn't,
-  you wasted it.
+- If he's in that room, he dies: he stops dead, arches back and reaches
+  both arms up to the sky, head thrown back, shaking, then stutters out
+  of reality (about 2.5 seconds, `ZAPPED` and `AGONY` in `ghoul.js`).
+  He stays gone for 25 to 50 seconds before turning up somewhere else.
+  If he isn't in that room, you wasted it.
+- It makes a crackling electric zap, made on the fly in the browser (no
+  sound files), in `emp.js`.
 - It takes 6 seconds to recharge (`RECHARGE` in `main.js`); the bar
   along the bottom of the button fills back up.
 - The arcs and flash are `emp.js`. Which rooms count as which is
@@ -55,7 +59,7 @@ him on the cams and fire the EMP while you're watching his room.
 - `ghoul.js` is ghoul1: his body, his walking loop, his stare, and when
   he fades in and out
 - `ghost.js` draws him blurred and faded over the frame
-- `emp.js` is the EMP's electric arcs and flash
+- `emp.js` is the EMP's electric arcs, flash and zap sound
 - `check-route.mjs` tests his walking loop for clipping (see below)
 - `vendor/three-r186/` is Three.js, the 3D library, saved here so the
   game doesn't depend on anything else

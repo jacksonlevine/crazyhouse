@@ -3,8 +3,9 @@
 
    fire(room) sets off crackling electric arcs around the edges of
    a room (along the floor, along the ceiling, and sparking up the
-   corners) plus a flickering light inside it, for about a second
-   and a half. Purely the look; main.js decides what it hits.
+   corners) plus a flickering light inside it and a crackling zap
+   sound, for about a second and a half. Purely the effect; main.js
+   decides what it hits.
    ============================================================ */
 
 import * as THREE from './vendor/three-r186/three.module.js';
@@ -50,6 +51,7 @@ export function createEmp(scene) {
     flash.position.set(cx / n, FLOOR + 6.5, cz / n);
     t = 0;
   }
+
 
   let count = 0;
   const push = (x, y, z) => {
@@ -100,5 +102,74 @@ export function createEmp(scene) {
     flash.intensity = Math.random() < 0.5 ? 60 * fade * Math.random() : 0;
   }
 
-  return { fire, update, get active() { return t < LENGTH; } };
+  return { fire: (room) => { fire(room); zapSound(); }, update, get active() { return t < LENGTH; } };
+
+}
+
+/* ─── the sound ─────────────────────────────── */
+
+/* Made on the fly with the Web Audio API, no sound files: a sharp
+   crack sweeping down, sparse crackling sparks, and a mains hum that
+   stutters out, all fading over the same 1.5 seconds as the arcs.
+   Browsers only allow sound after a click or key press, and pressing
+   the EMP counts. */
+let audio = null;
+
+function zapSound() {
+  try {
+    audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+  } catch (e) { return; }
+  if (audio.state === 'suspended') audio.resume();
+  const now = audio.currentTime, dur = LENGTH;
+
+  const out = audio.createGain();
+  out.gain.setValueAtTime(0.0001, now);
+  out.gain.exponentialRampToValueAtTime(0.6, now + 0.015);
+  out.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+  out.connect(audio.destination);
+
+  // the crack: a bright tone diving fast
+  const crack = audio.createOscillator();
+  crack.type = 'sawtooth';
+  crack.frequency.setValueAtTime(2400, now);
+  crack.frequency.exponentialRampToValueAtTime(60, now + 0.22);
+  const crackGain = audio.createGain();
+  crackGain.gain.setValueAtTime(0.5, now);
+  crackGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.25);
+  crack.connect(crackGain).connect(out);
+  crack.start(now);
+  crack.stop(now + 0.3);
+
+  // the sparks: hiss plus random pops, through a band-pass so it sizzles
+  const len = Math.floor(audio.sampleRate * dur);
+  const buf = audio.createBuffer(1, len, audio.sampleRate);
+  const d = buf.getChannelData(0);
+  let pop = 0;
+  for (let i = 0; i < len; i++) {
+    if (Math.random() < 0.0016) pop = (Math.random() < 0.5 ? -1 : 1) * (0.5 + Math.random() * 0.5);
+    pop *= 0.985;
+    d[i] = pop + (Math.random() * 2 - 1) * 0.12;
+  }
+  const sparks = audio.createBufferSource();
+  sparks.buffer = buf;
+  const band = audio.createBiquadFilter();
+  band.type = 'bandpass';
+  band.frequency.value = 2600;
+  band.Q.value = 0.6;
+  sparks.connect(band).connect(out);
+  sparks.start(now);
+
+  // the hum: a buzzing low note that stutters on and off
+  const hum = audio.createOscillator();
+  hum.type = 'square';
+  hum.frequency.value = 58;
+  const humGain = audio.createGain();
+  humGain.gain.setValueAtTime(0, now);
+  for (let k = 0.03; k < dur; k += 0.045) humGain.gain.setValueAtTime(Math.random() < 0.6 ? 0.18 : 0, now + k);
+  const low = audio.createBiquadFilter();
+  low.type = 'lowpass';
+  low.frequency.value = 900;
+  hum.connect(low).connect(humGain).connect(out);
+  hum.start(now);
+  hum.stop(now + dur);
 }

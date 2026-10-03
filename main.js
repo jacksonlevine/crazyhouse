@@ -5,9 +5,9 @@
 
 import * as THREE from './vendor/three-r186/three.module.js';
 import { buildWorld, ROOMS, roomAt } from './world.js?v=7';
-import { createEmp } from './emp.js?v=1';
+import { createEmp } from './emp.js?v=2';
 import { CAMS, camAt } from './cams.js?v=3';
-import { createGhoul } from './ghoul.js?v=6';
+import { createGhoul } from './ghoul.js?v=7';
 import { createGhostPass, GHOST_LAYER } from './ghost.js?v=2';
 
 
