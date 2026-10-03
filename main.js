@@ -4,9 +4,10 @@
    ============================================================ */
 
 import * as THREE from './vendor/three-r186/three.module.js';
-import { buildWorld } from './world.js?v=7';
+import { buildWorld, ROOMS, roomAt } from './world.js?v=7';
+import { createEmp } from './emp.js?v=1';
 import { CAMS, camAt } from './cams.js?v=3';
-import { createGhoul } from './ghoul.js?v=5';
+import { createGhoul } from './ghoul.js?v=6';
 import { createGhostPass, GHOST_LAYER } from './ghost.js?v=2';
 
 
@@ -22,7 +23,7 @@ const dots    = $('dots');
 
 let state = 'title';       // 'title' | 'playing'
 let camIndex = 0;
-let renderer, scene, camera, ghoul, ghost, lamps;
+let renderer, scene, camera, ghoul, ghost, lamps, emp;
 const EXPOSURE = 0.6;          // overall brightness of the picture
 const buffer = new THREE.Vector2();
 let shiftStart = 0;
@@ -79,6 +80,7 @@ function setup() {
   // ghost pass draws him, so he can blur and fade
   ghoul.object.traverse(o => o.layers.set(GHOST_LAYER));
   scene.add(ghoul.object);
+  emp = createEmp(scene);
   // ...so the lights have to reach that layer too, and their shadows include him
   scene.traverse(o => {
     if (!o.isLight) return;
@@ -104,7 +106,7 @@ function setup() {
 
   // add ?debug to the URL to poke at the scene from the browser console
   if (new URLSearchParams(location.search).has('debug')) {
-    window.crazyhouse = { THREE, scene, camera, renderer, CAMS, showCam, ghoul, lamps };
+    window.crazyhouse = { THREE, scene, camera, renderer, CAMS, showCam, ghoul, lamps, fireEmp };
   }
 
   renderer.setAnimationLoop(now => {
@@ -113,6 +115,8 @@ function setup() {
     const dt = Math.min((now - lastFrame) / 1000 || 0, 0.1);
     lastFrame = now;
     ghoul.update(dt, camAt);
+    emp.update(dt);
+    tickEmp();
     refreshShadows();
     tickClock();
     renderer.render(scene, camera);
@@ -158,6 +162,36 @@ function tickClock() {
   if (clock.textContent !== text) clock.textContent = text;
 }
 
+/* ─── the EMP ───────────────────────────────── */
+
+/* Fires at the room the current cam is watching. If ghoul1 is in that
+   room, he's knocked out of reality. Then it needs RECHARGE seconds
+   before it can fire again. */
+const RECHARGE = 6;
+let empReadyAt = 0;
+const empBt = $('emp');
+
+function fireEmp() {
+  if (state !== 'playing' || performance.now() < empReadyAt) return;
+  empReadyAt = performance.now() + RECHARGE * 1000;
+  const room = ROOMS.find(r => r.cam === CAMS[camIndex].name);
+  if (room) {
+    emp.fire(room);
+    const his = roomAt(ghoul.object.position.x, ghoul.object.position.z);
+    if (his && his.name === room.name) ghoul.zap();
+  }
+  frame.classList.remove('emp-hit');
+  void frame.offsetWidth;
+  frame.classList.add('emp-hit');
+}
+
+// the button's charge bar
+function tickEmp() {
+  const left = Math.max(0, empReadyAt - performance.now()) / (RECHARGE * 1000);
+  empBt.style.setProperty('--charge', (1 - left).toFixed(3));
+  empBt.classList.toggle('charging', left > 0);
+}
+
 /* ─── start / quit ──────────────────────────── */
 
 function start() {
@@ -180,6 +214,7 @@ function quit() {
 startBt.addEventListener('click', start);
 $('prev').addEventListener('click', prev);
 $('next').addEventListener('click', next);
+empBt.addEventListener('click', () => { fireEmp(); empBt.blur(); });
 
 addEventListener('keydown', e => {
   if (e.repeat) return;
@@ -192,6 +227,8 @@ addEventListener('keydown', e => {
     e.preventDefault(); next();
   } else if (e.key === 'ArrowLeft' || e.code === 'Numpad4' || e.key === 'a' || e.key === 'A') {
     e.preventDefault(); prev();
+  } else if (e.key === 'e' || e.key === 'E') {
+    e.preventDefault(); fireEmp();
   } else if (e.key === 'Escape') {
     quit();
   }

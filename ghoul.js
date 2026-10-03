@@ -7,8 +7,8 @@
    he's in a room that has a cam, his head turns to stare straight
    into it, all the way round if it has to.
 
-   Every so often he slips out of reality: he blurs and fades away,
-   keeps walking unseen, then blurs back in somewhere further along.
+   He's out of reality most of the time, walking unseen. Every so
+   often he blurs back in, and he stays until an EMP hits his room.
    This file only decides WHEN (api.presence and api.blur); the
    blur itself is drawn by ghost.js.
 
@@ -56,11 +56,13 @@ const STRIDE = 2.0;           // feet per full step cycle
 const HEAD_TURN = 2.2;        // how fast his head swings round to a cam (higher = snappier)
 const LEAN = 0.26;            // how far forward he's hunched, in radians (~15°)
 
-/* How long he stays seen / gone, and how long a fade takes, in
-   seconds. Each one is picked at random between the two numbers. */
-const SEEN = [7, 16];
-const GONE = [3, 8];
-const FADE = [1.4, 2.4];
+/* He's gone most of the time. When he fades in he STAYS until an EMP
+   hits his room (main.js calls zap()). Times are in seconds, each
+   picked at random between the two numbers. */
+const FIRST = 10;             // seconds before he first shows up
+const GONE = [25, 50];        // how long he stays gone after being zapped
+const FADE = [1.6, 2.6];      // how long it takes him to fade in
+const ZAPPED = 0.8;           // how fast an EMP knocks him out of reality
 
 const WHITE  = new THREE.MeshBasicMaterial({ color: 0xffffff });   // pupils: tiny points of light
 const SOCKET = new THREE.MeshBasicMaterial({ color: 0x000000 });   // eye sockets: pure black
@@ -264,27 +266,27 @@ export function createGhoul() {
 
   /* ─── slipping in and out of reality ─── */
   const pick = ([a, b]) => a + Math.random() * (b - a);
-  let state = 'gone', timer = 1.2, fadeLen = 1, fadeT = 0, casting = true;
+  let state = 'gone', timer = FIRST, fadeLen = 1, fadeT = 0, casting = true, leaveFrom = 1;
 
   function phase(dt) {
-    timer -= dt;
-    if (state === 'seen' && timer <= 0) { state = 'leaving'; fadeLen = pick(FADE); fadeT = 0; }
-    else if (state === 'gone' && timer <= 0) { state = 'arriving'; fadeLen = pick(FADE); fadeT = 0; }
-    else if (state === 'leaving' || state === 'arriving') {
+    if (state === 'gone') {
+      timer -= dt;
+      if (timer <= 0) { state = 'arriving'; fadeLen = pick(FADE); fadeT = 0; }
+    } else if (state === 'arriving' || state === 'leaving') {
       fadeT += dt;
       if (fadeT >= fadeLen) {
-        state = state === 'leaving' ? 'gone' : 'seen';
-        timer = pick(state === 'seen' ? SEEN : GONE);
+        if (state === 'arriving') state = 'seen';
+        else { state = 'gone'; timer = pick(GONE); }
       }
     }
 
-    let p = state === 'seen' ? 1 : state === 'gone' ? 0 : THREE.MathUtils.smoothstep(fadeT / fadeLen, 0, 1);
-    if (state === 'leaving') p = 1 - p;
-    // a little flicker while he's between places
-    if (state === 'leaving' || state === 'arriving') {
-      const t = fadeT * 9;
-      if (Math.sin(t * 3.1) * Math.sin(t * 1.7 + 1.3) > 0.55) p *= 0.45;
-    }
+    const f = THREE.MathUtils.smoothstep(fadeT / fadeLen, 0, 1);
+    let p = state === 'seen' ? 1 : state === 'gone' ? 0 : state === 'arriving' ? f : leaveFrom * (1 - f);
+    const t = fadeT * 9;
+    // a little flicker while he's slipping in
+    if (state === 'arriving' && Math.sin(t * 3.1) * Math.sin(t * 1.7 + 1.3) > 0.55) p *= 0.45;
+    // a hard stutter while the EMP rips him out
+    if (state === 'leaving' && Math.sin(t * 7.3) * Math.sin(t * 4.1 + 0.7) > 0.2) p *= 0.15;
     if (api.forcePresence !== null) p = api.forcePresence;
     api.presence = p;
     api.blur = Math.pow(1 - p, 0.6);
@@ -357,8 +359,20 @@ export function createGhoul() {
   /* presence: 1 = fully here, 0 = gone. blur: how smeared his lines
      are (0 = sharp). paused stops him walking; forcePresence pins his
      presence to a number (both handy with ?debug). */
+  /* An EMP hit his room. If he's here (or slipping in), he's knocked
+     out of reality: true. If he's already gone: false. */
+  function zap() {
+    if (state === 'gone' || state === 'leaving') return false;
+    leaveFrom = api.presence;
+    state = 'leaving';
+    fadeLen = ZAPPED;
+    fadeT = 0;
+    return true;
+  }
+
   const api = {
-    object: root, update, jumpTo, curve, route: ROUTE,
+    object: root, update, jumpTo, zap, curve, route: ROUTE,
+    get state() { return state; },
     presence: 0, blur: 1, paused: false, forcePresence: null
   };
   return api;

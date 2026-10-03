@@ -41,9 +41,10 @@ canvas {
 }
 
 /* game layers stay hidden until START */
-.hud, .arrow, canvas { opacity: 0; pointer-events: none; }
+.hud, .arrow, .emp, canvas { opacity: 0; pointer-events: none; }
 .playing canvas, .playing .hud { opacity: 1; }
 .playing .arrow { opacity: 0.55; pointer-events: auto; }
+.playing .emp { opacity: 1; pointer-events: auto; }
 
 /* ─── title screen ──────────────────────────── */
 .title {
@@ -202,3 +203,40 @@ canvas {
   opacity: 0.8;
 }
 .no-gl .no-gl-msg { display: block; }
+
+/* ─── EMP button (bottom right) ─────────────── */
+.emp {
+  --charge: 1;
+  position: absolute;
+  right: 3.2cqw;
+  bottom: 2.2cqw;
+  font: inherit;
+  font-size: max(13px, 1.9cqw);
+  letter-spacing: 0.18em;
+  text-indent: 0.18em;
+  color: #fff;
+  background:
+    linear-gradient(#fff, #fff) left bottom / calc(var(--charge) * 100%) 2px no-repeat,
+    rgba(0, 0, 0, 0.35);
+  border: 1px solid #fff;
+  padding: 0.5cqw 1.6cqw 0.6cqw;
+  cursor: pointer;
+  touch-action: manipulation;
+  text-shadow: 0 0 0.4cqw #000;
+}
+.emp:hover:not(.charging) { background-color: rgba(255, 255, 255, 0.15); }
+.emp.charging { opacity: 0.4 !important; cursor: default; }
+
+/* the screen jolts when it fires */
+.emp-flash {
+  position: absolute;
+  inset: 0;
+  background: #fff;
+  opacity: 0;
+  pointer-events: none;
+  mix-blend-mode: screen;
+}
+.emp-hit .emp-flash { animation: emp-flash 0.5s steps(5, jump-none); }
+@keyframes emp-flash {
+  0% { opacity: 0.55; } 20% { opacity: 0; } 40% { opacity: 0.3; } 60% { opacity: 0; } 80% { opacity: 0.12; } 100% { opacity: 0; }
+}

@@ -21,7 +21,25 @@ Then open http://localhost:8000. Edit a file, refresh the page.
 ## Controls
 
 Left / right arrow keys, the number pad (4 / 6), A / D, or the on-screen
-arrows switch cams. Enter or Space starts. Esc goes back to the title.
+arrows switch cams. **E** or the `emp` button fires the EMP at the room
+you're watching. Enter or Space starts. Esc goes back to the title.
+
+## The EMP
+
+ghoul1 is out of reality most of the time. Every so often he fades
+back in, and once he's here he stays until you get rid of him: find
+him on the cams and fire the EMP while you're watching his room.
+
+- It only hits the room the current cam is watching. Electric arcs
+  crackle round that room's edges and the room strobes, so you can see
+  where it went.
+- If he's in that room, he's ripped back out of reality and stays gone
+  for 25 to 50 seconds before turning up somewhere else. If he isn't,
+  you wasted it.
+- It takes 6 seconds to recharge (`RECHARGE` in `main.js`); the bar
+  along the bottom of the button fills back up.
+- The arcs and flash are `emp.js`. Which rooms count as which is
+  `ROOMS` in `world.js`.
 
 ## What's in here
 
@@ -37,6 +55,7 @@ arrows switch cams. Enter or Space starts. Esc goes back to the title.
 - `ghoul.js` is ghoul1: his body, his walking loop, his stare, and when
   he fades in and out
 - `ghost.js` draws him blurred and faded over the frame
+- `emp.js` is the EMP's electric arcs and flash
 - `check-route.mjs` tests his walking loop for clipping (see below)
 - `vendor/three-r186/` is Three.js, the 3D library, saved here so the
   game doesn't depend on anything else
@@ -85,9 +104,11 @@ He lurches round a loop forever, about 90 seconds a lap.
 
 - **The stare:** in any room with a cam, his head turns to look straight
   into it, all the way round if it has to.
-- **Slipping in and out of reality:** every so often he blurs out of
-  focus and fades away, keeps walking unseen, then blurs back in. The
-  timings are `SEEN`, `GONE` and `FADE` near the top of `ghoul.js`.
+- **Slipping in and out of reality:** he's gone most of the time,
+  walking unseen. He first shows up about 10 seconds in, fades in over
+  a couple of seconds, and stays until an EMP hits his room. The
+  timings are `FIRST`, `GONE`, `FADE` and `ZAPPED` near the top of
+  `ghoul.js`.
 - **His route** is `ROUTE` at the top of `ghoul.js`, smoothed into a
   curve.
 - **No walking through things.** After changing his route, his arms or
@@ -101,7 +122,7 @@ He lurches round a loop forever, about 90 seconds a lap.
 
 Add `?debug` to the URL (http://localhost:8000/?debug) and the browser
 console gets `crazyhouse.scene`, `.camera`, `.CAMS`, `.showCam(n)`,
-`.ghoul` and `.lamps`. `crazyhouse.ghoul.paused = true` stops him in
+`.ghoul`, `.lamps` and `.fireEmp()`. `crazyhouse.ghoul.paused = true` stops him in
 place, `crazyhouse.ghoul.jumpTo(x, y)` drops him at a spot, and
 `crazyhouse.ghoul.forcePresence = 0.5` pins how faded he is (`1` = fully
 here, `null` = back to normal).
