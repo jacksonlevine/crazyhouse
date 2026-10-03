@@ -4,10 +4,10 @@
    ============================================================ */
 
 import * as THREE from './vendor/three-r186/three.module.js';
-import { buildWorld, ROOMS, roomAt } from './world.js?v=7';
-import { createEmp } from './emp.js?v=2';
-import { CAMS, camAt } from './cams.js?v=3';
-import { createGhoul } from './ghoul.js?v=8';
+import { buildWorld, ROOMS, roomAt } from './world.js?v=8';
+import { createEmp } from './emp.js?v=3';
+import { CAMS, camAt } from './cams.js?v=4';
+import { createGhoul } from './ghoul.js?v=9';
 import { createGhostPass, GHOST_LAYER } from './ghost.js?v=2';
 
 
@@ -24,7 +24,7 @@ const dots    = $('dots');
 let state = 'title';       // 'title' | 'playing'
 let camIndex = 0;
 let renderer, scene, camera, ghoul, ghost, lamps, emp;
-const EXPOSURE = 0.6;          // overall brightness of the picture
+const EXPOSURE = 0.75;         // overall brightness of the picture
 const buffer = new THREE.Vector2();
 let shiftStart = 0;
 let lastFrame = 0;

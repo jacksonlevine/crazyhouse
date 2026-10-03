@@ -70,24 +70,44 @@ export function surface(color, roughness = 0.9, side = THREE.FrontSide) {
   });
 }
 
+/* Flat colours, no texture images, so it costs nothing extra to draw. */
+const metal = (color, rough = 0.45) => {
+  const m = surface(color, rough);
+  m.metalness = 0.35;
+  return m;
+};
+
 export const MAT = {
-  wall:      surface(0xd4d4d4),
-  ceiling:   surface(0xdedede),
-  floor:     surface(0x8a8a8a, 0.8),
-  roof:      surface(0x404040),
-  door:      surface(0xa6a6a6, 0.7),
-  furniture: surface(0xb0b0b0),
-  dark:      surface(0x585858),          // sofa, armchair, stools, machines
-  soft:      surface(0xe6e6e6),          // bed, toilet, shower, vanity
-  wood:      surface(0x8c8c8c, 0.8),     // decks, porch, posts
-  ground:    surface(0x4a4a4a, 1),
-  tree:      surface(0x5c5c5c, 1),
-  glow:      new THREE.MeshBasicMaterial({ color: 0xffffff })   // lampshades, bulbs: they ARE the light
+  wall:      surface(0xd8cdb8),          // warm off-white paint
+  ceiling:   surface(0xe9e4da),
+  floor:     surface(0x86603d, 0.7),     // wood floorboards
+  roof:      surface(0x3a3d42),          // dark slate shingles
+  door:      surface(0x7a5232, 0.7),     // stained wood
+  frontDoor: surface(0x7c2a24, 0.6),     // red front door
+  furniture: surface(0x8a6440, 0.75),    // default: wood
+  dark:      surface(0x2b2b2d),          // black stools, stove, lamp bases
+  soft:      surface(0xece9e2),          // linens, white things
+  porcelain: surface(0xf2f1ec, 0.25),    // toilet, sink, shower
+  appliance: surface(0xe6e6e3, 0.4),     // washer, dryer
+  steel:     metal(0xb9bec2),            // fridge
+  cabinet:   surface(0x76866f, 0.7),     // sage kitchen cabinets
+  sofa:      surface(0x4c5b70),          // blue-grey fabric
+  armchair:  surface(0x3e5a45),          // bottle green
+  mustard:   surface(0x9c7a36),          // tub chairs
+  brick:     surface(0x7b3d2f),          // hearth
+  wood:      surface(0x8b6b4a, 0.85),    // weathered porch decking
+  ground:    surface(0x355f2a, 1),       // grass
+  concrete:  surface(0x9a968d, 0.95),
+  bark:      surface(0x4a3626, 1),
+  leaves:    surface(0x2f5a2b, 1),
+  pine:      surface(0x24432a, 1),
+  pole:      metal(0x2e3832, 0.6),       // streetlight, dark green paint
+  glow:      new THREE.MeshBasicMaterial({ color: 0xfff0d4 })   // lampshades, bulbs: they ARE the light
 };
 
 // dark ink edges: they vanish into the dark, and outline whatever's lit
 export const EDGE  = new THREE.LineBasicMaterial({ color: 0x0b0b0b });
-const FAINT = new THREE.LineBasicMaterial({ color: 0x262626 });
+const FAINT = new THREE.LineBasicMaterial({ color: 0x24401c });     // lawn lines, darker green
 
 /* ─── building blocks ───────────────────────── */
 
@@ -595,17 +615,16 @@ function path() {
   const z = Z(618), hw = 2, y = 0.02, x0 = X(-3 * K), x1 = -72;
   const pairs = [[[x0, y, z - hw], [x1, y, z - hw]], [[x0, y, z + hw], [x1, y, z + hw]]];
   for (let x = x0; x >= x1; x -= 4) pairs.push([[x, y, z - hw], [x, y, z + hw]]);
-  return named('path', lines(pairs));
+  const walk = new THREE.Mesh(new THREE.BoxGeometry(x0 - x1, 0.04, hw * 2), MAT.concrete);
+  walk.position.set((x0 + x1) / 2, 0.005, z);
+  return named('path', walk, lines(pairs));
 }
 
 function mailbox() {
-  const g = new THREE.Group();
-  g.add(
-    solid(new THREE.BoxGeometry(0.4, 3.6, 0.4), [0, 1.8, 0]),
-    solid(new THREE.BoxGeometry(2, 1.1, 1.2), [0, 4.15, 0]),
-    solid(new THREE.BoxGeometry(0.33, 1, 0.1), [-0.4, 4.6, 0.66])
-  );
-  return named('mailbox', g);
+  return named('mailbox',
+    solid(new THREE.BoxGeometry(0.4, 3.6, 0.4), [0, 1.8, 0]),          // post
+    solid(new THREE.BoxGeometry(2, 1.1, 1.2), [0, 4.15, 0]),           // box
+    solid(new THREE.BoxGeometry(0.33, 1, 0.1), [-0.4, 4.6, 0.66]));    // flag
 }
 
 function leafyTree() {
@@ -638,10 +657,11 @@ function yardAt(obj, x, z) {
    glows) and a real light that casts shadows. Shadows are worked out
    once at the start and only redrawn near ghoul1 (see main.js), which
    keeps all this affordable. Intensities are by eye; raise or lower
-   them to taste. All lights are white so the picture stays black and
-   white. */
+   them to taste. Lamps are warm, the streetlight a little orange, the
+   moon a little blue. */
 
-const STREET = [-50, 10];                       // where the streetlight stands, in feet
+const STREET = [-50, 10];
+const LAMP_COLOR = 0xffdcae;                    // warm bulbs (0xffffff for plain white)                       // where the streetlight stands, in feet
 
 function shadowed(light, size = 512, far = 40) {
   light.castShadow = true;
@@ -657,7 +677,7 @@ function shadowed(light, size = 512, far = 40) {
 
 // a shadow-casting bulb at blueprint (cx, cy), h feet above the floor
 function bulb(lamps, name, cx, cy, h, intensity, dz = 0) {
-  const light = shadowed(new THREE.PointLight(0xffffff, intensity, 0, 2));
+  const light = shadowed(new THREE.PointLight(LAMP_COLOR, intensity, 0, 2));
   light.name = name;
   light.position.set(X(cx), FLOOR + h, Z(cy) + dz);
   lamps.push(light);
@@ -750,7 +770,7 @@ function halo(size) {
 // The big streetlight by the front walk: pole, arm, head, and a spotlight down on the yard.
 function streetlight(lamps) {
   const H = 18, reach = 4;
-  const light = shadowed(new THREE.SpotLight(0xffffff, 1900, 0, 0.8, 0.75, 2), 1024, 90);
+  const light = shadowed(new THREE.SpotLight(0xffd9a0, 1900, 0, 0.8, 0.75, 2), 1024, 90);
   light.name = 'streetlight-light';
   light.position.set(reach, H - 0.6, 0);
   light.target.position.set(17, 0, -6);
@@ -767,7 +787,7 @@ function streetlight(lamps) {
 
 // faint moonlight and a whisper of fill, so the dark isn't completely flat
 function sky() {
-  const moon = shadowed(new THREE.DirectionalLight(0xffffff, 0.18), 2048, 240);
+  const moon = shadowed(new THREE.DirectionalLight(0xb8c8ff, 0.2), 2048, 240);
   moon.name = 'moon';
   moon.position.set(-70, 90, 50);
   const cam = moon.shadow.camera;
@@ -775,14 +795,22 @@ function sky() {
   cam.right = cam.top = 60;
   cam.near = 1;
   moon.shadow.normalBias = 0.08;
-  return named('sky', moon, moon.target, new THREE.HemisphereLight(0xffffff, 0x000000, 0.035));
+  return named('sky', moon, moon.target, new THREE.HemisphereLight(0x8ea0c8, 0x000000, 0.035));
 }
 
 /* Give each part of the house its own grey, and switch on shadows:
    every solid casts and catches them, except things that glow. */
 function paint(scene) {
   const set = (name, mat) => scene.traverse(o => {
-    if (o.name === name) o.traverse(m => { if (m.isMesh) m.material = mat; });
+    if (o.name === name) o.traverse(m => { if (m.isMesh && !m.material.isMeshBasicMaterial) m.material = mat; });
+  });
+  // a group's solids in order, e.g. a tree's trunk then its canopy
+  const parts = (name, ...mats) => scene.traverse(o => {
+    if (o.name !== name) return;
+    o.children.forEach((c, i) => {
+      const mat = mats[Math.min(i, mats.length - 1)];
+      c.traverse(m => { if (m.isMesh) m.material = mat; });
+    });
   });
   set('walls', MAT.wall);
   set('ceiling', MAT.ceiling);
@@ -790,10 +818,30 @@ function paint(scene) {
   set('roof', MAT.roof);
   set('foyer-roof', MAT.roof);
   set('doors', MAT.door);
+  set('door-front', MAT.frontDoor);
   set('porches', MAT.wood);
-  for (const n of ['sofa', 'armchair', 'stools', 'washer', 'dryer']) set(n, MAT.dark);
-  for (const n of ['bed', 'toilet', 'shower', 'vanity', 'tub-chair']) set(n, MAT.soft);
-  for (const n of ['tree', 'pine', 'bush']) set(n, MAT.tree);
+  set('sofa', MAT.sofa);
+  set('armchair', MAT.armchair);
+  set('stools', MAT.dark);
+  set('wood-stove', MAT.dark);
+  parts('wood-stove', MAT.brick, MAT.dark);              // brick hearth, black iron stove
+  set('island', MAT.cabinet);
+  set('counter-east', MAT.cabinet);
+  set('counter-south', MAT.cabinet);
+  set('fridge', MAT.steel);
+  set('washer', MAT.appliance);
+  set('dryer', MAT.appliance);
+  set('bed', MAT.soft);
+  parts('bed', MAT.soft, MAT.furniture, MAT.soft);       // linens, wood headboard, pillows
+  for (const n of ['toilet', 'shower', 'vanity']) set(n, MAT.porcelain);
+  set('tub-chair', MAT.mustard);
+  parts('tree', MAT.bark, MAT.leaves);
+  parts('pine', MAT.bark, MAT.pine);
+  set('bush', MAT.leaves);
+  set('streetlight', MAT.pole);
+  parts('mailbox', MAT.furniture, MAT.dark, MAT.frontDoor);  // wood post, black box, red flag
+  for (const n of ['lamp-foyer', 'lamp-living', 'lamp-master']) set(n, MAT.dark);   // shades keep glowing
+  parts('lamp-master-off', MAT.dark, MAT.soft);
   scene.traverse(o => {
     if (!o.isMesh) return;
     const glows = o.material.isMeshBasicMaterial;

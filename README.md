@@ -2,7 +2,7 @@
 
 A security-cam horror game in the browser, in the spirit of "I'm on
 Observation Duty". You watch a house at night through eight cams while
-ghoul1 lurches around inside it. Black and white, lit by real lamps.
+ghoul1 lurches around inside it, lit only by real lamps.
 
 Playable at [jakeworldwide.com/games/crazyhouse](https://jakeworldwide.com/games/crazyhouse/).
 
@@ -84,8 +84,14 @@ feet: the floor sits 2.5' above the yard and ceilings are 8'.
 
 **Lighting.** Every light is a real light that casts real shadows, so
 it only reaches what it can actually see: through doorways, out of
-windows, onto the yard. All lights are white so the picture stays black
-and white.
+windows, onto the yard. Lamps are warm, the streetlight a little
+orange, the moon a little blue (`LAMP_COLOR` and the light colours in
+`world.js`; set them to `0xffffff` for plain white).
+
+**Colours.** Everything is a flat colour, no texture images, so it costs
+nothing extra to draw: green lawn, concrete walk, wood floors, warm
+walls, a red front door, and so on. They're all in `MAT` near the top of
+`world.js`, and `paint()` decides which thing gets which.
 
 - **Lamps** (`roomLamps()` in `world.js`): a floor lamp in the foyer, a
   table lamp in the living room, pendants over the dining table and the
