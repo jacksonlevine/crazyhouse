@@ -97,8 +97,11 @@ walls, a red front door, and so on. They're all in `MAT` near the top of
   table lamp in the living room, pendants over the dining table and the
   kitchen island, a nightstand lamp in the master, a bare bulb in the
   laundry, a light bar over the bathroom mirror, a lantern on the patio.
-- **Outside:** a streetlight by the front walk (`streetlight()`) and
-  faint moonlight (`sky()`).
+- **Outside:** a tall streetlight by the front walk that reaches up
+  onto the roof (`streetlight()`), moonlight, and a faint fill that
+  keeps dark corners dim rather than pitch black (`sky()`).
+- **Sky:** stars, a moon and a few slowly drifting clouds
+  (`heavens()`). Kept cheap: about a dozen draws, no lights or shadows.
 - **Brightness:** each lamp's number is its strength (in
   `floorLamp(lamps, 'lamp-foyer', 140, 775, 28)` it's the 28). The whole
   picture's brightness is `EXPOSURE` at the top of `main.js`. Surface

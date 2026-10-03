@@ -107,7 +107,6 @@ export const MAT = {
 
 // dark ink edges: they vanish into the dark, and outline whatever's lit
 export const EDGE  = new THREE.LineBasicMaterial({ color: 0x0b0b0b });
-const FAINT = new THREE.LineBasicMaterial({ color: 0x24401c });     // lawn lines, darker green
 
 /* ─── building blocks ───────────────────────── */
 
@@ -597,17 +596,11 @@ function porches() {
 /* ─── the yard ──────────────────────────────── */
 
 function ground() {
-  // black ground so nothing below the yard shows through
+  // the lawn, wide enough to fade into the night at the edges
   const R = 150;
   const plane = new THREE.Mesh(new THREE.BoxGeometry(R * 2, 0.2, R * 2), MAT.ground);
   plane.position.y = -0.1;
-
-  const pairs = [];
-  for (let v = -R; v <= R; v += 6) {
-    pairs.push([[v, 0.01, -R], [v, 0.01, R]]);
-    pairs.push([[-R, 0.01, v], [R, 0.01, v]]);
-  }
-  return named('ground', plane, lines(pairs, FAINT));
+  return named('ground', plane);
 }
 
 function path() {
@@ -670,6 +663,7 @@ function shadowed(light, size = 512, far = 40) {
   light.shadow.camera.far = far;
   light.shadow.bias = -0.0005;
   light.shadow.normalBias = 0.04;
+  light.shadow.radius = 3;                      // soft edges, like real lamp shadows
   light.shadow.autoUpdate = false;              // drawn once, then on demand
   light.shadow.needsUpdate = true;
   return light;
@@ -769,13 +763,14 @@ function halo(size) {
 
 // The big streetlight by the front walk: pole, arm, head, and a spotlight down on the yard.
 function streetlight(lamps) {
-  const H = 18, reach = 4;
-  const light = shadowed(new THREE.SpotLight(0xffd9a0, 1900, 0, 0.8, 0.75, 2), 1024, 90);
+  // tall enough to throw light up onto the roof, aimed at the house
+  const H = 26, reach = 5;
+  const light = shadowed(new THREE.SpotLight(0xffd9a0, 3600, 0, 0.95, 0.8, 2), 1024, 110);
   light.name = 'streetlight-light';
   light.position.set(reach, H - 0.6, 0);
-  light.target.position.set(17, 0, -6);
+  light.target.position.set(32, 6, -10);
   lamps.push(light);
-  const glare = halo(10);
+  const glare = halo(12);
   glare.position.set(reach, H - 0.7, 0);
   return named('streetlight',
     solid(new THREE.CylinderGeometry(0.22, 0.32, H, 8), [0, H / 2, 0], null, MAT.dark),
@@ -787,7 +782,7 @@ function streetlight(lamps) {
 
 // faint moonlight and a whisper of fill, so the dark isn't completely flat
 function sky() {
-  const moon = shadowed(new THREE.DirectionalLight(0xb8c8ff, 0.2), 2048, 240);
+  const moon = shadowed(new THREE.DirectionalLight(0xb8c8ff, 0.35), 2048, 240);
   moon.name = 'moon';
   moon.position.set(-70, 90, 50);
   const cam = moon.shadow.camera;
@@ -795,7 +790,98 @@ function sky() {
   cam.right = cam.top = 60;
   cam.near = 1;
   moon.shadow.normalBias = 0.08;
-  return named('sky', moon, moon.target, new THREE.HemisphereLight(0x8ea0c8, 0x000000, 0.035));
+  // faint fill, standing in for light bouncing around: dark corners
+  // read as dim, not pitch black
+  const fill = new THREE.HemisphereLight(0x8ea0c8, 0x2a2016, 0.08);
+  return named('sky', moon, moon.target, fill, heavens(moon.position));
+}
+
+/* Stars, a moon and a few drifting clouds. Kept cheap: the stars are
+   one draw of ~700 points, the clouds reuse one small soft image, and
+   none of it is lit or casts shadows. Only the outside cams really see
+   it. */
+const SKY_R = 420;
+
+function heavens(moonDir) {
+  const g = new THREE.Group();
+  g.name = 'heavens';
+
+  // stars: random points on the upper half of a big dome
+  const rand = (() => { let x = 7; return () => (x = (x * 16807) % 2147483647) / 2147483647; })();
+  const pts = [];
+  for (let i = 0; i < 700; i++) {
+    const az = rand() * Math.PI * 2, el = Math.asin(0.08 + rand() * 0.92);
+    pts.push(Math.cos(el) * Math.cos(az) * SKY_R, Math.sin(el) * SKY_R, Math.cos(el) * Math.sin(az) * SKY_R);
+  }
+  const starGeo = new THREE.BufferGeometry();
+  starGeo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+  g.add(new THREE.Points(starGeo, new THREE.PointsMaterial({
+    color: 0xffffff, size: 1.6, sizeAttenuation: false, fog: false, transparent: true, opacity: 0.85
+  })));
+
+  if (typeof document === 'undefined') return g;      // no canvas outside a browser
+
+  // the moon: a pale disc where the moonlight comes from
+  const m = moonDir.clone().normalize().multiplyScalar(SKY_R * 0.95);
+  const moon = new THREE.Sprite(new THREE.SpriteMaterial({ map: softDisc(0.94), color: 0xe8ecff, fog: false }));
+  moon.position.copy(m);
+  moon.scale.set(22, 22, 1);
+  const glowSprite = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: softDisc(0), color: 0x6f7fa8, fog: false, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0.5
+  }));
+  glowSprite.position.copy(m);
+  glowSprite.scale.set(90, 90, 1);
+  g.add(glowSprite, moon);
+
+  // clouds: one soft blob image, stretched and reused, drifting slowly
+  const cloudTex = cloudImage();
+  const clouds = [];
+  for (let i = 0; i < 9; i++) {
+    const c = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: cloudTex, color: 0x4a5670, fog: false, transparent: true, opacity: 0.9, depthWrite: false
+    }));
+    const az = rand() * Math.PI * 2, el = 0.25 + rand() * 0.6;
+    c.userData = { az, el, speed: 0.004 + rand() * 0.006 };
+    c.scale.set(140 + rand() * 120, 45 + rand() * 30, 1);
+    clouds.push(c);
+    g.add(c);
+  }
+  const place = c => {
+    const { az, el } = c.userData, r = SKY_R * 0.9;
+    c.position.set(Math.cos(el) * Math.cos(az) * r, Math.sin(el) * r, Math.cos(el) * Math.sin(az) * r);
+  };
+  clouds.forEach(place);
+  g.userData.tick = dt => clouds.forEach(c => { c.userData.az += c.userData.speed * dt; place(c); });
+  return g;
+}
+
+// a round soft-edged disc (edge = 0 gives a pure glow falloff)
+function softDisc(edge) {
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const x = c.getContext('2d');
+  const grad = x.createRadialGradient(32, 32, 0, 32, 32, 32);
+  grad.addColorStop(0, 'rgba(255,255,255,1)');
+  if (edge) grad.addColorStop(edge, 'rgba(255,255,255,1)');
+  grad.addColorStop(1, 'rgba(255,255,255,0)');
+  x.fillStyle = grad;
+  x.fillRect(0, 0, 64, 64);
+  return new THREE.CanvasTexture(c);
+}
+
+// a lumpy soft cloud: a few overlapping blurry circles
+function cloudImage() {
+  const c = document.createElement('canvas');
+  c.width = 256; c.height = 128;
+  const x = c.getContext('2d');
+  for (const [cx, cy, r] of [[70, 74, 44], [118, 58, 54], [170, 70, 46], [205, 82, 32], [42, 86, 28], [140, 88, 40]]) {
+    const grad = x.createRadialGradient(cx, cy, 0, cx, cy, r);
+    grad.addColorStop(0, 'rgba(255,255,255,0.55)');
+    grad.addColorStop(1, 'rgba(255,255,255,0)');
+    x.fillStyle = grad;
+    x.fillRect(0, 0, 256, 128);
+  }
+  return new THREE.CanvasTexture(c);
 }
 
 /* Give each part of the house its own grey, and switch on shadows:

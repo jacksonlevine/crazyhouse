@@ -4,10 +4,10 @@
    ============================================================ */
 
 import * as THREE from './vendor/three-r186/three.module.js';
-import { buildWorld, ROOMS, roomAt } from './world.js?v=8';
-import { createEmp } from './emp.js?v=3';
-import { CAMS, camAt } from './cams.js?v=4';
-import { createGhoul } from './ghoul.js?v=9';
+import { buildWorld, ROOMS, roomAt } from './world.js?v=9';
+import { createEmp } from './emp.js?v=4';
+import { CAMS, camAt } from './cams.js?v=5';
+import { createGhoul } from './ghoul.js?v=10';
 import { createGhostPass, GHOST_LAYER } from './ghost.js?v=2';
 
 
@@ -23,7 +23,7 @@ const dots    = $('dots');
 
 let state = 'title';       // 'title' | 'playing'
 let camIndex = 0;
-let renderer, scene, camera, ghoul, ghost, lamps, emp;
+let renderer, scene, camera, ghoul, ghost, lamps, emp, skyTick;
 const EXPOSURE = 0.75;         // overall brightness of the picture
 const buffer = new THREE.Vector2();
 let shiftStart = 0;
@@ -75,6 +75,8 @@ function setup() {
   renderer.toneMappingExposure = EXPOSURE;
   scene = buildWorld();
   lamps = scene.userData.lamps;
+  const heavens = scene.getObjectByName('heavens');
+  skyTick = (heavens && heavens.userData.tick) || (() => {});
   ghoul = createGhoul();
   // he lives on his own layer: the normal render skips him and the
   // ghost pass draws him, so he can blur and fade
@@ -116,6 +118,7 @@ function setup() {
     lastFrame = now;
     ghoul.update(dt, camAt);
     emp.update(dt);
+    skyTick(dt);
     tickEmp();
     refreshShadows();
     tickClock();
