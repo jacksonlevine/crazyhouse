@@ -8,7 +8,9 @@
    - FOV slider, for the current cam or all of them.
    - Night vision and fully lit buttons.
    - Copy cam: copies where you are as a line for cams.js.
-   - ghoul1: show him / freeze him.
+   - First person (P): walk round the house and yard (firstperson.js):
+     WASD, mouse, Shift runs, E opens doors and inspects things.
+   - ghoul1: he's despawned for now; spawn him, show him, freeze him.
    - Open it all: swings open (or shut) everything that opens: every
      door, both closets, the fridge and freezer, the washer lid, the dryer
      door, the kitchen cabinets, the shower door and the bead curtain.
@@ -22,6 +24,8 @@ export function createDebug(api) {
   panel.className = 'debug-panel';
   panel.innerHTML = `
     <div class="dbg-title">debug</div>
+    <button data-act="fp">first person (P)</button>
+    <div class="dbg-help">WASD walk · mouse looks · Shift runs · E opens doors and inspects things</div>
     <button data-act="free">free cam (F)</button>
     <div class="dbg-help">WASD move · click view, then mouse looks · Shift up · Ctrl or C down · Esc lets go of the mouse</div>
     <label>speed <input type="range" min="2" max="40" step="1" value="12" data-in="speed"> <span data-out="speed">12</span> ft/s</label>
@@ -32,6 +36,7 @@ export function createDebug(api) {
       <button data-act="lit">fully lit</button>
     </div>
     <div class="dbg-row">
+      <button data-act="spawn">spawn ghoul</button>
       <button data-act="ghoul">show ghoul</button>
       <button data-act="freeze">freeze ghoul</button>
     </div>
@@ -74,6 +79,8 @@ export function createDebug(api) {
   addEventListener('keydown', e => {
     if (e.target.closest && e.target.closest('input')) return;
     const k = e.key.toLowerCase();
+    if (k === 'p' && !e.repeat) { toggleFP(); return; }
+    if (debug.fp) return;
     if (k === 'f' && !e.repeat) { setFree(!debug.free); return; }
     if (!debug.free) return;
     if (['w', 'a', 's', 'd', 'c', 'shift', 'control'].includes(k)) { keys.add(k); e.preventDefault(); }
@@ -83,6 +90,7 @@ export function createDebug(api) {
 
   const fwd = new THREE.Vector3(), right = new THREE.Vector3();
   debug.tick = dt => {
+    if (debug.fp && fp) fp.update(dt);
     if (debug.free) {
       camera.rotation.set(pitch, yaw, 0, 'YXZ');
       fwd.set(-Math.sin(yaw), 0, -Math.cos(yaw));
@@ -133,6 +141,34 @@ export function createDebug(api) {
   });
 
   /* ─── ghoul ─── */
+  /* ─── first person ─── */
+  let fp = null;
+  import('./firstperson.js?v=1').then(m => { fp = api.fp = m.createFirstPerson({ scene, camera, frame }); });
+  const leaveFP = () => {
+    if (!debug.fp) return;
+    fp.exit();
+    debug.fp = false;
+    btn('fp').classList.remove('on');
+  };
+  debug.leaveFP = leaveFP;
+  function toggleFP() {
+    if (!fp) return;
+    if (debug.fp) { leaveFP(); showCam(api.camIndex()); return; }
+    if (debug.free) setFree(false);
+    debug.fp = true;
+    const ms = fp.enter();
+    if (ms) console.log(`first person: traced the floor map in ${ms} ms`);
+    btn('fp').classList.add('on');
+  }
+  btn('fp').addEventListener('click', e => { toggleFP(); e.currentTarget.blur(); });
+
+  /* ─── ghoul ─── */
+  btn('spawn').addEventListener('click', () => {
+    ghoul.enabled = !ghoul.enabled;
+    ghoul.object.visible = ghoul.enabled;
+    btn('spawn').classList.toggle('on', ghoul.enabled);
+    btn('spawn').textContent = ghoul.enabled ? 'despawn ghoul' : 'spawn ghoul';
+  });
   btn('ghoul').addEventListener('click', () => {
     ghoul.forcePresence = ghoul.forcePresence === null ? 1 : null;
     btn('ghoul').classList.toggle('on', ghoul.forcePresence !== null);
@@ -174,7 +210,8 @@ export function createDebug(api) {
     if (now - lastRead < 150) return;
     lastRead = now;
     const p = camera.position;
-    let text = `pos  ${r(p.x)}, ${r(p.y)}, ${r(p.z)}\nfov  ${Math.round(camera.fov)}°  ${debug.free ? '(free cam)' : '(cam ' + (api.camIndex() + 1) + ')'}\nghoul ${ghoul.state}`;
+    const mode = debug.fp ? '(first person)' : debug.free ? '(free cam)' : '(cam ' + (api.camIndex() + 1) + ')';
+    let text = `pos  ${r(p.x)}, ${r(p.y)}, ${r(p.z)}\nfov  ${Math.round(camera.fov)}°  ${mode}\nghoul ${ghoul.enabled ? ghoul.state : 'despawned'}`;
     if (now < copiedUntil) text += `\ncopied:\n${copied}`;
     out('read').textContent = text;
     // keep the slider honest when cams switch

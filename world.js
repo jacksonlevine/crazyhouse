@@ -981,7 +981,7 @@ function newspaper(cx, cy) {
     m.map = new THREE.CanvasTexture(c);
     m.map.colorSpace = THREE.SRGBColorSpace;
   }
-  return tint(solid(new THREE.BoxGeometry(1.2, 0.04, 0.8), [X(cx), FLOOR + 2.52, Z(cy)], [0, 0.35, 0]), m);
+  return named('newspaper', tint(solid(new THREE.BoxGeometry(1.2, 0.04, 0.8), [X(cx), FLOOR + 2.52, Z(cy)], [0, 0.35, 0]), m));
 }
 
 // a small cobalt bud vase with one flower in it
@@ -1737,14 +1737,14 @@ function fridgeFront(door, items) {
         pictures[extra](g);
       }, 0xd8d0c0), magnet(x, y + 0.22, 0xf0c020));
     } else if (kind === 'memo') {
-      door.add(card(0.55, 0.75, x, y, tilt, g => {
+      door.add(named('fridge-memo', card(0.55, 0.75, x, y, tilt, g => {
         g.fillStyle = '#f6e58a'; g.fillRect(0, 0, 88, 120);
         g.strokeStyle = '#9fb7d8'; for (let ly = 24; ly < 116; ly += 11) { g.beginPath(); g.moveTo(4, ly); g.lineTo(84, ly); g.stroke(); }
         g.fillStyle = '#1f3a8a'; g.font = 'bold 11px cursive'; g.fillText('TO DO', 24, 15);
         g.font = '9px cursive';
         ['milk', 'eggs', 'bread', 'call mom', 'fix closet door', 'who moved', 'the chair??'].forEach((l, i) => g.fillText(l, 8, 33 + i * 11));
         g.strokeStyle = '#1f3a8a'; g.beginPath(); g.moveTo(6, 42); g.lineTo(34, 42); g.stroke();       // eggs, crossed out
-      }, 0xf6e58a), magnet(x, y + 0.36, 0x1f3a8a));
+      }, 0xf6e58a), magnet(x, y + 0.36, 0x1f3a8a)));
     } else if (kind === 'drawing') {
       door.add(card(0.62, 0.46, x, y, tilt, g => {
         g.fillStyle = '#fbfbf6'; g.fillRect(0, 0, 99, 74);
@@ -2742,6 +2742,54 @@ function walkDistance(x, z, pts = WALK_PTS) {
   return best;
 }
 
+/* How high the floor is under (x, z), for walking around in first person:
+   the house and its porches are at FLOOR, the porch steps step down,
+   everywhere else is the land. */
+const FOOTPRINT = [[295, 154], [738, 154], [738, 345], [1256, 345], [1256, 1087], [295, 1087], [295, 814], [105, 814], [105, 482], [295, 482]];
+function inside(px, py, poly) {
+  let hit = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [xi, yi] = poly[i], [xj, yj] = poly[j];
+    if ((yi > py) !== (yj > py) && px < (xj - xi) * (py - yi) / (yj - yi) + xi) hit = !hit;
+  }
+  return hit;
+}
+export function walkHeight(x, z) {
+  const px = x * K + 680.5, py = z * K + 620.5;
+  if (inside(px, py, FOOTPRINT) || (px >= 0 && px <= 105 && py >= 482 && py <= 814) || (px >= 738 && px <= 1256 && py >= 154 && py <= 345)) return FLOOR;
+  if (py >= 593 && py <= 703 && px < 0 && px >= -3 * K) return FLOOR - 0.625 * (Math.floor(-px / K) + 1);             // front steps
+  if (px >= 815 && px <= 905 && py < 154 && py >= 154 - 3 * K) return FLOOR - 0.625 * (Math.floor((154 - py) / K) + 1);   // back steps
+  return groundHeight(x, z);
+}
+
+/* What you see when you look closely at things (first person, E). Keyed
+   by the name of the thing; anything else with userData.inspect works
+   the same way. */
+export const INSPECT = {
+  'pizza-boxes': "Looks like someone had a pizza party. There are still a few slices left, but they're rock hard.",
+  'computer-desk': "Both monitors are still on. The ashtray is overflowing, and one of the butts is still warm.",
+  'bed': "The covers are turned back on one side, like someone just got up. The sheets are cold.",
+  'bookshelf': "Old paperbacks. One lies open, a line circled in red ink: they only come in when you stop watching.",
+  'wood-stove': "The fire's still going. Someone fed it not long ago.",
+  'fire': "The logs hiss and pop. You don't remember anyone lighting it.",
+  'mirror': "You look tired. For a second you'd swear your reflection moved before you did.",
+  'toilet': "The seat is up. The water in the bowl is perfectly still.",
+  'shelf': "Clean laundry, folded and stacked. None of it is in your size.",
+  'dish-drainer': "Four plates, washed and drying. Somebody's been eating here.",
+  'rocking-chair': "It's still rocking, just a little. There's no wind tonight.",
+  'fridge-memo': "A to-do list. The last line has been gone over again and again, pressed so hard the pen tore through: who moved the chair??",
+  'closet-shelves': "Flannel shirts and a long coat. The coat pockets are full of dirt.",
+  'mailbox': "Empty. The little red flag is up anyway.",
+  'pantry-shelves': "Cans and boxes. Every label has been turned to face the wall.",
+  'shower': "The glass is fogged up. From the inside.",
+  'washer': "The washer is still warm. The cycle finished hours ago.",
+  'sofa': "The afghan smells like cigarettes and somebody's perfume. The cushions still hold the shape of someone sitting.",
+  'newspaper': "Yesterday's paper. No. The date says next Tuesday.",
+  'cooktop': "One of the burners is still warm.",
+  'lamp-pillar': "A gaudy little Tiffany lamp. The bulb flickers when you lean in close.",
+  'fridge': "The fridge hums. Something inside it ticks, then stops."
+};
+
 /* The lie of the land, in feet: flat round the house, falling away
    gently toward the road out front (so the walk goes up to the house),
    rolling further off, and low hills on the horizon. The walk and the
@@ -3387,6 +3435,10 @@ function bake(scene) {
       out.push(obj);
     }
     for (const d of keep) {
+      // things that were inside a holder we dropped get re-placed relative to g;
+      // things already directly in g keep their own transform untouched (re-deriving
+      // it can flip a door's rotation into an equivalent form its hinge code can't move)
+      if (d.parent === g) continue;
       rel.multiplyMatrices(inv, d.matrixWorld);
       rel.decompose(d.position, d.quaternion, d.scale);
     }
@@ -3453,6 +3505,7 @@ export function buildWorld({ weld = true } = {}) {
     sky()
   );
   paint(scene);
+  for (const [name, text] of Object.entries(INSPECT)) scene.traverse(o => { if (o.name === name) o.userData.inspect = text; });
   // ghoul1 never goes outside, so check-route.mjs needn't test him against the yard
   for (const n of ['ground', 'forest', 'road', 'path', 'path-lamps', 'lamp-post', 'mailbox', 'streetlight', 'pine', 'bush', 'heavens', 'driveway'])
     scene.traverse(o => { if (o.name === n) o.traverse(m => { m.userData.passable = true; }); });

@@ -4,7 +4,7 @@
    ============================================================ */
 
 import * as THREE from './vendor/three-r186/three.module.js';
-import { buildWorld, ROOMS, roomAt, GLASS_LAYER, CULL_LAYER, captureReflections } from './world.js?v=22';
+import { buildWorld, ROOMS, roomAt, GLASS_LAYER, CULL_LAYER, captureReflections } from './world.js?v=23';
 import { buildPVS } from './pvs.js?v=1';
 import { createEmp } from './emp.js?v=6';
 import { CAMS, camAt } from './cams.js?v=8';
@@ -24,7 +24,7 @@ const dots    = $('dots');
 
 let state = 'title';
 // filled in by debug.js when ?debug is on
-const debug = { free: false, fov: null, tick: null, onCam: null };       // 'title' | 'playing'
+const debug = { free: false, fov: null, tick: null, onCam: null, fp: false };       // 'title' | 'playing'
 let camIndex = 0;
 let renderer, scene, camera, ghoul, ghost, lamps, emp, ticks, ir, pvs;
 const EXPOSURE = 0.75;         // overall brightness of the picture
@@ -123,6 +123,10 @@ function setup() {
   // ghost pass draws him, so he can blur and fade
   ghoul.object.traverse(o => o.layers.set(GHOST_LAYER));
   scene.add(ghoul.object);
+  // ghoul1 is out of the house for now (he'll come back as an anomaly);
+  // ?debug has a button to spawn him
+  ghoul.enabled = false;
+  ghoul.object.visible = false;
   emp = createEmp(scene);
   // the camera's infrared light: off until night vision is on (always in
   // the scene so switching it on doesn't make the browser stall)
@@ -165,7 +169,7 @@ function setup() {
       isNight: () => night, camIndex: () => camIndex
     };
     window.crazyhouse = api;
-    import('./debug.js?v=5').then(m => m.createDebug(api));
+    import('./debug.js?v=6').then(m => m.createDebug(api));
   }
 
   renderer.setAnimationLoop(now => {
@@ -173,12 +177,13 @@ function setup() {
     // seconds since the last frame, capped so a hidden tab doesn't make him jump
     const dt = Math.min((now - lastFrame) / 1000 || 0, 0.1);
     lastFrame = now;
-    ghoul.update(dt, camAt);
+    if (ghoul.enabled) ghoul.update(dt, camAt);
+    else ghoul.presence = 0;
     emp.update(dt);
     if (debug.tick) debug.tick(dt);
     ir.position.copy(camera.position);
     // free cam or a changed FOV can see anything, so cull nothing then
-    pvs.apply(debug.free || debug.fov ? null : camIndex);
+    pvs.apply(debug.free || debug.fov || debug.fp ? null : camIndex);
     updateView();
     for (const tick of ticks) tick(dt);
     tickEmp();
@@ -186,7 +191,7 @@ function setup() {
     tickClock();
     renderer.render(scene, camera);
     // blur scales with the picture, so it looks the same at any size
-    if (ghoulInView()) ghost.render(scene, camera, ghoul.presence, ghoul.blur * buffer.y * 0.022);
+    if (ghoul.enabled && ghoulInView()) ghost.render(scene, camera, ghoul.presence, ghoul.blur * buffer.y * 0.022);
   });
   return true;
 }
@@ -194,6 +199,7 @@ function setup() {
 /* ─── cams ──────────────────────────────────── */
 
 function showCam(i) {
+  if (debug.fp && debug.leaveFP) debug.leaveFP();        // switching cams leaves first person
   camIndex = (i + CAMS.length) % CAMS.length;
   camChanged = true;                        // lamps the last cam couldn't see catch up
   const c = CAMS[camIndex];
@@ -245,7 +251,7 @@ function fireEmp() {
   if (room) {
     emp.fire(room);
     const his = roomAt(ghoul.object.position.x, ghoul.object.position.z);
-    if (his && his.name === room.name) ghoul.zap();
+    if (ghoul.enabled && his && his.name === room.name) ghoul.zap();
   }
   frame.classList.remove('emp-hit');
   void frame.offsetWidth;
@@ -323,6 +329,8 @@ addEventListener('keydown', e => {
   if (e.repeat) return;
   // the debug free cam owns these keys while it's flying
   if (debug.free && ['w', 'a', 's', 'd', 'c', 'shift', 'control', 'escape'].includes(e.key.toLowerCase())) return;
+  // ...and first person owns everything but night vision
+  if (debug.fp && e.key.toLowerCase() !== 'n') return;
   if (state === 'title') {
     if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); start(); }
     return;

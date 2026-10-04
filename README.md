@@ -286,6 +286,9 @@ ghoul1's pupils glow. Strength is `IR_STRENGTH` and `NV_GAIN` in
 
 ## ghoul1
 
+**For now he's despawned** (`ghoul.enabled = false` in `main.js`);
+the debug panel's spawn button brings him in.
+
 A thin, hunched figure about 6' tall: a narrow head with two staring
 eyes, hair to his shoulders, arms up in front of him Nosferatu style.
 He lurches round a loop forever, about 90 seconds a lap.
@@ -306,6 +309,25 @@ He lurches round a loop forever, about 90 seconds a lap.
   he touches anything. Add a number to check more laps:
   `node check-route.mjs 2`.
 
+## First person (in ?debug for now)
+
+Press **P** (or the button) in debug mode to stop watching the cams and
+walk round the house yourself (`firstperson.js`): WASD walks, click the
+view and the mouse looks, Shift runs, P goes back to the cams.
+
+- **E on anything that opens** (every door, the closets, the fridge,
+  cabinets, the washer lid, the bead curtain...) swings it open or shut.
+- **E on something worth a closer look** brings up a text box, typed out
+  old PlayStation horror style; you're frozen until you close it (E,
+  Space, Enter or a click). The texts are `INSPECT` in `world.js`, keyed
+  by the thing's name; add a line there, or set `userData.inspect` on
+  any named thing, and it can be looked at.
+- **Walls and furniture block you.** When first person starts, the game
+  traces everything between your knees and the top of your head into a
+  flat map of the floor (doorways stay open, walls don't); doors get
+  traced again whenever they move. You can climb steps but not jump off
+  the porch. Where the floor is comes from `walkHeight()` in `world.js`.
+
 ## Debugging
 
 Add `?debug` to the URL (http://localhost:8000/?debug, or the live
@@ -321,7 +343,10 @@ in debug mode):
   to try it on all cams.
 - **Night vision** and **fully lit** (strong even light everywhere, no
   fog) buttons.
-- **Show ghoul** pins him visible, **freeze ghoul** stops him walking.
+- **Spawn ghoul**: ghoul1 is out of the house for now (he'll come back
+  as an anomaly); this brings him in, or takes him out again. **Show
+  ghoul** pins him visible, **freeze ghoul** stops him walking.
+- **First person** (P): see First person above.
 - **Open it all** opens (or shuts) everything in the list above that
   anomalies can open.
 - **Copy cam** copies the current view as a line you can paste into
