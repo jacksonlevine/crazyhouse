@@ -4,11 +4,12 @@
    ============================================================ */
 
 import * as THREE from './vendor/three-r186/three.module.js';
-import { buildWorld, ROOMS, roomAt } from './world.js?v=10';
-import { createEmp } from './emp.js?v=5';
-import { CAMS, camAt } from './cams.js?v=6';
-import { createGhoul } from './ghoul.js?v=11';
-import { createGhostPass, GHOST_LAYER } from './ghost.js?v=2';
+import { buildWorld, shadowed } from './world.js?v=8';
+import { CAMS, camAt } from './cams.js?v=4';
+import { createGhoul } from './ghoul.js?v=5';
+import { createTv } from './tv.js?v=5';
+import { createGhostPass, GHOST_LAYER } from './ghost.js?v=3';
+import { createAnalogPass } from './analog.js?v=4';
 
 
 const $ = id => document.getElementById(id);
@@ -23,8 +24,8 @@ const dots    = $('dots');
 
 let state = 'title';       // 'title' | 'playing'
 let camIndex = 0;
-let renderer, scene, camera, ghoul, ghost, lamps, emp, skyTick, ir;
-const EXPOSURE = 0.75;         // overall brightness of the picture
+let renderer, scene, camera, ghoul, ghost, lamps, tv, analog;
+const EXPOSURE = 0.6;          // overall brightness of the picture
 const buffer = new THREE.Vector2();
 let shiftStart = 0;
 let lastFrame = 0;
@@ -75,18 +76,14 @@ function setup() {
   renderer.toneMappingExposure = EXPOSURE;
   scene = buildWorld();
   lamps = scene.userData.lamps;
-  const heavens = scene.getObjectByName('heavens');
-  skyTick = (heavens && heavens.userData.tick) || (() => {});
+  tv = createTv(shadowed);          // the kitchen TV, and the light it gives off
+  scene.add(tv.object);
+  lamps.push(tv.light);
   ghoul = createGhoul();
   // he lives on his own layer: the normal render skips him and the
   // ghost pass draws him, so he can blur and fade
   ghoul.object.traverse(o => o.layers.set(GHOST_LAYER));
   scene.add(ghoul.object);
-  emp = createEmp(scene);
-  // the camera's infrared light: off until night vision is on (always in
-  // the scene so switching it on doesn't make the browser stall)
-  ir = new THREE.PointLight(0xffffff, 0, 0, 2);
-  scene.add(ir);
   // ...so the lights have to reach that layer too, and their shadows include him
   scene.traverse(o => {
     if (!o.isLight) return;
@@ -94,6 +91,9 @@ function setup() {
     if (o.shadow) o.shadow.camera.layers.enable(GHOST_LAYER);
   });
   ghost = createGhostPass(renderer);
+  analog = createAnalogPass(renderer);
+  const testInterference = Number(new URLSearchParams(location.search).get("interference"));
+  if (Number.isFinite(testInterference)) analog.controls.interference = Math.max(0, Math.min(1, testInterference));
   camera = new THREE.PerspectiveCamera(52, 16 / 9, 0.1, 600);
 
   const fit = () => {
@@ -101,7 +101,7 @@ function setup() {
     if (!w || !h) return;
     renderer.setSize(w, h, false);
     renderer.getDrawingBufferSize(buffer);
-    ghost.setSize(buffer.x, buffer.y);
+    ghost.setSize(768, 480);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
   };
@@ -112,7 +112,7 @@ function setup() {
 
   // add ?debug to the URL to poke at the scene from the browser console
   if (new URLSearchParams(location.search).has('debug')) {
-    window.crazyhouse = { THREE, scene, camera, renderer, CAMS, showCam, ghoul, lamps, fireEmp, toggleNight };
+    window.crazyhouse = { THREE, scene, camera, renderer, CAMS, showCam, ghoul, lamps, tv, analog };
   }
 
   renderer.setAnimationLoop(now => {
@@ -121,15 +121,14 @@ function setup() {
     const dt = Math.min((now - lastFrame) / 1000 || 0, 0.1);
     lastFrame = now;
     ghoul.update(dt, camAt);
-    emp.update(dt);
-    ir.position.copy(camera.position);
-    skyTick(dt);
-    tickEmp();
+    tv.update(dt);
     refreshShadows();
     tickClock();
+    renderer.setRenderTarget(analog.picture);
     renderer.render(scene, camera);
     // blur scales with the picture, so it looks the same at any size
-    if (ghoulInView()) ghost.render(scene, camera, ghoul.presence, ghoul.blur * buffer.y * 0.022);
+    if (ghoulInView()) ghost.render(scene, camera, ghoul.presence, ghoul.blur * 480 * 0.022, analog.picture);
+    analog.render(now / 1000);
   });
   return true;
 }
@@ -170,77 +169,13 @@ function tickClock() {
   if (clock.textContent !== text) clock.textContent = text;
 }
 
-/* ─── the EMP ───────────────────────────────── */
-
-/* Fires at the room the current cam is watching. If ghoul1 is in that
-   room, he's knocked out of reality. Then it needs RECHARGE seconds
-   before it can fire again. */
-const RECHARGE = 6;
-let empReadyAt = 0;
-const empBt = $('emp');
-
-function fireEmp() {
-  if (state !== 'playing' || performance.now() < empReadyAt) return;
-  empReadyAt = performance.now() + RECHARGE * 1000;
-  const room = ROOMS.find(r => r.cam === CAMS[camIndex].name);
-  if (room) {
-    emp.fire(room);
-    const his = roomAt(ghoul.object.position.x, ghoul.object.position.z);
-    if (his && his.name === room.name) ghoul.zap();
-  }
-  frame.classList.remove('emp-hit');
-  void frame.offsetWidth;
-  frame.classList.add('emp-hit');
-}
-
-// the button's charge bar
-function tickEmp() {
-  const left = Math.max(0, empReadyAt - performance.now()) / (RECHARGE * 1000);
-  empBt.style.setProperty('--charge', (1 - left).toFixed(3));
-  empBt.classList.toggle('charging', left > 0);
-}
-
-/* ─── night vision ──────────────────────────── */
-
-/* Like a real security cam: switching to night vision turns on an
-   infrared light at the camera that floods the room it's watching,
-   and the picture gets brighter, green and grainy. */
-const IR_STRENGTH = 900;
-const NV_GAIN = 3;            // how much brighter the picture gets
-let night = false;
-const nvBt = $('nv');
-
-function toggleNight() {
-  if (state !== 'playing') return;
-  night = !night;
-  frame.classList.toggle('night', night);
-  nvBt.classList.toggle('on', night);
-  nvBt.setAttribute('aria-pressed', night);
-  ir.intensity = night ? IR_STRENGTH : 0;
-  renderer.toneMappingExposure = EXPOSURE * (night ? NV_GAIN : 1);
-}
-
-// a tile of random grain for the night-vision layer, made once
-(function makeGrain() {
-  const c = document.createElement('canvas');
-  c.width = c.height = 160;
-  const x = c.getContext('2d');
-  const img = x.createImageData(160, 160);
-  for (let i = 0; i < img.data.length; i += 4) {
-    const v = Math.random() * 255;
-    img.data[i] = img.data[i + 1] = img.data[i + 2] = v;
-    img.data[i + 3] = 34;
-  }
-  x.putImageData(img, 0, 0);
-  frame.style.setProperty('--grain', `url(${c.toDataURL()})`);
-})();
-
 /* ─── start / quit ──────────────────────────── */
 
 function start() {
   if (state === 'playing') return;
   if (!renderer && !setup()) return;
   state = 'playing';
+  tv.play();
   shiftStart = performance.now();
   startBt.blur();
   frame.classList.add('playing');
@@ -249,6 +184,8 @@ function start() {
 
 function quit() {
   state = 'title';
+  analog.heldSignals.clear();
+  tv.pause();
   frame.classList.remove('playing', 'cut');
 }
 
@@ -257,8 +194,6 @@ function quit() {
 startBt.addEventListener('click', start);
 $('prev').addEventListener('click', prev);
 $('next').addEventListener('click', next);
-empBt.addEventListener('click', () => { fireEmp(); empBt.blur(); });
-nvBt.addEventListener('click', () => { toggleNight(); nvBt.blur(); });
 
 addEventListener('keydown', e => {
   if (e.repeat) return;
@@ -266,16 +201,30 @@ addEventListener('keydown', e => {
     if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); start(); }
     return;
   }
+  if (/^Key[QWERT]$/.test(e.code)) {
+    e.preventDefault();
+    analog.heldSignals.add(e.code);
+    if (e.shiftKey) analog.heldSignals.add('boost');
+    return;
+  }
+  if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') analog.heldSignals.add('boost');
   // arrows, the number pad (4 / 6), or A / D
   if (e.key === 'ArrowRight' || e.code === 'Numpad6' || e.key === 'd' || e.key === 'D') {
     e.preventDefault(); next();
   } else if (e.key === 'ArrowLeft' || e.code === 'Numpad4' || e.key === 'a' || e.key === 'A') {
     e.preventDefault(); prev();
-  } else if (e.key === 'n' || e.key === 'N') {
-    e.preventDefault(); toggleNight();
-  } else if (e.key === 'e' || e.key === 'E') {
-    e.preventDefault(); fireEmp();
   } else if (e.key === 'Escape') {
     quit();
   }
+});
+
+// Hold generators to inject; release or lose focus to disconnect all voltage sources.
+addEventListener('keyup', e => {
+  if (!analog) return;
+  analog.heldSignals.delete(e.code);
+  if (!e.shiftKey) analog.heldSignals.delete('boost');
+});
+addEventListener('blur', () => analog?.heldSignals.clear());
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) analog?.heldSignals.clear();
 });

@@ -7,8 +7,8 @@
    he's in a room that has a cam, his head turns to stare straight
    into it, all the way round if it has to.
 
-   He's out of reality most of the time, walking unseen. Every so
-   often he blurs back in, and he stays until an EMP hits his room.
+   Every so often he slips out of reality: he blurs and fades away,
+   keeps walking unseen, then blurs back in somewhere further along.
    This file only decides WHEN (api.presence and api.blur); the
    blur itself is drawn by ghost.js.
 
@@ -17,7 +17,7 @@
    ============================================================ */
 
 import * as THREE from './vendor/three-r186/three.module.js';
-import { X, Z, FLOOR, surface, solid, lines, roomAt } from './world.js?v=10';
+import { X, Z, FLOOR, surface, solid, lines, roomAt } from './world.js?v=8';
 
 /* The loop he walks, in blueprint pixels (same as world.js), through
    the doorways and around the furniture. It's smoothed into a curve.
@@ -56,14 +56,11 @@ const STRIDE = 2.0;           // feet per full step cycle
 const HEAD_TURN = 2.2;        // how fast his head swings round to a cam (higher = snappier)
 const LEAN = 0.26;            // how far forward he's hunched, in radians (~15°)
 
-/* He's gone most of the time. When he fades in he STAYS until an EMP
-   hits his room (main.js calls zap()). Times are in seconds, each
-   picked at random between the two numbers. */
-const FIRST = 10;             // seconds before he first shows up
-const GONE = [25, 50];        // how long he stays gone after being zapped
-const FADE = [1.6, 2.6];      // how long it takes him to fade in
-const ZAPPED = 2.4;           // how long his death takes when an EMP hits him
-const AGONY = 0.6;            // seconds to snap into the reaching pose
+/* How long he stays seen / gone, and how long a fade takes, in
+   seconds. Each one is picked at random between the two numbers. */
+const SEEN = [7, 16];
+const GONE = [3, 8];
+const FADE = [1.4, 2.4];
 
 const WHITE  = new THREE.MeshBasicMaterial({ color: 0xffffff });   // pupils: tiny points of light
 const SOCKET = new THREE.MeshBasicMaterial({ color: 0x000000 });   // eye sockets: pure black
@@ -267,29 +264,27 @@ export function createGhoul() {
 
   /* ─── slipping in and out of reality ─── */
   const pick = ([a, b]) => a + Math.random() * (b - a);
-  let state = 'gone', timer = FIRST, fadeLen = 1, fadeT = 0, casting = true, leaveFrom = 1, highSide = 1;
+  let state = 'gone', timer = 1.2, fadeLen = 1, fadeT = 0, casting = true;
 
   function phase(dt) {
-    if (state === 'gone') {
-      timer -= dt;
-      if (timer <= 0) { state = 'arriving'; fadeLen = pick(FADE); fadeT = 0; }
-    } else if (state === 'arriving' || state === 'leaving') {
+    timer -= dt;
+    if (state === 'seen' && timer <= 0) { state = 'leaving'; fadeLen = pick(FADE); fadeT = 0; }
+    else if (state === 'gone' && timer <= 0) { state = 'arriving'; fadeLen = pick(FADE); fadeT = 0; }
+    else if (state === 'leaving' || state === 'arriving') {
       fadeT += dt;
       if (fadeT >= fadeLen) {
-        if (state === 'arriving') state = 'seen';
-        else { state = 'gone'; timer = pick(GONE); }
+        state = state === 'leaving' ? 'gone' : 'seen';
+        timer = pick(state === 'seen' ? SEEN : GONE);
       }
     }
 
-    const f = THREE.MathUtils.smoothstep(fadeT / fadeLen, 0, 1);
-    // dying: he holds on for the first stretch while he reaches up, then fades
-    const dying = THREE.MathUtils.smoothstep((fadeT / fadeLen - 0.3) / 0.7, 0, 1);
-    let p = state === 'seen' ? 1 : state === 'gone' ? 0 : state === 'arriving' ? f : leaveFrom * (1 - dying);
-    const t = fadeT * 9;
-    // a little flicker while he's slipping in
-    if (state === 'arriving' && Math.sin(t * 3.1) * Math.sin(t * 1.7 + 1.3) > 0.55) p *= 0.45;
-    // a hard stutter while the EMP rips him out
-    if (state === 'leaving' && Math.sin(t * 7.3) * Math.sin(t * 4.1 + 0.7) > 0.2) p *= 0.15;
+    let p = state === 'seen' ? 1 : state === 'gone' ? 0 : THREE.MathUtils.smoothstep(fadeT / fadeLen, 0, 1);
+    if (state === 'leaving') p = 1 - p;
+    // a little flicker while he's between places
+    if (state === 'leaving' || state === 'arriving') {
+      const t = fadeT * 9;
+      if (Math.sin(t * 3.1) * Math.sin(t * 1.7 + 1.3) > 0.55) p *= 0.45;
+    }
     if (api.forcePresence !== null) p = api.forcePresence;
     api.presence = p;
     api.blur = Math.pow(1 - p, 0.6);
@@ -304,7 +299,7 @@ export function createGhoul() {
   /* camFor(name) → [x, y, z] of that cam, or null. Returns his room. */
   function update(dt, camFor) {
     phase(dt);
-    if (!api.paused && state !== 'leaving') dist = (dist + SPEED * dt) % length;   // he stops dead when hit
+    if (!api.paused) dist = (dist + SPEED * dt) % length;
     const u = dist / length;
     curve.getPointAt(u, here);
     curve.getTangentAt(u, tangent);
@@ -323,10 +318,8 @@ export function createGhoul() {
     body.rotation.z = s * 0.05;
     body.position.y = Math.abs(Math.cos(step)) * 0.05;
     chest.rotation.x = LEAN + Math.abs(s) * 0.04;
-    chest.rotation.y = 0;
     for (const a of arms) {
       a.shoulder.rotation.x = POSE.upper + s * a.side * 0.05;
-      a.shoulder.rotation.y = -a.side * POSE.inward;
       a.elbow.rotation.x = POSE.forearm;
       a.wrist.rotation.x = POSE.hand + Math.sin(step * 0.5 + a.side) * 0.12;   // limp hands dangle
     }
@@ -347,36 +340,7 @@ export function createGhoul() {
     headYaw.rotation.y = yaw;
     headPitch.rotation.x = -pitch;
 
-    if (state === 'leaving') agony(dt);
-
     return room ? room.name : null;
-  }
-
-  /* Death: blend from wherever he was into the agony pose. He arches
-     back, throws both arms straight up over his head with his hands
-     clawed, and his head tips back to the ceiling, all trembling. */
-  function agony(dt) {
-    const k = THREE.MathUtils.smoothstep(fadeT / AGONY, 0, 1);
-    const shake = () => (Math.random() - 0.5) * 0.08 * k;
-    const mix = (a, b) => a + (b - a) * k;
-    chest.rotation.x = mix(chest.rotation.x, -0.22) + shake();
-    body.position.y = mix(body.position.y, 0.08);
-    legs[0].rotation.x = mix(legs[0].rotation.x, 0.05);
-    legs[1].rotation.x = mix(legs[1].rotation.x, -0.05);
-    // not symmetrical: one arm strains high, the other only half rises,
-    // bent at the elbow, and his body twists and leans toward the high one
-    for (const a of arms) {
-      const high = a.side === highSide;
-      a.shoulder.rotation.x = mix(a.shoulder.rotation.x, high ? -2.9 : -2.05) + shake();
-      a.shoulder.rotation.y = mix(-a.side * POSE.inward, a.side * (high ? 0.08 : 0.3));
-      a.elbow.rotation.x = mix(a.elbow.rotation.x, high ? -0.2 : -0.85) + shake();
-      a.wrist.rotation.x = mix(a.wrist.rotation.x, high ? -0.5 : 0.4) + shake();   // high hand claws, low one hangs
-    }
-    body.rotation.z = mix(body.rotation.z, -highSide * 0.07) + shake() * 0.5;
-    chest.rotation.y = mix(0, highSide * 0.18);
-    yaw = mix(yaw, highSide * 0.25);
-    headYaw.rotation.y = yaw;
-    headPitch.rotation.x = mix(headPitch.rotation.x, -0.75) + shake();    // looking up, a little off to one side
   }
 
   // Drop him at the closest point on his loop to blueprint pixel (px, py).
@@ -393,21 +357,8 @@ export function createGhoul() {
   /* presence: 1 = fully here, 0 = gone. blur: how smeared his lines
      are (0 = sharp). paused stops him walking; forcePresence pins his
      presence to a number (both handy with ?debug). */
-  /* An EMP hit his room. If he's here (or slipping in), he's knocked
-     out of reality: true. If he's already gone: false. */
-  function zap() {
-    if (state === 'gone' || state === 'leaving') return false;
-    leaveFrom = api.presence;
-    highSide = Math.random() < 0.5 ? -1 : 1;          // which arm reaches highest this time
-    state = 'leaving';
-    fadeLen = ZAPPED;
-    fadeT = 0;
-    return true;
-  }
-
   const api = {
-    object: root, update, jumpTo, zap, curve, route: ROUTE,
-    get state() { return state; },
+    object: root, update, jumpTo, curve, route: ROUTE,
     presence: 0, blur: 1, paused: false, forcePresence: null
   };
   return api;
