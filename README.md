@@ -217,26 +217,12 @@ burst. Set `controls.injection` to another Three.js waveform texture and
 voltage with the same scanline layout. Set injection to null to disconnect.
 Use `?debug&interference=0.7` to inspect steady signal interference.
 
-### Signal injection test keys
+### Mains injection key
 
-While playing, hold any of these keys (combine them freely). Release to
-remove the injected voltage. Hold Shift for twice the injection amplitude.
-
-| Key | Generator | Signal amplitude |
-| --- | --- | --- |
-| Q | Broadband pseudorandom noise | ±0.6 |
-| W | 60 Hz sine, mains hum | ±0.35 |
-| E | 1 MHz sine, RF interference | ±0.35 |
-| R | Independent 15,680 Hz negative sync pulse train, 4.7 µs pulses | −0.65 |
-| T | 1 kHz positive impulse train, 0.5 µs pulses | +2.5 |
-
-Amplitudes use normalized composite voltage (blanking 0, sync −0.4,
-white 1). All sources mix before sync detection, pedestal clamping, and
-bandwidth filtering. `crazyhouse.analog.controls.testGain` scales them.
-Blur, hidden tab, and quitting clear held keys. Q–T work without `?debug`.
-A slow offset can be rejected by the back-porch clamp, and a narrow pulse
-can be attenuated by the bandwidth filter; these are receiver responses.
-The limited horizontal receiver still does not model vertical rolling.
+Hold W to inject 60 Hz mains voltage (±0.35 normalized composite voltage).
+Release to disconnect; hold Shift to double its amplitude. In debug free
+camera mode, W belongs to movement. `controls.testGain` scales the injected
+hum. There are no Q/E/R/T test generators.
 
 Mains hum also injects automatically for random 1–5 second stretches,
 separated by random 1–5 second quiet gaps. Set
@@ -244,7 +230,7 @@ separated by random 1–5 second quiet gaps. Set
 holding W still injects mains hum manually.
 
 Merged remote color, glass/windows, EMP, night vision, and debug features.
-E remains the interference key; B now fires EMP (the button still works).
+B fires EMP (the button still works).
 In debug free-camera mode, W and Shift belong to movement. Night mode uses
 the IR lamp, exposure, and monochrome encoding, without CSS grain/vignette.
 
@@ -257,10 +243,52 @@ scene and ghost directly at display resolution, skipping encoding, sync
 recovery, and decoding. The normal game always starts with composite on.
 The kitchen TV faces 45° toward the living room; its glow follows the angle.
 
-Source Y/I/Q is bandwidth-limited before modulation (2.5 MHz luma,
+Source Y/U/V is bandwidth-limited before modulation (2.5 MHz luma,
 1 MHz chroma). Receiver input bandwidth defaults to 4.2 MHz, before
 sync detection and demodulation. FIR weights are calculated once on the
 CPU and uploaded as shader uniforms. `node tools/check-analog.mjs` checks
 DC preservation, passbands, carrier rejection, clean sync recovery, and
 six uniform-color round trips (maximum channel error below 2.5%).
 The kitchen TV itself no longer adds decorative scanlines or picture warp.
+
+## Designing recorded interferers in Composite Lab
+
+Open the updated native Composite Lab app at
+`/Users/jacksonlevine/Documents/Codex/2026-09-30/cou/outputs/CompositeLab`.
+In **Connections**, check **Record** beside one or more connections, enter
+the duration (default 30 seconds), then **Record selected…** and choose a
+folder. Recording runs in real time and stops automatically. **Stop recording**
+keeps a marked partial recording. Each selected connection is recorded after
+its port selection, EQ, delay, level and feedback, before the destination mixer.
+To capture a finished mixer output, patch that mixer into another mixer and
+record that connection. Output/receiver master controls are downstream of the
+tap. Connection edits are locked while recording; live camera footage continues.
+
+In Crazyhouse's `?debug` panel choose **load signal recording folder…** and
+select the entire exported folder. Choose a connection or **Mix all recorded
+connections**, toggle playback, and adjust **signal gain**. Chunks load on demand;
+the cache holds at most four blocks. Missing/corrupt chunks stop playback with
+an error. A loop preserves the recorded wall-clock timeline; capture gaps inject
+zero voltage rather than fabricated frames. A gap may also occur while fetching
+a chunk that has not arrived yet. A low-pass resampler converts Lab's sample
+clock to the game's clock before summing voltage and applying the receiver.
+Lab's physical voltage scale and -U burst reference match the game's normalized
+voltage after multiplying by the manifest's `voltageScale` (1.4).
+
+For a normal-game recording input, serve the folder beside the game and pass
+`?signal=signals/recordings/traffic-30s/manifest.json&signalGain=0.15`.
+This local worktree includes a real 30-second I-24 traffic-camera recording in
+`signals/recordings/traffic-30s` (898 blocks, 14.31818 MS/s, about 1.72 GB).
+Raw recordings are ignored by Git; code and the format documentation are tracked.
+The native app defaults to 28.63636 MS/s, approximately 3.44 GB per connection
+for 30 seconds. Export is float32 little-endian, preserving native samples.
+
+The manifest records sample rate, voltage scale, native line/frame dimensions,
+wall-clock block timestamps, track labels and routes. Each track folder contains
+`000000.f32`, `000001.f32`, etc., each exactly `samplesPerFrame * 4` bytes.
+These are full 525-line interlaced source blocks. The game remains a progressive,
+partial receiver: imported vertical-sync pulses can corrupt voltage/timing, but
+it still does not recover vertical sync or implement interlaced display/PLL.
+
+Run `node tools/check-signal-clip.mjs` and `node tools/check-analog.mjs` for
+format/playback and filtering/color tests.

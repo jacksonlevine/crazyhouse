@@ -10,7 +10,8 @@ import { CAMS, camAt } from './cams.js?v=7';
 import { createGhoul } from './ghoul.js?v=12';
 import { createGhostPass, GHOST_LAYER } from './ghost.js?v=4';
 import { createTv } from './tv.js?v=8';
-import { createAnalogPass } from './analog.js?v=7';
+import { openSignalURL } from './signal-clip.js?v=1';
+import { createAnalogPass } from './analog.js?v=9';
 
 
 const $ = id => document.getElementById(id);
@@ -104,6 +105,16 @@ function setup() {
   analog = createAnalogPass(renderer);
   const testInterference = Number(new URLSearchParams(location.search).get('interference'));
   if (Number.isFinite(testInterference)) analog.controls.interference = Math.max(0, Math.min(1, testInterference));
+  const recordingURL=new URLSearchParams(location.search).get('signal');
+  if(recordingURL){
+    openSignalURL(recordingURL).then(async clip=>{
+      await Promise.all([clip.load(0),clip.load(1)]);
+      if(clip.error){clip.dispose();throw new Error(clip.error);}
+      const gain=Number(new URLSearchParams(location.search).get('signalGain') ?? 0.25);
+      clip.gain=Number.isFinite(gain)?Math.max(0,Math.min(2,gain)):0.25;
+      analog.setClip(clip);
+    }).catch(error=>console.error('Signal recording:',error.message));
+  }
   camera = new THREE.PerspectiveCamera(52, 16 / 9, 0.1, 600);
   camera.layers.enable(GLASS_LAYER);        // the main view draws window glass too
 
@@ -133,7 +144,7 @@ function setup() {
       isNight: () => night, camIndex: () => camIndex
     };
     window.crazyhouse = api;
-    import('./debug.js?v=3').then(m => m.createDebug(api));
+    import('./debug.js?v=4').then(m => m.createDebug(api));
   }
 
   renderer.setAnimationLoop(now => {
@@ -285,7 +296,7 @@ addEventListener('keydown', e => {
     if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); start(); }
     return;
   }
-  if (/^Key[QWERT]$/.test(e.code)) {
+  if (/^KeyW$/.test(e.code)) {
     e.preventDefault();
     analog.heldSignals.add(e.code);
     if (e.shiftKey) analog.heldSignals.add('boost');

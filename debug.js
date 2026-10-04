@@ -1,3 +1,5 @@
+import { openSignalFolder } from './signal-clip.js?v=1';
+
 /* ============================================================
    crazyhouse: the debug panel. Only loads with ?debug in the URL.
 
@@ -33,6 +35,15 @@ export function createDebug(api) {
       <button data-act="freeze">freeze ghoul</button>
     </div>
     <button data-act="composite" aria-pressed="false">bypass composite: off</button>
+    <button data-act="signal-load">load signal recording folder…</button>
+    <input type="file" data-in="signal-files" webkitdirectory multiple hidden>
+    <select data-in="signal-track" aria-label="Recorded signal track" hidden></select>
+    <div class="dbg-row">
+      <button data-act="signal-toggle" aria-pressed="false" disabled>recorded signal: off</button>
+      <button data-act="signal-clear" disabled>unload</button>
+    </div>
+    <label>signal gain <input type="range" min="0" max="2" step="0.01" value="0.25" data-in="signal-gain"> <span data-out="signal-gain">0.25</span></label>
+    <div class="dbg-help" data-out="signal-status">No recorded signal loaded.</div>
     <button data-act="copy">copy cam</button>
     <pre class="dbg-read" data-out="read"></pre>`;
   document.body.appendChild(panel);
@@ -46,6 +57,48 @@ export function createDebug(api) {
     btn('composite').textContent = 'bypass composite: ' + (bypass ? 'on' : 'off');
     btn('composite').classList.toggle('on', bypass);
     btn('composite').setAttribute('aria-pressed', String(bypass));
+  });
+
+  let clipRequest=0,shownClip=null;
+  const signalFiles=$('[data-in="signal-files"]'),signalTrack=$('[data-in="signal-track"]');
+  function showClip(){
+    const clip=api.analog.clip;shownClip=clip;
+    btn('signal-toggle').disabled=btn('signal-clear').disabled=!clip;
+    btn('signal-toggle').textContent='recorded signal: '+(clip?.enabled?'on':'off');
+    btn('signal-toggle').setAttribute('aria-pressed',String(!!clip?.enabled));
+    signalTrack.hidden=!clip;
+    signalTrack.replaceChildren();
+    if(clip){
+      $('[data-in="signal-gain"]').value=String(clip.gain);
+      out('signal-gain').textContent=String(clip.gain);
+      for(const track of [{id:'all',label:'Mix all recorded connections'},...clip.manifest.tracks]){
+        const option=document.createElement('option');option.value=track.id;option.textContent=track.label;signalTrack.append(option);
+      }
+      signalTrack.value=clip.track;
+      out('signal-status').textContent=`${clip.manifest.duration.toFixed(1)} s · ${clip.manifest.tracks.length} connection(s) · ${clip.manifest.completed?'complete':'partial recording'}`;
+    }else out('signal-status').textContent='No recorded signal loaded.';
+  }
+  showClip();
+  btn('signal-load').addEventListener('click',()=>signalFiles.click());
+  signalFiles.addEventListener('change',async()=>{
+    const request=++clipRequest;
+    out('signal-status').textContent='Opening recording…';
+    try{
+      const clip=await openSignalFolder(signalFiles.files);
+      clip.gain=Number($('[data-in="signal-gain"]').value);
+      await Promise.all([clip.load(0),clip.load(1)]);
+      if(request!==clipRequest){clip.dispose();return;}
+      if(clip.error){clip.dispose();throw new Error(clip.error);}
+      api.analog.setClip(clip);showClip();
+    }catch(error){if(request===clipRequest)out('signal-status').textContent=error.message;}
+    finally{signalFiles.value='';}
+  });
+  signalTrack.addEventListener('change',()=>api.analog.clip?.setTrack(signalTrack.value));
+  btn('signal-toggle').addEventListener('click',()=>{if(api.analog.clip){api.analog.clip.enabled=!api.analog.clip.enabled;showClip();}});
+  btn('signal-clear').addEventListener('click',()=>{clipRequest++;api.analog.setClip(null);showClip();});
+  $('[data-in="signal-gain"]').addEventListener('input',e=>{
+    out('signal-gain').textContent=e.target.value;
+    if(api.analog.clip)api.analog.clip.gain=Number(e.target.value);
   });
 
   /* ─── free cam ─── */
@@ -168,6 +221,12 @@ export function createDebug(api) {
   let lastRead = 0;
   function readout() {
     const now = performance.now();
+    if(api.analog.clip!==shownClip)showClip();
+    if(api.analog.clip?.error){
+      out('signal-status').textContent=api.analog.clip.error;
+      btn('signal-toggle').textContent='recorded signal: error';
+      btn('signal-toggle').setAttribute('aria-pressed','false');
+    }
     if (now - lastRead < 150) return;
     lastRead = now;
     const p = camera.position;
