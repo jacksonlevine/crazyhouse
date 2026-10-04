@@ -108,10 +108,13 @@ lined up to it.
   (he's on a layer it doesn't draw), like a vampire.
 
 **Things that open, for anomalies.** Each has `setOpen(t)`, 0 shut to
-1 open (anything between works), and `userData.open` says where it is:
+1 open (anything between works, instantly), and `openTo(t, seconds)`,
+which swings it there smoothly, easing in and out. `userData.open` says
+where it is:
 
 ```js
-scene.getObjectByName('fridge-door').userData.setOpen(1)
+scene.getObjectByName('fridge-door').userData.openTo(1, 2)   // open it over 2 seconds
+scene.getObjectByName('door-pocket').userData.setOpen(0)     // slam it shut
 ```
 
 - `door-closet`: the storage closet's 3-panel folding door, facing the couch
@@ -124,6 +127,13 @@ scene.getObjectByName('fridge-door').userData.setOpen(1)
 - `cabinet-door-island-1` and so on: every kitchen cabinet door (under
   the sink, the island, beside the fridge). The cabinets are hollow,
   with shelves, pipes under the sink, pots, plates and cans
+- `door-pocket`: the laundry to bathroom pocket door, sliding out of the
+  wall (it starts open, ghoul1 walks through there)
+- `bead-curtain`: the arched wooden bead curtain from the bedroom to the
+  laundry; opening sweeps the strands aside (ghoul1 walks through it, so
+  `check-route.mjs` ignores it)
+- `door-shower`: the shower's glass door
+- `door-patio-slide`: the sliding patio door
 - every swinging house door too (`door-front`, `door-master`,
   `door-pantry`), where 1 is 90°
 
@@ -140,8 +150,9 @@ muted leaded glass on the pillar by the sofa, teal and plum counter stools with
 chrome posts, almond countertops, an oak vanity with an oval sink and
 brass knobs, frosted glass in a brass shower frame, a mauve bathmat,
 flannel and denim and a couple of shoeboxes in the walk-in closet,
-a blue jug of YEP detergent and a green laundry basket of folded clothes
-on the shelf over the machines, a bed with a rounded mattress, puffy
+bottles of Tried and YEP detergent and a green laundry basket of folded
+clothes on the shelf over the machines, photos, a to-do memo, a crayon
+drawing and magnets on the fridge, a bed with a rounded mattress, puffy
 pillows and a plaid flannel comforter with its corner turned back, a
 full bookshelf facing the bed, and a messy computer desk under the
 bedroom window: two beige CRTs (a DOS prompt and a teal desktop), a

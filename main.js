@@ -4,7 +4,7 @@
    ============================================================ */
 
 import * as THREE from './vendor/three-r186/three.module.js';
-import { buildWorld, ROOMS, roomAt, GLASS_LAYER, captureReflections } from './world.js?v=18';
+import { buildWorld, ROOMS, roomAt, GLASS_LAYER, captureReflections } from './world.js?v=19';
 import { createEmp } from './emp.js?v=6';
 import { CAMS, camAt } from './cams.js?v=8';
 import { createGhoul } from './ghoul.js?v=12';
@@ -88,6 +88,8 @@ function setup() {
   // things that move on their own every frame: the clouds, the fire
   ticks = [];
   scene.traverse(o => { if (o.userData.tick) ticks.push(o.userData.tick); });
+  // ...and everything that opens, so openTo() can swing doors smoothly
+  scene.traverse(o => { if (o.userData.step) ticks.push(o.userData.step); });
   ghoul = createGhoul();
   // he lives on his own layer: the normal render skips him and the
   // ghost pass draws him, so he can blur and fade
@@ -132,7 +134,7 @@ function setup() {
       isNight: () => night, camIndex: () => camIndex
     };
     window.crazyhouse = api;
-    import('./debug.js?v=4').then(m => m.createDebug(api));
+    import('./debug.js?v=5').then(m => m.createDebug(api));
   }
 
   renderer.setAnimationLoop(now => {

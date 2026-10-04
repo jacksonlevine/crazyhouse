@@ -138,7 +138,8 @@ export const MAT = {
   firebrick: surface(0x4a2a1e, 1, THREE.BackSide),     // inside the wood stove
   log:       new THREE.MeshStandardMaterial({ color: 0x1c140f, roughness: 1, emissive: 0xff5a14, emissiveIntensity: 0.12 }),
   ember:     new THREE.MeshStandardMaterial({ color: 0x1a0d08, roughness: 1, emissive: 0xff4a10, emissiveIntensity: 1.1 }),
-  porcelainBoth: surface(0xf2f1ec, 0.25, THREE.DoubleSide),   // the toilet bowl, seen inside and out
+  porcelainBoth: surface(0xf2f1ec, 0.65, THREE.DoubleSide),   // the toilet bowl, seen inside and out
+  toilet:    surface(0xf2f1ec, 0.65),    // matte, so it doesn't shine
   bowl:      surface(0xf2f1ec, 0.25, THREE.BackSide),         // the bathroom sink, drawn inside out
   glow:      new THREE.MeshBasicMaterial({ color: 0xfff0d4 })   // lampshades, bulbs: they ARE the light
 };
@@ -536,11 +537,23 @@ function leaf(name, hx, hy, ex, ey, open = 0, tx = 680, ty = 620, lite = null) {
 }
 
 /* Gives a moving part setOpen(t), 0 shut to 1 open (anything between
-   works), so anomalies can open things:
-     scene.getObjectByName('fridge-door').userData.setOpen(1)
+   works, instantly), and openTo(t, seconds) to swing it there smoothly,
+   so anomalies can open things:
+     scene.getObjectByName('fridge-door').userData.openTo(1, 2)
    userData.open says where it is now. move(t) does the moving. */
 function openable(g, move) {
   const box = new THREE.Box3();
+  // openTo(t, seconds) swings it there smoothly, easing in and out;
+  // main.js calls step(dt) on everything every frame
+  let from = 0, goal = 0, p = 1, secs = 1;
+  g.userData.openTo = (t, seconds = 1.2) => {
+    from = g.userData.open; goal = THREE.MathUtils.clamp(t, 0, 1); p = 0; secs = Math.max(0.01, seconds);
+  };
+  g.userData.step = dt => {
+    if (p >= 1) return;
+    p = Math.min(1, p + dt / secs);
+    g.userData.setOpen(from + (goal - from) * p * p * (3 - 2 * p));
+  };
   g.userData.setOpen = t => {
     t = THREE.MathUtils.clamp(t, 0, 1);
     move(t);
@@ -563,7 +576,9 @@ function doors() {
     coatClosetDoors(),
     // pantry door, standing partly open into the pantry
     leaf('door-pantry', 1080, 665, 1160, 665, 55, 1120, 720),
-    accordionDoor()
+    accordionDoor(),
+    beadCurtain(),
+    pocketDoor()
   );
 }
 
@@ -596,6 +611,93 @@ function accordionDoor() {
   });
 }
 
+/* An arched wooden bead curtain in the doorway from the bedroom to the
+   laundry: strands of wood beads with white and black bands, a chevron
+   up top, under a patterned header, the middle strands shorter so they
+   make an arch. Each strand is one mesh (its beads joined, coloured bead
+   by bead). setOpen(t) sweeps the strands aside toward the jambs.
+   ghoul1 walks through it, so check-route.mjs ignores the beads. */
+function beadCurtain() {
+  const x = X(811), z0 = Z(904), z1 = Z(978), zc = (z0 + z1) / 2, half = (z1 - z0) / 2;
+  const top = FLOOR + DOOR_H - 0.32, N = 23;
+  const bead = new THREE.OctahedronGeometry(0.034, 0).scale(1, 1.35, 1);
+  const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6 });
+  const wood = new THREE.Color(0xb8732c), white = new THREE.Color(0xece4d2), black = new THREE.Color(0x1c1612), c = new THREE.Color();
+  const band = (v, a, b) => v >= a && v < b;
+  const colour = (v, s) => {
+    if (Math.abs(v - (0.35 + 0.9 * s)) < 0.045) return white;                 // the chevron, following the arch
+    if (Math.abs(v - (0.5 + 0.9 * s)) < 0.045) return black;
+    if (band(v, 1.55, 1.64) || band(v, 1.9, 1.99) || band(v, 2.9, 2.99) || band(v, 3.75, 3.84)) return white;
+    if (band(v, 1.73, 1.82) || band(v, 2.75, 2.84) || band(v, 3.6, 3.69)) return black;
+    return null;
+  };
+  let seed = 41;
+  const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const strands = [];
+  for (let i = 0; i < N; i++) {
+    const zz = z0 + (i + 0.5) * (z1 - z0) / N, s = Math.abs(zz - zc) / half;
+    const end = s < 0.62 ? 0.3 + 4.0 * (1 - (s / 0.62) ** 1.5) : 0.3;        // where the strand stops, above the floor
+    const len = top - (FLOOR + end), pos = [], col = [];
+    const bp = bead.attributes.position;
+    for (let v = 0.05; v < len; v += 0.09) {
+      const pick = colour(v, s) || c.copy(wood).multiplyScalar(0.88 + rand() * 0.2);
+      for (let j = 0; j < bp.count; j++) { pos.push(bp.getX(j), -v + bp.getY(j), bp.getZ(j)); col.push(pick.r, pick.g, pick.b); }
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    geo.computeVertexNormals();
+    const m = new THREE.Mesh(geo, mat);
+    m.userData.keep = m.userData.passable = true;
+    const pivot = new THREE.Group();
+    pivot.position.set(x, top, zz);
+    pivot.userData.side = Math.sign(zz - zc) || 1;
+    pivot.userData.s = s;
+    pivot.add(m);
+    strands.push(pivot);
+  }
+  // the header: a band of beads in a pattern (a tiny picture)
+  const headMat = surface(0xffffff, 0.7);
+  if (typeof document !== 'undefined') headMat.map = screenCanvas(128, 16, g => {
+    g.fillStyle = '#b8732c'; g.fillRect(0, 0, 128, 16);
+    for (let k = 0; k < 8; k++) {
+      const cx = 8 + k * 16;
+      g.fillStyle = k % 2 ? '#1c1612' : '#ece4d2';
+      g.beginPath(); g.moveTo(cx, 2); g.lineTo(cx + 6, 8); g.lineTo(cx, 14); g.lineTo(cx - 6, 8); g.fill();
+      g.fillStyle = '#b8732c'; g.fillRect(cx - 1.5, 6.5, 3, 3);
+    }
+  }); else headMat.color.set(0xb8732c);
+  const header = tint(solid(new THREE.BoxGeometry(0.08, 0.32, z1 - z0), [x, top + 0.16, zc]), headMat);
+  header.traverse(o => { if (o.isMesh) o.userData.passable = true; });
+  const g = named('bead-curtain', header, ...strands);
+  g.userData.movesParts = true;
+  return openable(g, t => {
+    for (const st of strands) st.rotation.x = -st.userData.side * t * 0.6 * (0.4 + 0.6 * st.userData.s);
+  });
+}
+
+/* A pocket door between the laundry and the bathroom: it slides into
+   the wall. White, two raised panels a side, a round flush pull on each
+   face, and a little brass edge pull on its leading edge (the bit you
+   press out to pull the door from the wall). setOpen(0) slides it shut,
+   1 is all the way into the wall. It starts open: ghoul1 walks through. */
+function pocketDoor() {
+  const x = X(609.5), z0 = Z(902), w = Z(980) - z0, h = DOOR_H - 0.02, t = 0.12;
+  const box = (bw, bh, bd, px, py, pz) => solid(new THREE.BoxGeometry(bw, bh, bd), [px, FLOOR + py, pz]);
+  const parts = [box(t, h, w, 0, h / 2, w / 2)];
+  for (const side of [-1, 1]) {
+    parts.push(box(0.02, 2.6, w - 0.55, side * (t / 2 + 0.01), 3.65 + 1.3, w / 2),     // upper panel
+               box(0.02, 2.4, w - 0.55, side * (t / 2 + 0.01), 0.4 + 1.2, w / 2),      // lower panel
+               tint(solid(new THREE.CylinderGeometry(0.09, 0.09, 0.02, 14), [side * (t / 2 + 0.005), FLOOR + 3.25, 0.32], [0, 0, Math.PI / 2]), MAT.chrome));
+  }
+  parts.push(tint(box(0.04, 0.24, 0.03, 0, 3.25, -0.015), MAT.brass));                   // the edge pull
+  const g = named('door-pocket', ...parts);
+  g.position.set(x, 0, z0);
+  openable(g, v => { g.position.z = z0 + v * (w - 0.08); });
+  g.userData.setOpen(1);
+  return g;
+}
+
 /* The coat closet's sliding doors: two panels on two tracks, like real
    bypass closet doors. The room-side one slides over the other.
      scene.getObjectByName('door-coat-closet').userData.setOpen(1) */
@@ -626,17 +728,19 @@ function slidingDoor() {
   const a = X(774), b = X(1024), mid = (a + b) / 2, lap = 0.15;
   const y0 = FLOOR + 0.06, y1 = FLOOR + DOOR_H - 0.06;
   const opts = { panes: 1, border: 0.16, depth: 0.1, mat: MAT.track };
-  const handle = solid(new THREE.BoxGeometry(0.06, 0.9, 0.08), [mid + 0.35, FLOOR + 3.4, z0 + t / 2 + 0.2], null, MAT.track);
+  const handle = solid(new THREE.BoxGeometry(0.06, 0.9, 0.08), [mid - lap + 0.35, FLOOR + 3.4, z0 + t / 2 + 0.2], null, MAT.track);
   handle.traverse(o => { if (o.isMesh) o.userData.keep = true; });
   const tracks = [y0 - 0.04, y1 + 0.04].map(y => {
     const tr = solid(new THREE.BoxGeometry(b - a, 0.08, t * 0.7), [mid, y, z0 + t / 2], null, MAT.track);
     tr.traverse(o => { if (o.isMesh) o.userData.keep = true; });
     return tr;
   });
+  // the sliding panel (with the handle) slides over the fixed one: setOpen(1) is wide open
+  const slider = named('door-patio-slide', glazing(place, mid - lap, b, y0, y1, t / 2 + 0.08, opts), handle);
+  openable(slider, v => { slider.position.x = -v * (b - mid - 0.1); });
   return named('door-patio',
     glazing(place, a, mid + lap, y0, y1, t / 2 - 0.08, opts),       // fixed panel, outer track
-    glazing(place, mid - lap, b, y0, y1, t / 2 + 0.08, opts),       // sliding panel, inner track
-    handle, ...tracks);
+    slider, ...tracks);
 }
 
 /* ─── floor, ceilings, roof ─────────────────── */
@@ -985,8 +1089,9 @@ function fire() {
 
 /* A little old-timey sconce on the pillar by the sofa: a brass backplate
    with curls, and a flared cup of Tiffany glass pointing up like a
-   gaudy torch, with a flame-shaped bulb in it. Its light has no shadows
-   (no texture slots left) and only reaches across the sofa. */
+   gaudy torch, with a flame-shaped bulb in it. Both its lights sit in the
+   bulb: a soft spot down onto the sofa and a small one up the pillar to
+   the ceiling. No shadows (no texture slots left). */
 function pillarLamp() {
   const x = X(516.5), z = Z(568), y = FLOOR + 5.1;
   const brass = (geo, p, rot) => tint(solid(geo, p, rot), MAT.brass);
@@ -1000,9 +1105,9 @@ function pillarLamp() {
   const glassMat = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide });
   if (typeof document !== 'undefined') glassMat.map = leadedGlass(); else glassMat.color.set(0x8a6a32);
   glassMat.color.multiplyScalar(1.3);                                        // lit from inside
-  const aura = halo(1.4);
-  if (aura.material) { aura.material.color.set(0xffc27a).multiplyScalar(1.6); aura.scale.set(1.4, 1.4, 1); }   // a warm haze round the glass,
-  aura.position.set(x, y + 0.28, z - 0.8);                                   // just in front of it, so the cup doesn't hide it
+  const aura = halo(0.9);
+  if (aura.material) { aura.material.color.set(0xffc27a).multiplyScalar(1.6); aura.scale.set(0.9, 0.9, 1); }   // a warm haze,
+  aura.position.set(x, y + 0.34, z - 0.4);                                   // in the cup, spilling out the top
   const bulb = new THREE.SphereGeometry(0.05, 10, 8);
   bulb.scale(1, 2.2, 1);
   // its light: a wide soft spot down onto the sofa (a plain bulb this close
@@ -1011,6 +1116,10 @@ function pillarLamp() {
   light.name = 'lamp-pillar-light';
   light.position.set(x, y + 0.24, z - 0.4);                                 // right in the bulb
   light.target.position.set(X(440), FLOOR + 1.2, Z(440));
+  // and like a torch, it throws light up the pillar and onto the ceiling
+  const up = new THREE.SpotLight(LAMP_COLOR, 5, 6, 0.6, 0.8, 2);
+  up.position.copy(light.position);
+  up.target.position.set(x, CEIL, z - 0.4);
   return named('lamp-pillar',
     brass(new THREE.BoxGeometry(0.2, 0.45, 0.04), [x, y, z - 0.02]),                  // backplate
     brass(new THREE.BoxGeometry(0.03, 0.03, 0.36), [x, y - 0.02, z - 0.2]),           // arm
@@ -1019,7 +1128,7 @@ function pillarLamp() {
     brass(new THREE.CylinderGeometry(0.07, 0.05, 0.1, 8), [x, y + 0.03, z - 0.4]),    // collar
     solid(cup, [x, y + 0.24, z - 0.4], null, glassMat),
     glow(bulb, x, y + 0.24, z - 0.4),
-    aura, light, light.target);
+    aura, light, light.target, up, up.target);
 }
 
 // Tiffany glass: three rows of irregular pieces in muted colours, thick dark lead between
@@ -1267,8 +1376,71 @@ function fridge() {
     tint(box(inW - 0.1, 0.9, inD - 0.4, cx, lo + 0.47, back - (inD - 0.4) / 2), MAT.soft),   // crisper
     glow(new THREE.BoxGeometry(0.5, 0.05, 0.2), cx, FLOOR + hi - 0.05, back - 0.4),         // the light
     ...food(back - 0.6),
-    door('fridge-door', 0.03, SPLIT - 0.03, [2.6, 4.1], [0.9, 2.1, 3.3]),
-    door('freezer-door', SPLIT + 0.03, H - 0.02, [SPLIT + 0.2, SPLIT + 0.95], [5.0]));
+    fridgeFront(door('fridge-door', 0.03, SPLIT - 0.03, [2.6, 4.1], [0.9, 2.1, 3.3]), [
+      ['photo', -1.05, 3.65, 0.08, 'beach'], ['photo', -1.75, 3.3, -0.11, 'dog'], ['memo', -1.3, 2.35, 0.04],
+      ['letters', -0.75, 1.45], ['magnet', -2.15, 1.9, 0, 0xc4161c]]),
+    fridgeFront(door('freezer-door', SPLIT + 0.03, H - 0.02, [SPLIT + 0.2, SPLIT + 0.95], [5.0]), [
+      ['drawing', -1.45, 5.35, -0.05], ['magnet', -0.7, 5.6, 0, 0x2f6b45]]));
+}
+
+/* Things stuck on the fridge, added to a door so they swing with it:
+   polaroid photos, a to-do memo, a kid's crayon drawing, round magnets
+   and alphabet magnets. Each picture is a tiny canvas drawn at the start.
+   x and y are on the door's face (x from the hinge, y above the floor). */
+function fridgeFront(door, items) {
+  const z = -0.012;                                        // just in front of the door
+  const card = (w, h, x, y, tilt, draw, fallback) => {
+    const m = surface(0xffffff, 0.8);
+    if (typeof document !== 'undefined') m.map = screenCanvas(Math.round(w * 160), Math.round(h * 160), draw); else m.color.set(fallback);
+    return tint(solid(new THREE.PlaneGeometry(w, h).rotateY(Math.PI), [x, FLOOR + y, z], [0, 0, tilt]), m);
+  };
+  const magnet = (x, y, col) => tint(solid(new THREE.CylinderGeometry(0.045, 0.045, 0.03, 10).rotateX(Math.PI / 2), [x, FLOOR + y, z - 0.02]), surface(col, 0.4));
+  const pictures = {
+    beach: g => {
+      g.fillStyle = '#7fb3d9'; g.fillRect(6, 6, 52, 30); g.fillStyle = '#e3cf98'; g.fillRect(6, 36, 52, 20);
+      g.fillStyle = '#c4161c'; g.fillRect(22, 26, 5, 14); g.fillStyle = '#1f3a8a'; g.fillRect(33, 24, 5, 16);
+      g.fillStyle = '#f2c38a'; g.beginPath(); g.arc(24.5, 23, 3, 0, 7); g.arc(35.5, 21, 3, 0, 7); g.fill();
+    },
+    dog: g => {
+      g.fillStyle = '#4f7a3a'; g.fillRect(6, 6, 54, 58); g.fillStyle = '#7a4a26';
+      g.beginPath(); g.ellipse(32, 42, 14, 9, 0, 0, 7); g.fill(); g.beginPath(); g.arc(44, 30, 7, 0, 7); g.fill();
+      g.fillStyle = '#111'; g.fillRect(45, 28, 2, 2);
+    }
+  };
+  for (const [kind, x, y, tilt = 0, extra] of items) {
+    if (kind === 'photo') {
+      door.add(card(0.4, 0.48, x, y, tilt, g => {
+        g.fillStyle = '#f4f2ea'; g.fillRect(0, 0, 64, 77);                // the polaroid's white border
+        g.fillStyle = '#222'; g.fillRect(6, 6, 52, 50);
+        pictures[extra](g);
+      }, 0xd8d0c0), magnet(x, y + 0.22, 0xf0c020));
+    } else if (kind === 'memo') {
+      door.add(card(0.55, 0.75, x, y, tilt, g => {
+        g.fillStyle = '#f6e58a'; g.fillRect(0, 0, 88, 120);
+        g.strokeStyle = '#9fb7d8'; for (let ly = 24; ly < 116; ly += 11) { g.beginPath(); g.moveTo(4, ly); g.lineTo(84, ly); g.stroke(); }
+        g.fillStyle = '#1f3a8a'; g.font = 'bold 11px cursive'; g.fillText('TO DO', 24, 15);
+        g.font = '9px cursive';
+        ['milk', 'eggs', 'bread', 'call mom', 'fix closet door', 'who moved', 'the chair??'].forEach((l, i) => g.fillText(l, 8, 33 + i * 11));
+        g.strokeStyle = '#1f3a8a'; g.beginPath(); g.moveTo(6, 42); g.lineTo(34, 42); g.stroke();       // eggs, crossed out
+      }, 0xf6e58a), magnet(x, y + 0.36, 0x1f3a8a));
+    } else if (kind === 'drawing') {
+      door.add(card(0.62, 0.46, x, y, tilt, g => {
+        g.fillStyle = '#fbfbf6'; g.fillRect(0, 0, 99, 74);
+        g.strokeStyle = '#c4161c'; g.lineWidth = 3; g.strokeRect(30, 34, 34, 28);       // a crayon house
+        g.beginPath(); g.moveTo(26, 36); g.lineTo(47, 16); g.lineTo(68, 36); g.stroke();
+        g.fillStyle = '#f0c020'; g.beginPath(); g.arc(84, 14, 8, 0, 7); g.fill();          // the sun
+        g.fillStyle = '#4f7a3a'; g.fillRect(0, 64, 99, 10);
+        g.strokeStyle = '#222'; g.lineWidth = 2; g.beginPath(); g.moveTo(14, 64); g.lineTo(14, 48); g.stroke();   // someone by the house
+        g.beginPath(); g.arc(14, 44, 4, 0, 7); g.stroke();
+      }, 0xfbfbf6), magnet(x - 0.25, y + 0.2, 0xc4161c), magnet(x + 0.25, y + 0.2, 0x1f7a7a));
+    } else if (kind === 'letters') {
+      [[0xc4161c, 0], [0x1f7a7a, 0.13], [0xf0c020, 0.26], [0x5d3a6b, 0.39]].forEach(([col, dx], i) =>
+        door.add(tint(solid(new THREE.BoxGeometry(0.1, 0.13, 0.03), [x - dx, FLOOR + y + (i % 2) * 0.03, z - 0.015], [0, 0, (i - 1.5) * 0.12]), surface(col, 0.4))));
+    } else if (kind === 'magnet') {
+      door.add(magnet(x, y, extra));
+    }
+  }
+  return door;
 }
 
 // Open shelves against a wall: an upright at each end, boards up to h,
@@ -1740,16 +1912,25 @@ function showerGlass() {
     return m;
   };
   const bar = (w, ht, d, x, y, z) => tint(solid(new THREE.BoxGeometry(w, ht, d), [x, y, z]), MAT.brass);
-  const n = Z(985), e = X(460), w0 = X(322);
+  const n = Z(985), e = X(460), w0 = X(322), xd = X(398);
   const ns = Z(987), ne = Z(1066);
+  // the door: hinged on the post at xd, swinging out into the bathroom
+  const dw = e - xd - 0.06, yc = (y0 + y1) / 2;
+  const door = named('door-shower',
+    pane(dw - 0.08, dw / 2, 0, 0),
+    bar(0.06, h, 0.06, dw - 0.03, yc, 0), bar(dw, 0.06, 0.06, dw / 2, y1 - 0.06, 0), bar(dw, 0.05, 0.06, dw / 2, y0 + 0.06, 0),
+    bar(0.05, 0.8, 0.26, dw - 0.25, FLOOR + 3.6, 0));                                      // handle
+  door.position.set(xd + 0.03, 0, n);
+  openable(door, v => { door.rotation.y = v * 1.5; });
   return named('shower-glass',
-    pane(e - w0, (w0 + e) / 2, n, 0),
+    pane(xd - w0, (w0 + xd) / 2, n, 0),
     pane(ne - ns, e, (ns + ne) / 2, Math.PI / 2),
-    // frames: posts at the ends and the corner, rails top and bottom
-    bar(0.08, h, 0.08, w0, (y0 + y1) / 2, n), bar(0.08, h, 0.08, e, (y0 + y1) / 2, n), bar(0.08, h, 0.08, e, (y0 + y1) / 2, ne),
-    bar(e - w0, 0.08, 0.08, (w0 + e) / 2, y1, n), bar(e - w0, 0.06, 0.08, (w0 + e) / 2, y0 + 0.03, n),
+    // frames: posts at the ends, by the door and in the corner; rails top and bottom
+    bar(0.08, h, 0.08, w0, yc, n), bar(0.08, h, 0.08, xd, yc, n), bar(0.08, h, 0.08, e, yc, n), bar(0.08, h, 0.08, e, yc, ne),
+    bar(xd - w0, 0.08, 0.08, (w0 + xd) / 2, y1, n), bar(xd - w0, 0.06, 0.08, (w0 + xd) / 2, y0 + 0.03, n),
+    bar(e - xd, 0.08, 0.08, (xd + e) / 2, y1 + 0.08, n),                                  // header over the door
     bar(0.08, 0.08, ne - ns, e, y1, (ns + ne) / 2), bar(0.08, 0.06, ne - ns, e, y0 + 0.03, (ns + ne) / 2),
-    bar(0.05, 0.8, 0.26, X(442), FLOOR + 3.6, n));                                         // door handle
+    door);
 }
 
 // a tile of fine grain, as heights (it wraps)
@@ -1810,47 +1991,72 @@ function laundry() {
   );
 }
 
-// up on the laundry shelf: a jug of YEP detergent and a green laundry basket of folded clothes
+// up on the laundry shelf: bottles of Tried and YEP, and a green laundry basket of folded clothes
 function laundryShelf() {
   const y = FLOOR + 5.4;
-  return [...detergent(X(636), y, Z(830)), ...laundryBasket(X(724), y, Z(842))];
+  return [...detergent(X(624), y, Z(829), DETERGENTS.tried), ...detergent(X(651), y, Z(829), DETERGENTS.yep),
+    ...laundryBasket(X(724), y, Z(842))];
 }
 
-/* A big blue detergent jug: rounded body with a hole for the handle on
-   one side, a big ridged cap, and a label (YEP, 2 in One, a price tag). */
-function detergent(x0, y0, zBack) {
-  const W = 0.62, H = 0.98, T = 0.3, blue = surface(0x1f3a8a, 0.35);
-  const body = new THREE.Shape();
-  body.moveTo(0, 0); body.lineTo(W, 0); body.lineTo(W, 0.84);
-  body.quadraticCurveTo(W, H, W - 0.14, H); body.lineTo(0.12, H);
-  body.quadraticCurveTo(0, H, 0, 0.84); body.lineTo(0, 0);
-  const grip = new THREE.Path();                                         // the handle hole
-  grip.absarc(W - 0.14, 0.48, 0.05, Math.PI, 0, true); grip.lineTo(W - 0.09, 0.78);
-  grip.absarc(W - 0.14, 0.78, 0.05, 0, Math.PI, true); grip.lineTo(W - 0.19, 0.48);
-  body.holes.push(grip);
-  const geo = new THREE.ExtrudeGeometry(body, { depth: T, bevelEnabled: true, bevelThickness: 0.04, bevelSize: 0.04, bevelSegments: 3, curveSegments: 8 });
-  geo.translate(x0, y0 + 0.04, zBack + 0.04);
+/* A liquid detergent bottle, built from its front outline: a tall body,
+   a collar and a big ridged cap at the top left, the top sloping down to
+   the right into a handle loop with a hole right through it, and a label
+   on the front. look = { body, cap, label: (g) => draws the label }. */
+function detergent(x0, y0, zBack, look) {
+  const W = 0.56, H = 0.95, T = 0.34;
+  const sh = new THREE.Shape();
+  sh.moveTo(0.05, 0); sh.lineTo(W - 0.05, 0); sh.quadraticCurveTo(W, 0, W, 0.05);
+  sh.lineTo(W, 0.68); sh.quadraticCurveTo(W, 0.76, W - 0.07, 0.78);        // top of the handle
+  sh.lineTo(0.6 * W, H - 0.02);                                              // the shoulder, sloping up to the neck
+  sh.lineTo(0.08, H); sh.quadraticCurveTo(0, H, 0, H - 0.08);
+  sh.lineTo(0, 0.05); sh.quadraticCurveTo(0, 0, 0.05, 0);
+  const grip = new THREE.Path();                                             // the hole you put your hand through
+  const gx = 0.78 * W, r = 0.058;
+  grip.absarc(gx, 0.34, r, Math.PI, 0, false); grip.lineTo(gx + r, 0.62);
+  grip.absarc(gx, 0.62, r, 0, Math.PI, false); grip.lineTo(gx - r, 0.34);
+  sh.holes.push(grip);
+  const geo = new THREE.ExtrudeGeometry(sh, { depth: T, bevelEnabled: true, bevelThickness: 0.035, bevelSize: 0.03, bevelSegments: 3, curveSegments: 8 });
+  geo.translate(x0, y0 + 0.03, zBack + 0.035);
   const label = surface(0xffffff, 0.6);
-  if (typeof document !== 'undefined') label.map = screenCanvas(64, 96, g => {
-    g.fillStyle = '#16245e'; g.fillRect(0, 0, 64, 96);
-    for (const [c, k] of [['#f08a1c', 0], ['#f6b21c', 8], ['#e85c1a', 16]]) {   // orange stripes
-      g.fillStyle = c; g.beginPath(); g.moveTo(10 + k, 52); g.lineTo(34 + k, 6); g.lineTo(42 + k, 6); g.lineTo(18 + k, 52); g.fill();
-    }
-    g.fillStyle = '#f6e04a'; g.fillRect(2, 12, 26, 11);                   // price tag
-    g.fillStyle = '#c4161c'; g.font = 'bold 9px sans-serif'; g.fillText('$3.29', 3, 21);
-    g.fillStyle = '#f6e04a'; g.font = 'bold 8px sans-serif'; g.fillText('2 in One', 4, 44);
-    g.fillStyle = '#ffffff'; g.font = 'bold 25px sans-serif'; g.fillText('YEP', 6, 74);
-    g.font = '6px sans-serif'; g.fillText('ULTRA  50 OZ', 10, 86);
-  });
-  else label.color.set(0x16245e);
-  const cap = new THREE.CylinderGeometry(0.12, 0.12, 0.15, 18);
+  if (typeof document !== 'undefined') label.map = screenCanvas(64, 72, look.label); else label.color.set(0x16245e);
+  const capX = x0 + 0.34 * W, zMid = zBack + 0.035 + T / 2;
   return [
-    tint(solid(geo), blue),
-    tint(solid(new THREE.PlaneGeometry(0.4, 0.6), [x0 + 0.24, y0 + 0.45, zBack + T + 0.085]), label),
-    tint(solid(new THREE.CylinderGeometry(0.09, 0.1, 0.06, 14), [x0 + 0.2, y0 + H + 0.11, zBack + 0.04 + T / 2]), blue),   // neck
-    tint(solid(cap, [x0 + 0.2, y0 + H + 0.22, zBack + 0.04 + T / 2]), blue)
+    tint(solid(geo), look.body),
+    tint(solid(new THREE.PlaneGeometry(0.4, 0.45), [x0 + 0.29 * W, y0 + 0.36, zBack + T + 0.075]), label),
+    tint(solid(new THREE.CylinderGeometry(0.15, 0.16, 0.07, 20), [capX, y0 + H + 0.06, zMid]), look.body),      // collar
+    tint(solid(new THREE.CylinderGeometry(0.135, 0.135, 0.2, 12), [capX, y0 + H + 0.19, zMid]), look.cap)        // ridged cap
   ];
 }
+
+const DETERGENTS = {
+  tried: {                                     // orange, navy cap, a yellow bullseye, TRIED
+    body: surface(0xe0601c, 0.4), cap: surface(0x1c2240, 0.5),
+    label: g => {
+      g.fillStyle = '#e0601c'; g.fillRect(0, 0, 64, 72);
+      for (const [rad, col] of [[34, '#f08a1c'], [26, '#f6c21c'], [18, '#fbe6a0'], [10, '#f6c21c']]) {
+        g.fillStyle = col; g.beginPath(); g.arc(34, 38, rad, 0, 7); g.fill();
+      }
+      g.fillStyle = '#1c2a78'; g.font = 'bold italic 8px sans-serif'; g.fillText('LIQUID', 6, 26);
+      g.font = 'bold italic 21px sans-serif'; g.lineWidth = 3; g.strokeStyle = '#ffffff';
+      g.strokeText('Tried', 3, 50); g.fillText('Tried', 3, 50);
+      g.font = '5px sans-serif'; g.fillText('LAUNDRY DETERGENT', 8, 62);
+    }
+  },
+  yep: {                                       // navy blue, orange stripes, a price tag, YEP
+    body: surface(0x1f3a8a, 0.4), cap: surface(0x1f3a8a, 0.45),
+    label: g => {
+      g.fillStyle = '#16245e'; g.fillRect(0, 0, 64, 72);
+      for (const [c, k] of [['#f08a1c', 0], ['#f6b21c', 8], ['#e85c1a', 16]]) {
+        g.fillStyle = c; g.beginPath(); g.moveTo(10 + k, 40); g.lineTo(30 + k, 4); g.lineTo(38 + k, 4); g.lineTo(18 + k, 40); g.fill();
+      }
+      g.fillStyle = '#f6e04a'; g.fillRect(2, 8, 26, 10);
+      g.fillStyle = '#c4161c'; g.font = 'bold 8px sans-serif'; g.fillText('$3.29', 3, 16);
+      g.fillStyle = '#f6e04a'; g.font = 'bold 7px sans-serif'; g.fillText('2 in One', 4, 36);
+      g.fillStyle = '#ffffff'; g.font = 'bold 22px sans-serif'; g.fillText('YEP', 6, 60);
+      g.font = '5px sans-serif'; g.fillText('ULTRA  50 OZ', 10, 69);
+    }
+  }
+};
 
 /* A green plastic laundry basket: sloped sides, each a grid of square
    holes in panels, a rolled lip round the top, and folded clothes stacked
@@ -2280,11 +2486,11 @@ function pullBulb(lamps, name, cx, cy, intensity) {
    soft edges that fades out just past the floor, so it makes a pool of
    light without shining through walls (no texture slots left for a
    shadowed one). */
-function ceilingLight(name, cx, cy) {
+function ceilingLight(name, cx, cy, intensity = 70) {
   const x = X(cx), z = Z(cy);
   const dome = new THREE.SphereGeometry(0.42, 16, 4, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2);
   dome.scale(1, 0.45, 1);
-  const light = new THREE.SpotLight(LAMP_COLOR, 70, 9, 0.34, 0.6, 2);    // fades out just past the floor
+  const light = new THREE.SpotLight(LAMP_COLOR, intensity, 9, 0.36, 0.5, 2);    // fades out just past the floor
   light.name = name + '-light';
   light.position.set(x, CEIL - 0.25, z);
   light.target.position.set(x, FLOOR, z);
@@ -2307,7 +2513,7 @@ function roomLamps(lamps) {
     endTable('end-table', 345, 400, 248, 294, 1.9),
     tableLamp(lamps, 'lamp-sofa', 372, 271, 1.9, 22),
     pullBulb(lamps, 'lamp-laundry', 710, 898, 26),
-    ceilingLight('lamp-pantry', 1155, 724),
+    ceilingLight('lamp-pantry', 1155, 724, 200),
     ceilingLight('lamp-toilet', 365, 905),          // over the toilet
     // bathroom: a light bar above the mirror
     named('lamp-bathroom',
@@ -2502,7 +2708,8 @@ function paint(scene) {
   set('fridge', MAT.steel);
   set('washer', MAT.appliance);
   set('dryer', MAT.appliance);
-  for (const n of ['toilet', 'shower']) set(n, MAT.porcelain);
+  set('shower', MAT.porcelain);
+  set('toilet', MAT.toilet);
   set('vanity', MAT.furniture);                          // oak cabinet (its top and sink keep their own)
   set('closet-shelves', MAT.trim);
   parts('tree', MAT.bark, MAT.leaves);
@@ -2511,6 +2718,7 @@ function paint(scene) {
   set('streetlight', MAT.pole);
   parts('mailbox', MAT.furniture, MAT.dark, MAT.frontDoor);  // wood post, black box, red flag
   set('door-closet', MAT.trim);                          // white accordion door
+  set('door-pocket', MAT.trim);                          // white pocket door
   set('kitchen-sink', MAT.steel);
   set('cooktop', MAT.dark);
   for (const n of ['lamp-foyer', 'lamp-living', 'lamp-master', 'lamp-master-2', 'lamp-sofa', 'lamp-porch']) set(n, MAT.dark);   // shades keep glowing
