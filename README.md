@@ -310,11 +310,10 @@ refresh, independently of the 29.97 Hz NTSC frame clock. Receiver state advances
 on that signal clock; there are no decorative scanlines or scripted picture warps. Tone mapping uses
 Three.js ACES to convert scene radiance into source video levels.
 
-At `?debug`, `crazyhouse.analog.controls` exposes `bandwidthMHz`, `noise`,
-`interference`, and `automatic`. Noise and automatic bursts default off.
+At `?debug`, `crazyhouse.analog.controls` exposes `receiverOverrides.bandwidth`,
+`noise`, and `interference`. Noise defaults off.
 Interference adds a continuous oscillator to the waveform before sync
-recovery and decoding. `crazyhouse.analog.disturb(0.6)` injects a brief
-burst. Set `controls.injection` to another Three.js waveform texture and
+recovery and decoding. Set `controls.injection` to another Three.js waveform texture and
 `controls.injectionGain` to its voltage mixing gain; red represents signal
 voltage with the same scanline layout. Set injection to null to disconnect.
 Use `?debug&interference=0.7` to inspect steady signal interference.

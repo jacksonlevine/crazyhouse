@@ -11,7 +11,7 @@ import { createGhoul } from './ghoul.js?v=12';
 import { createGhostPass, GHOST_LAYER } from './ghost.js?v=4';
 import { createTv } from './tv.js?v=8';
 import { openSignalURL } from './signal-clip.js?v=7';
-import { createAnalogPass } from './analog.js?v=24';
+import { createAnalogPass } from './analog.js?v=25';
 
 
 const $ = id => document.getElementById(id);
@@ -290,7 +290,7 @@ function quit() {
   state = 'title';
   tv.pause();
   analog.heldSignals.clear();
-  frame.classList.remove('playing', 'cut');
+  frame.classList.remove('playing');
 }
 
 /* ─── input ─────────────────────────────────── */

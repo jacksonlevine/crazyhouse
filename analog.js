@@ -48,7 +48,7 @@ export function createAnalogPass(renderer,{videoSource=null,onFrame=null,receive
     const receiver=lowPassWeights(controls.receiverChromaMHz,315/88*4,controls.receiverTaps,33);
     chromaWeights.forEach((v,i)=>v.set(2*receiver[i]*Math.cos((i-16)*Math.PI/2),2*receiver[i]*Math.sin((i-16)*Math.PI/2)));
   }
-  const uniforms = {sourceSetup:{value:7.5},sourceChromaGain:{value:1},notchSpacing:{value:2}, sourceWeights:{value:sourceWeights},chromaWeights:{value:chromaWeights}, videoMode:{value:videoSource?1:0}, videoSource:{value:videoSource??picture.texture}, picture:{value:picture.texture}, source:{value:filtered.texture}, channelBandwidth:{value:0}, signal:{value:signal.texture}, injection:{value:picture.texture}, injectionGain:{value:0}, time:{value:0}, interference:{value:0}, noise:{value:0.004}, timing:{value:timingTexture}, humGain:{value:0}, testGain:{value:1}, exposure:{value:0.75}, monochrome:{value:0}, humPhase:{value:0}, frameParity:{value:0}, comb:{value:0}, colorKiller:{value:1}, receiverSetup:{value:7.5}, clipPrevious:{value:picture.texture}, clipHasPrevious:{value:0}, clipPreviousStart:{value:-1e20}, clipCurrent:{value:picture.texture}, clipNext:{value:picture.texture}, clipEnabled:{value:0}, clipHasNext:{value:0}, clipGain:{value:0}, clipOffset:{value:0}, clipRatio:{value:1}, clipNextStart:{value:1e20}, clipEnd:{value:1e20}, clipSamples:{value:1}, clipWidth:{value:1}, clipLines:{value:480}, clipFilter:{value:clipFilter} };
+  const uniforms = {sourceSetup:{value:7.5},sourceChromaGain:{value:1},notchSpacing:{value:2}, sourceWeights:{value:sourceWeights},chromaWeights:{value:chromaWeights}, videoMode:{value:videoSource?1:0}, videoSource:{value:videoSource??picture.texture}, picture:{value:picture.texture}, source:{value:filtered.texture},  signal:{value:signal.texture}, injection:{value:picture.texture}, injectionGain:{value:0}, time:{value:0}, interference:{value:0}, noise:{value:0.004}, timing:{value:timingTexture}, humGain:{value:0}, testGain:{value:1}, exposure:{value:0.75}, monochrome:{value:0}, humPhase:{value:0}, frameParity:{value:0}, comb:{value:0}, colorKiller:{value:1}, receiverSetup:{value:7.5}, clipPrevious:{value:picture.texture}, clipHasPrevious:{value:0}, clipPreviousStart:{value:-1e20}, clipCurrent:{value:picture.texture}, clipNext:{value:picture.texture}, clipEnabled:{value:0}, clipHasNext:{value:0}, clipGain:{value:0}, clipOffset:{value:0}, clipRatio:{value:1}, clipNextStart:{value:1e20}, clipEnd:{value:1e20}, clipSamples:{value:1}, clipWidth:{value:1}, clipLines:{value:480}, clipFilter:{value:clipFilter} };
   const material = fragmentShader => new THREE.ShaderMaterial({uniforms, vertexShader:VERT, fragmentShader, depthTest:false, depthWrite:false, toneMapped:false});
   const prepare = material(`
     uniform sampler2D picture,videoSource;uniform float videoMode;
@@ -181,10 +181,9 @@ export function createAnalogPass(renderer,{videoSource=null,onFrame=null,receive
   const scene=new THREE.Scene(); scene.add(quad);
   const camera=new THREE.OrthographicCamera(-1,1,1,-1,0,1);
   const defaults=Object.freeze({lumaMHz:4.2,chromaMHz:1.3,sourceTaps:49,receiverChromaMHz:1.3,receiverTaps:33,sourceSetup:7.5,sourceChromaGain:1,notchSpacing:2,sceneScale:1,displayWidth:true,sourceLinear:true,waveLinear:true,outputLinear:true});
-  const controls={...defaults,receiverOverrides:{},noise:0, bandwidthMHz:0, interference:0, automatic:false, injection:null, injectionGain:0, testGain:1, automaticHum:true, automaticHumGain:0.15, monochrome:false};
+  const controls={...defaults,receiverOverrides:{},noise:0,  interference:0,  injection:null, injectionGain:0, testGain:1, automaticHum:true, automaticHumGain:0.15, monochrome:false};
   const heldSignals = new Set();
   let clip=null;
-  let burstUntil=0, nextBurst=performance.now()/1000+12;
   // Alternate quiet gaps and live mains injection; both last 1–5 seconds.
   let humOn=false, nextHumChange=performance.now()/1000+1+Math.random()*4;
   let signalEpoch=null,inFlight=0,stalledTime=null,stalledAt=0;
@@ -204,8 +203,6 @@ export function createAnalogPass(renderer,{videoSource=null,onFrame=null,receive
     const clock=gameSignalClock(seconds,signalEpoch);
     const signalFrame=Math.max(0,clock.frame);
     const waveformSeconds=signalEpoch+signalFrame*W*525/GAME_SIGNAL.sampleRate;
-    if(controls.automatic && seconds>=nextBurst){burstUntil=seconds+0.65;nextBurst=seconds+18+Math.random()*25;}
-    const burst=Math.max(0,Math.min(1,(burstUntil-seconds)/0.18));
     if (!controls.automaticHum) {
       humOn=false;
       nextHumChange=seconds+1+Math.random()*4;
@@ -243,7 +240,7 @@ export function createAnalogPass(renderer,{videoSource=null,onFrame=null,receive
     uniforms.injectionGain.value=controls.injection ? controls.injectionGain : 0;
     uniforms.noise.value=controls.noise;
     uniforms.frameParity.value=signalFrame%2;
-    uniforms.interference.value=Math.max(controls.interference,burst*0.65);
+    uniforms.interference.value=controls.interference;
     const target=renderer.getRenderTarget();
     quad.material=prepare;renderer.setRenderTarget(source);renderer.render(scene,camera);
     quad.material=bandlimit;renderer.setRenderTarget(filtered);renderer.render(scene,camera);
@@ -252,7 +249,6 @@ export function createAnalogPass(renderer,{videoSource=null,onFrame=null,receive
     inFlight++;
     const started=performance.now();
     const parameters={...receiverParameters,...(clip?.manifest.receiverParameters??{}),...controls.receiverOverrides,frame:signalFrame};
-    if(controls.bandwidthMHz>0)parameters.bandwidth=controls.bandwidthMHz;
     const readback=renderer.readRenderTargetPixelsAsync(signal,0,0,PACKED_W,SIGNAL_H,readbackPool.pop());
     // Two bounded readbacks overlap fence polling with the next screen refresh.
     // Receiver work stays ordered even if GPU fences complete out of order.
@@ -307,7 +303,7 @@ export function createAnalogPass(renderer,{videoSource=null,onFrame=null,receive
     const outputFilter=controls.outputLinear?THREE.LinearFilter:THREE.NearestFilter;
     if(decoded.texture.magFilter!==outputFilter){decoded.dispose();decoded.texture.minFilter=decoded.texture.magFilter=outputFilter;}
   }
-  function resetParameters(){Object.assign(controls,defaults,{receiverOverrides:{},noise:0,bandwidthMHz:0,interference:0,testGain:1,automaticHum:true,automaticHumGain:.15});setSize(displaySize.width,displaySize.height);}
+  function resetParameters(){Object.assign(controls,defaults,{receiverOverrides:{},noise:0,interference:0,testGain:1,automaticHum:true,automaticHumGain:.15});setSize(displaySize.width,displaySize.height);}
   function getReceiverParameters(){return {gain:1,bias:0,headroom:0,noise:0,slew:0,bandwidth:0,comb:false,clamp:true,colorKiller:true,autoSlice:true,threshold:-.12,tracking:.8,colorTracking:.5,holdPPM:0,setupIRE:7.5,...receiverParameters,...(clip?.manifest.receiverParameters??{}),...controls.receiverOverrides};}
-  return {picture, controls, render, heldSignals, setClip, setSize, resetParameters, getReceiverParameters, defaults, stats, get clip(){return clip;}, disturb(seconds=0.6){burstUntil=performance.now()/1000+seconds;}};
+  return {picture, controls, render, heldSignals, setClip, setSize, resetParameters, getReceiverParameters, defaults, stats, get clip(){return clip;}};
 }

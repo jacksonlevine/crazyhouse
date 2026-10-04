@@ -182,17 +182,6 @@ canvas {
   filter: drop-shadow(0 0 2px #000);
 }
 
-/* ─── switching cams: a quick drop to black ─── */
-.cut-flash {
-  position: absolute;
-  inset: 0;
-  background: #000;
-  opacity: 0;
-  pointer-events: none;
-}
-.cut .cut-flash { animation: cut 0.22s steps(3, jump-none); }
-@keyframes cut { from { opacity: 1; } to { opacity: 0; } }
-
 /* ─── no WebGL ──────────────────────────────── */
 .no-gl-msg {
   display: none;
