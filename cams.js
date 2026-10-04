@@ -11,7 +11,7 @@
    positions when it tests ghoul1's stare.
    ============================================================ */
 
-import { CEIL } from './world.js?v=16';
+import { CEIL } from './world.js?v=17';
 
 const HIGH = CEIL - 0.4;
 

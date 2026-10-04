@@ -139,10 +139,14 @@ table, a fire in the wood stove, a gaudy little Tiffany glass sconce in
 muted leaded glass on the pillar by the sofa, teal and plum counter stools with
 chrome posts, almond countertops, an oak vanity with an oval sink and
 brass knobs, frosted glass in a brass shower frame, a mauve bathmat,
-flannel and denim in the walk-in closet, a full bookshelf facing the bed
-and a dusty rose chaise under the bedroom window. The rug pattern, the
-Tiffany glass, the newspaper's front page and the shower glass's grain
-are tiny pictures drawn by the game when it starts, not image files.
+flannel and denim and a couple of shoeboxes in the walk-in closet,
+detergent and a basket of laundry on the shelf over the machines, a full
+bookshelf facing the bed, and a messy computer desk under the bedroom
+window: two beige CRTs (a DOS prompt and a teal desktop), a beige tower,
+an office chair, an ashtray full of butts and empty cans of Diet Choke. The rug pattern, the
+Tiffany glass, the newspaper's front page, the monitor screens, the can
+labels and the shower glass's grain are tiny pictures drawn by the game
+when it starts, not image files.
 
 **The fire** (`woodStove()` and `fire()`): the stove is hollow, with
 firebrick inside, and two crossed logs (and one behind) sit on a grate
@@ -170,12 +174,14 @@ walls, a red front door, and so on. They're all in `MAT` near the top of
 - **Lamps** (`roomLamps()` in `world.js`): a floor lamp in the foyer, a
   table lamp in the living room, pendants over the dining table and the
   kitchen island, a lamp on an end table by the sectional, both
-  nightstand lamps in the master, a bare bulb in the
-  laundry, a light bar over the bathroom mirror, a lantern on the patio,
+  nightstand lamps in the master, a bare bulb on a cord with a pull
+  string in the laundry that sways very gently (`pullBulb()`; only the
+  bulb moves, the light stays put so its shadows never need redrawing), a light bar over the bathroom mirror, a lantern on the patio,
   a lantern on the front porch.
 - **Outside:** a road past the front of the house with curbs and a
-  dashed yellow line (`road()`), a tall streetlight at the curb that
-  reaches up onto the roof (`streetlight()`), soft moonlight, and a
+  dashed yellow line (`road()`), a tall streetlight at the curb whose
+  arm reaches out over the road, its wide cone tipped back enough to
+  catch the yard and the front of the house (`streetlight()`), soft moonlight, and a
   faint fill that keeps dark corners dim rather than pitch black
   (`sky()`).
 - **Sky:** stars, a moon high up where the moonlight comes from

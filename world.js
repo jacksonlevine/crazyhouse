@@ -132,7 +132,6 @@ export const MAT = {
   mauve:     surface(0x9c6b7a, 1),       // fuzzy bathmat
   brass:     metal(0xb8963e, 0.35),      // shower frame, knobs
   chrome:    metal(0xd0d4d8, 0.25),      // taps, stools, closet rods
-  rose:      surface(0x8f5f63, 0.9),     // dusty rose chaise
   counter:   surface(0xcfc6b2, 0.6),     // almond laminate countertops
   cabShelf:  surface(0xcdb98f, 0.8),     // pale wood inside the cabinets
   cabInside: surface(0xd8c7a3, 0.8, THREE.BackSide),   // cabinet insides (drawn inside out)
@@ -488,10 +487,10 @@ function walls() {
   add('v', 419, 428, [740, 902], [731, 902]);                                                   // storage, east
   add('h', 853, 861, [315, 419]);                                                               // storage, south
   add('h', 810, 825, [428, 807], null, [door(438, 511)]);                                       // bathroom + laundry, north
-  add('v', 605, 614, [825, 1068], null, [door(830, 979)]);                                      // bathroom | laundry
+  add('v', 605, 614, [825, 1068], null, [door(902, 980)]);                                      // bathroom | laundry: a regular doorway
 
   // master, kitchen, pantry
-  add('v', 807, 815, [715, 1068], [724, 1068], [door(732, 805), door(830, 979)]);               // master, west
+  add('v', 807, 815, [715, 1068], [724, 1068], [door(732, 805), door(902, 980)]);               // master, west (and the laundry doorway)
   add('h', 715, 724, [807, 1063], [815, 1063]);                                                 // kitchen | master
   add('v', 1063, 1072, [661, 789], [669, 780]);                                                 // pantry, west
   add('h', 661, 669, [1063, 1237], [1072, 1237], [door(1078, 1162)]);                           // pantry, north: door, clear of the counter
@@ -1341,7 +1340,7 @@ function master() {
     ),
     named('nightstands', block(875, 925, 1022, 1068, 2.1), block(1075, 1125, 1022, 1068, 2.1)),
     bookshelf(),
-    chaise(),
+    computerDesk(),
     named('round-table', round(1206, 846, 0.6, 1.9, 1.84, 14), round(1206, 846, 0.08, 1.84, 0.1, 8), round(1206, 846, 0.35, 0.1, 0, 12),
       tint(block(1196, 1214, 838, 852, 1.98, 1.9), MAT.flannel))          // a book on it
   );
@@ -1391,28 +1390,147 @@ function bookshelf() {
   return named('bookshelf', ...parts);
 }
 
-/* A chaise lounge under the bedroom window: one long dusty rose seat
-   with a sloped, rolled back at the head end, turned legs, a bolster,
-   and a throw folded over the foot. */
-function chaise() {
-  const x0 = X(1172), x1 = X(1232), z0 = Z(870), L = Z(1030) - z0, W = x1 - x0;
-  const side = new THREE.Shape();                    // the side profile: v from the head, y up
-  side.moveTo(0, 0.35); side.lineTo(L, 0.35); side.lineTo(L, 1.45);
-  side.lineTo(1.0, 1.45);
-  side.quadraticCurveTo(0.35, 1.5, 0.2, 2.5);        // up the back
-  side.quadraticCurveTo(0.12, 2.8, -0.12, 2.62);     // rolled over the top
-  side.lineTo(0, 0.35);
-  const body = remap(new THREE.ExtrudeGeometry(side, { depth: W, bevelEnabled: true, bevelThickness: 0.05, bevelSize: 0.05, bevelSegments: 2, curveSegments: 10 }),
-    (v, y, d) => [x0 + d, FLOOR + y, z0 + v]);
-  const leg = (x, z) => tint(solid(new THREE.CylinderGeometry(0.07, 0.04, 0.35, 8), [x, FLOOR + 0.175, z]), MAT.furniture);
-  const bolster = new THREE.CylinderGeometry(0.24, 0.24, W - 0.2, 14);
-  bolster.rotateZ(Math.PI / 2);
-  return named('chaise',
-    tint(solid(body), MAT.rose),
-    leg(x0 + 0.15, z0 + 0.15), leg(x1 - 0.15, z0 + 0.15), leg(x0 + 0.15, z0 + L - 0.15), leg(x1 - 0.15, z0 + L - 0.15),
-    tint(solid(bolster, [(x0 + x1) / 2, FLOOR + 1.72, z0 + 0.75]), MAT.cream),
-    tint(solid(new THREE.BoxGeometry(W + 0.06, 0.08, 0.9), [(x0 + x1) / 2, FLOOR + 1.53, z0 + L - 0.65]), MAT.plum),   // the throw,
-    tint(solid(new THREE.BoxGeometry(0.06, 0.65, 0.9), [x0 - 0.06, FLOOR + 1.2, z0 + L - 0.65]), MAT.plum));            // hanging off the side
+/* A 90s computer desk under the bedroom window: a drawer pedestal, a
+   pull-out keyboard tray, two beige CRT monitors (one at a DOS prompt, one
+   on a teal desktop), a beige tower on the floor, keyboard, mouse and pad,
+   an office chair, and a mess: an ashtray of cigarette butts, more butts
+   about, and empty cans of Diet Choke. Screens and can labels are tiny
+   pictures drawn at the start. */
+function computerDesk() {
+  const x0 = X(1172), x1 = X(1232), z0 = Z(875), z1 = Z(1025), top = FLOOR + 2.5;
+  const zc = (z0 + z1) / 2, beige = surface(0xd9d0b8, 0.7), keys = surface(0xb9b09a, 0.8);
+  const box = (w, h, d, x, y, z, mat, rot) => {
+    const b = solid(new THREE.BoxGeometry(w, h, d), [x, y, z], rot);
+    return mat ? tint(b, mat) : b;
+  };
+  const cyl = (r, h, x, y, z, mat, rot, segs = 10) => tint(solid(new THREE.CylinderGeometry(r, r, h, segs), [x, y, z], rot), mat);
+  const parts = [
+    box(x1 - x0, 0.1, z1 - z0, (x0 + x1) / 2, top - 0.05, zc),                        // desktop
+    box(x1 - x0, 2.4, 1.4, (x0 + x1) / 2, FLOOR + 1.2, z0 + 0.7),                    // drawer pedestal
+    box(x1 - x0, 2.4, 0.1, (x0 + x1) / 2, FLOOR + 1.2, z1 - 0.05),                   // end panel
+    box(0.08, 1.4, z1 - z0 - 1.5, x1 - 0.1, FLOOR + 1.6, (z0 + 1.4 + z1 - 0.1) / 2),  // modesty panel
+    box(1.1, 0.05, 1.9, x0 + 0.25, top - 0.3, zc + 0.6)                              // keyboard tray, pulled out
+  ];
+  for (let k = 0; k < 3; k++) {                                                      // drawer fronts and pulls
+    parts.push(box(0.04, 0.7, 1.25, x0 - 0.02, FLOOR + 0.5 + k * 0.78, z0 + 0.7),
+      tint(box(0.06, 0.05, 0.35, x0 - 0.06, FLOOR + 0.62 + k * 0.78, z0 + 0.7), MAT.brass));
+  }
+  // two CRTs, angled in toward the chair a touch
+  const crt = (z, turn, screen) => {
+    const g = new THREE.Group();
+    const scr = new THREE.Mesh(new THREE.PlaneGeometry(1.02, 0.8), new THREE.MeshBasicMaterial({ color: 0xcccccc }));
+    if (screen) scr.material.map = screen; else scr.material.color.set(0x1d2a3a);
+    scr.position.set(-0.71, 0.62, 0);
+    scr.rotation.y = -Math.PI / 2;
+    g.add(
+      box(0.75, 0.06, 0.75, 0, 0.03, 0, beige), box(0.3, 0.12, 0.3, 0, 0.12, 0, beige),   // swivel base
+      box(0.4, 1.15, 1.3, -0.5, 0.62, 0, beige),                                         // front: the bezel
+      box(0.9, 0.85, 0.95, 0.15, 0.62, 0, beige),                                        // the deep back
+      scr,
+      tint(box(0.03, 0.05, 0.05, -0.71, 0.12 + 0.05, 0.5, null), MAT.glow));            // power light
+    g.position.set(x1 - 0.95, top, z);
+    g.rotation.y = turn;
+    return g;
+  };
+  const [dos, desktop, can] = typeof document === 'undefined' ? [null, null, null] : [dosScreen(), win95Screen(), dietChoke()];
+  const canMat = surface(0xc8c8cc, 0.4);
+  canMat.metalness = 0.4;
+  if (can) canMat.map = can;
+  const soda = (x, z, lying, crushed) => {
+    const geo = new THREE.CylinderGeometry(0.11, 0.11, crushed ? 0.25 : 0.4, 12);
+    return tint(solid(geo, [x, top + (lying ? 0.11 : crushed ? 0.125 : 0.2), z], lying ? [Math.PI / 2, 0, 0.7] : [0, 1.3, crushed ? 0.15 : 0]), canMat);
+  };
+  // cigarette butts: white paper and a tan filter
+  const butt = (x, y, z, turn) => {
+    const g = new THREE.Group();
+    g.add(cyl(0.022, 0.09, 0, 0, -0.045, MAT.soft, [Math.PI / 2, 0, 0], 6), cyl(0.023, 0.06, 0, 0, 0.03, surface(0xc98a4b, 0.9), [Math.PI / 2, 0, 0], 6));
+    g.position.set(x, y + 0.023, z);
+    g.rotation.y = turn;
+    return g;
+  };
+  let seed = 31;
+  const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const tray = [x0 + 0.45, zc - 1.6];
+  parts.push(
+    crt(zc - 0.95, 0.12, dos), crt(zc + 0.65, -0.12, desktop),
+    box(0.55, 0.06, 1.5, x0 + 0.4, top - 0.24, zc + 0.6, beige),                       // keyboard
+    box(0.4, 0.03, 1.36, x0 + 0.42, top - 0.2, zc + 0.6, keys),                        // its keys
+    box(0.75, 0.01, 0.65, x0 + 0.45, top + 0.005, zc + 1.75, MAT.denim),               // mousepad
+    box(0.32, 0.1, 0.2, x0 + 0.42, top + 0.06, zc + 1.72, beige, [0, 0.2, 0]),         // mouse
+    cyl(0.28, 0.06, tray[0], top + 0.03, tray[1], surface(0x3a4a48, 0.3), null, 14),     // the ashtray
+    ...Array.from({ length: 7 }, () => butt(tray[0] + (rand() - 0.5) * 0.3, top + 0.05, tray[1] + (rand() - 0.5) * 0.3, rand() * 6)),
+    butt(x0 + 0.9, top, zc - 0.2, 1.1), butt(x0 + 0.3, top, zc + 1.1, 2.6), butt(x0 + 0.6, top, z0 + 0.3, 0.4),
+    butt(x0 - 0.6, FLOOR, zc + 0.4, 2), butt(x0 - 0.3, FLOOR, zc - 1.0, 0.9),            // on the floor
+    soda(x0 + 0.8, zc - 0.6), soda(x0 + 1.1, z0 + 0.35), soda(x0 + 0.5, zc + 0.15, true), soda(x1 - 0.35, z1 - 0.4, false, true),
+    tint(solid(new THREE.CylinderGeometry(0.11, 0.11, 0.4, 12), [x0 - 0.5, FLOOR + 0.11, zc + 1.2], [Math.PI / 2, 0, 2.1]), canMat),   // one rolled under the chair
+    // a couple of floppy disks
+    box(0.3, 0.01, 0.3, x0 + 0.95, top + 0.005, zc + 0.15, MAT.dark, [0, 0.4, 0]), box(0.3, 0.01, 0.3, x0 + 0.98, top + 0.016, zc + 0.2, MAT.denim, [0, 0.9, 0])
+  );
+  // the tower, on the floor at the end of the desk: drive bays, floppy slot, power light
+  const tx = X(1211), tz = Z(1037);
+  parts.push(
+    box(1.5, 1.55, 0.62, tx, FLOOR + 0.78, tz, beige),
+    box(0.02, 0.18, 0.5, tx - 0.76, FLOOR + 1.35, tz, keys), box(0.02, 0.18, 0.5, tx - 0.76, FLOOR + 1.1, tz, keys),   // 5.25" bays
+    box(0.02, 0.05, 0.3, tx - 0.76, FLOOR + 0.88, tz, MAT.dark),                                                      // 3.5" slot
+    box(0.03, 0.1, 0.1, tx - 0.76, FLOOR + 0.5, tz + 0.15, keys),                                                     // power button
+    tint(box(0.02, 0.03, 0.03, tx - 0.76, FLOOR + 0.5, tz - 0.12, null), MAT.glow));                                 // power light
+  // a 90s office chair: five-star base, gas post, seat, back
+  const chair = new THREE.Group(), fabric = surface(0x3a3d44, 0.9);
+  for (let k = 0; k < 5; k++) chair.add(tint(solid(new THREE.BoxGeometry(0.85, 0.08, 0.12), [Math.cos(k * 1.2566) * 0.42, 0.12, Math.sin(k * 1.2566) * 0.42], [0, -k * 1.2566, 0]), MAT.dark));
+  chair.add(tint(solid(new THREE.CylinderGeometry(0.06, 0.07, 1.1, 8), [0, 0.7, 0]), MAT.dark),
+    tint(solid(new THREE.BoxGeometry(1.5, 0.3, 1.45), [0, 1.4, 0]), fabric),
+    tint(solid(new THREE.BoxGeometry(0.14, 1.4, 1.3), [-0.78, 2.3, 0], [0, 0, -0.12]), fabric),
+    tint(solid(new THREE.BoxGeometry(0.1, 0.6, 0.1), [-0.7, 1.75, 0]), MAT.dark));
+  chair.position.set(X(1160), FLOOR, zc + 0.3);
+  chair.rotation.y = 0.25;
+  parts.push(chair);
+  return named('computer-desk', ...parts);
+}
+
+function screenCanvas(w, h, draw) {
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  draw(c.getContext('2d'));
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+// a DOS prompt
+function dosScreen() {
+  return screenCanvas(128, 96, g => {
+    g.fillStyle = '#05070a'; g.fillRect(0, 0, 128, 96);
+    g.fillStyle = '#b8b8b8'; g.font = '8px monospace';
+    ['C:\\>dir', ' Volume in drive C has no label', ' Directory of C:\\', 'DOOM     EXE', 'AUTOEXECBAT', 'NOTES    TXT', 'HELPME   TXT',
+      '        7 file(s)', 'C:\\>type helpme.txt', 'it is in the house', 'C:\\>_'].forEach((l, i) => g.fillText(l, 3, 10 + i * 8));
+  });
+}
+
+// a teal desktop: icons, a taskbar, an open window
+function win95Screen() {
+  return screenCanvas(128, 96, g => {
+    g.fillStyle = '#008080'; g.fillRect(0, 0, 128, 96);
+    for (let i = 0; i < 4; i++) { g.fillStyle = '#e8e0a0'; g.fillRect(6, 6 + i * 18, 10, 9); g.fillStyle = '#ffffff'; g.fillRect(4, 17 + i * 18, 14, 2); }
+    g.fillStyle = '#c0c0c0'; g.fillRect(0, 86, 128, 10); g.fillRect(34, 16, 80, 56);
+    g.fillStyle = '#000080'; g.fillRect(36, 18, 76, 8);
+    g.fillStyle = '#ffffff'; g.fillRect(36, 28, 76, 42);
+    g.fillStyle = '#808080';
+    for (let y = 32; y < 66; y += 5) g.fillRect(39, y, 30 + (y * 7) % 35, 2);
+    g.fillStyle = '#000000'; g.font = 'bold 7px sans-serif'; g.fillText('Start', 3, 94);
+  });
+}
+
+// a silver can with a red swoosh: Diet Choke
+function dietChoke() {
+  return screenCanvas(128, 48, g => {
+    const grad = g.createLinearGradient(0, 0, 128, 0);
+    grad.addColorStop(0, '#9a9aa0'); grad.addColorStop(0.5, '#e6e6ea'); grad.addColorStop(1, '#9a9aa0');
+    g.fillStyle = grad; g.fillRect(0, 0, 128, 48);
+    g.fillStyle = '#c4161c';
+    g.beginPath(); g.moveTo(0, 30); g.quadraticCurveTo(64, 18, 128, 32); g.lineTo(128, 38); g.quadraticCurveTo(64, 26, 0, 36); g.fill();
+    g.fillStyle = '#111111'; g.font = 'italic 8px serif'; g.fillText('diet', 20, 16);
+    g.fillStyle = '#c4161c'; g.font = 'bold 12px sans-serif'; g.fillText('Choke', 40, 18);
+  });
 }
 
 function bathroom() {
@@ -1582,9 +1700,36 @@ function laundry() {
   return named('laundry',
     washer(620, 680),
     dryer(686, 746),
-    named('shelf', block(614, 807, 825, 845, 5.4, 5.2)),
+    named('shelf', block(614, 807, 825, 860, 5.4, 5.2), ...laundryShelf()),
     walkInCloset()
   );
+}
+
+// up on the laundry shelf: a jug of orange detergent, a bleach jug, and a basket of clothes
+function laundryShelf() {
+  const y = FLOOR + 5.4, z = Z(842);
+  const box = (w, h, d, x, yb, zc, mat) => tint(solid(new THREE.BoxGeometry(w, h, d), [x, yb + h / 2, zc]), mat);
+  const jug = (px, body, label, cap) => [
+    box(0.5, 0.8, 0.36, X(px), y, z, body),
+    box(0.52, 0.3, 0.38, X(px), y + 0.25, z, label),                                // label
+    tint(solid(new THREE.CylinderGeometry(0.08, 0.08, 0.12, 8), [X(px) - 0.12, y + 0.86, z]), cap),
+    box(0.07, 0.3, 0.12, X(px) + 0.15, y + 0.62, z, body)                            // handle
+  ];
+  // the basket: four walls and a floor, with clothes heaped in it
+  const bx = X(721), bw = 2.1, bd = 1.0, bh = 0.85, t = 0.05, blue = surface(0x7fa7c9, 0.6);
+  const lump = (dx, dz, r, mat) => {
+    const geo = new THREE.IcosahedronGeometry(r, 0);
+    geo.scale(1, 0.55, 0.9);
+    return tint(solid(geo, [bx + dx, y + bh - 0.08, z + dz]), mat);
+  };
+  return [
+    ...jug(640, surface(0xe0782a, 0.5), MAT.denim, MAT.denim),        // detergent
+    ...jug(668, MAT.soft, MAT.flannel, MAT.flannel),                  // bleach
+    box(bw, t, bd, bx, y, z, blue),
+    box(bw, bh, t, bx, y, z - bd / 2 + t / 2, blue), box(bw, bh, t, bx, y, z + bd / 2 - t / 2, blue),
+    box(t, bh, bd - 2 * t, bx - bw / 2 + t / 2, y, z, blue), box(t, bh, bd - 2 * t, bx + bw / 2 - t / 2, y, z, blue),
+    lump(-0.5, 0.05, 0.42, MAT.denim), lump(0.15, -0.1, 0.45, MAT.flannel), lump(0.6, 0.12, 0.38, MAT.cream), lump(0.05, 0.2, 0.3, MAT.teal)
+  ];
 }
 
 /* The walk-in closet: on each side a white shelf on brackets, a chrome
@@ -1628,8 +1773,14 @@ function walkInCloset() {
         [[rx - 0.6, top - 0.1, z], [rx, top, z]], [[rx, top, z], [rx + 0.6, top - 0.1, z]], [[rx - 0.6, top - 0.1, z], [rx + 0.6, top - 0.1, z]]);
     }
     // boxes up on the shelf
-    for (const [yc, w, h, mat] of [[1000, 0.9, 0.45, MAT.cream], [1030, 1.0, 0.35, MAT.denim], [1031, 0.8, 0.3, MAT.flannel], [1055, 0.7, 0.55, MAT.cream]]) {
+    for (const [yc, w, h, mat] of [[1000, 0.9, 0.45, MAT.cream], [1030, 1.0, 0.35, MAT.denim], [1031, 0.8, 0.3, MAT.flannel]]) {
       parts.push(tint(solid(new THREE.BoxGeometry(1.0, h, w), [X(wall) + dir * 0.75, FLOOR + shelfY + 0.08 + h / 2 + (yc === 1031 ? 0.35 : 0), Z(yc)]), mat));
+    }
+    // two shoeboxes stacked, each with its lid
+    for (const [k, body, lid] of [[0, surface(0xd2691e, 0.8), MAT.dark], [1, MAT.soft, MAT.denim]]) {
+      const yb = FLOOR + shelfY + 0.08 + k * 0.46, xc = X(wall) + dir * 0.7;
+      parts.push(tint(solid(new THREE.BoxGeometry(1.0, 0.38, 0.62), [xc, yb + 0.19, Z(1054)], [0, k * 0.08, 0]), body),
+                 tint(solid(new THREE.BoxGeometry(1.04, 0.07, 0.66), [xc, yb + 0.41, Z(1054)], [0, k * 0.08, 0]), lid));
     }
   }
   return named('closet-shelves', ...parts, lines(hangers, new THREE.LineBasicMaterial({ color: 0x8a8f94 })));
@@ -1929,12 +2080,27 @@ function pendant(lamps, name, cx, cy, intensity) {
     bulb(lamps, name + '-light', cx, cy, 6.2, intensity));
 }
 
-function bareBulb(lamps, name, cx, cy, intensity) {
-  const x = X(cx), z = Z(cy);
-  return named(name,
-    lines([[[x, CEIL, z], [x, FLOOR + 7.3, z]]]),
-    glow(new THREE.SphereGeometry(0.13, 10, 8), x, FLOOR + 7.18, z),
-    bulb(lamps, name + '-light', cx, cy, 6.95, intensity));
+/* A bare bulb hanging on its cord, with a pull string, that sways very
+   very gently. Only the bulb, cord and string move (by a hair); the light
+   itself stays put, so its shadows never need redrawing. */
+function pullBulb(lamps, name, cx, cy, intensity) {
+  const drop = CEIL - (FLOOR + 6.9);                                       // cord length
+  const swing = new THREE.Group();
+  swing.position.set(X(cx), CEIL, Z(cy));
+  swing.add(
+    lines([[[0, 0, 0], [0, -drop, 0]]]),
+    tint(solid(new THREE.CylinderGeometry(0.06, 0.07, 0.16, 10), [0, -drop - 0.08, 0]), MAT.dark),   // socket
+    glow(new THREE.SphereGeometry(0.13, 10, 8), 0, -drop - 0.26, 0),
+    lines([[[0.07, -drop - 0.12, 0], [0.07, -drop - 1.3, 0]]], new THREE.LineBasicMaterial({ color: 0xd8d0c0 })),   // pull string
+    tint(solid(new THREE.SphereGeometry(0.03, 6, 4), [0.07, -drop - 1.32, 0]), MAT.cream));                       // its bead
+  const g = named(name, swing, bulb(lamps, name + '-light', cx, cy, 6.64, intensity));
+  let t = 0;
+  g.userData.tick = dt => {
+    t += dt;
+    swing.rotation.z = 0.035 * Math.sin(t * 1.1);
+    swing.rotation.x = 0.02 * Math.sin(t * 0.73 + 1);
+  };
+  return g;
 }
 
 /* A round flush light on the pantry ceiling: a milk glass dome on a
@@ -1967,7 +2133,7 @@ function roomLamps(lamps) {
     // an end table at the north end of the sectional, so the couch gets light
     endTable('end-table', 345, 400, 248, 294, 1.9),
     tableLamp(lamps, 'lamp-sofa', 372, 271, 1.9, 22),
-    bareBulb(lamps, 'lamp-laundry', 710, 915, 26),
+    pullBulb(lamps, 'lamp-laundry', 710, 898, 26),
     pantryLight(),
     // bathroom: a light bar above the mirror
     named('lamp-bathroom',
@@ -2003,18 +2169,20 @@ function halo(size) {
 
 // The big streetlight by the front walk: pole, arm, head, and a spotlight down on the yard.
 function streetlight(lamps) {
-  // tall enough to throw light up onto the roof, aimed at the house
-  const H = 26, reach = 5;
-  const light = shadowed(new THREE.SpotLight(0xffd9a0, 2200, 0, 0.95, 0.8, 2), 1024, 110);
+  // the arm reaches out over the road like a real one. The cone is wide and
+  // tipped a little back toward the house, so the yard, the front of the
+  // house and the edge of the roof still catch it.
+  const H = 26, reach = -5;
+  const light = shadowed(new THREE.SpotLight(0xffd9a0, 2400, 0, 1.1, 0.7, 2), 1024, 110);
   light.name = 'streetlight-light';
   light.position.set(reach, H - 0.6, 0);
-  light.target.position.set(20.5, 6, 9);        // same spot on the house as ever
+  light.target.position.set(4.5, 0, 5);
   lamps.push(light);
   const glare = halo(12);
   glare.position.set(reach, H - 0.7, 0);
   return named('streetlight',
     solid(new THREE.CylinderGeometry(0.22, 0.32, H, 8), [0, H / 2, 0], null, MAT.dark),
-    solid(new THREE.BoxGeometry(reach, 0.18, 0.18), [reach / 2, H - 0.1, 0], null, MAT.dark),
+    solid(new THREE.BoxGeometry(-reach, 0.18, 0.18), [reach / 2, H - 0.1, 0], null, MAT.dark),
     solid(new THREE.BoxGeometry(1.6, 0.35, 0.8), [reach, H - 0.25, 0], null, MAT.dark),
     glow(new THREE.BoxGeometry(1.3, 0.06, 0.6), reach, H - 0.45, 0),
     light, light.target, glare);
