@@ -10,6 +10,11 @@ export function gameSignalClock(seconds,epoch) {
   const frame=Math.floor((seconds-epoch)/period);
   return {frame,time:epoch+frame*period};
 }
+export function gameClipOrigin(seconds,epoch){
+  if(epoch===null)return null;
+  const clock=gameSignalClock(seconds,epoch);
+  return clock.time-(clock.frame%2)*GAME_SIGNAL.samplesPerLine*GAME_SIGNAL.linesPerFrame/GAME_SIGNAL.sampleRate;
+}
 export function createAnalogPass(renderer,{videoSource=null,onFrame=null}={}) {
   const picture = new THREE.WebGLRenderTarget(768, H, {type: THREE.HalfFloatType, samples: 4});
   const source = new THREE.WebGLRenderTarget(720, H, {type:THREE.HalfFloatType, depthBuffer:false});
@@ -181,7 +186,7 @@ export function createAnalogPass(renderer,{videoSource=null,onFrame=null}={}) {
   let burstUntil=0, nextBurst=performance.now()/1000+12;
   // Alternate quiet gaps and live mains injection; both last 1–5 seconds.
   let humOn=false, nextHumChange=performance.now()/1000+1+Math.random()*4;
-  let signalEpoch=null,inFlight=0,stalledTime=null,stalledAt=0,lastClockTime=null;
+  let signalEpoch=null,inFlight=0,stalledTime=null,stalledAt=0;
   const stats={frames:0,signalFPS:0,readMilliseconds:0,receiverMilliseconds:0,buffering:false,error:''};
   let statsStart=performance.now(),statsFrames=0;
   function show(){const target=renderer.getRenderTarget();quad.material=display;renderer.setRenderTarget(null);renderer.render(scene,camera);renderer.setRenderTarget(target);}
@@ -241,7 +246,7 @@ export function createAnalogPass(renderer,{videoSource=null,onFrame=null}={}) {
     quad.material=bandlimit;renderer.setRenderTarget(filtered);renderer.render(scene,camera);
     quad.material=encode;renderer.setRenderTarget(signal);renderer.render(scene,camera);
     renderer.setRenderTarget(target);
-    lastClockTime=waveformSeconds;inFlight++;
+    inFlight++;
     const started=performance.now();
     const parameters={...(clip?.manifest.receiverParameters??{}),frame:signalFrame};
     if(controls.bandwidthMHz>0)parameters.bandwidth=controls.bandwidthMHz;
@@ -265,7 +270,7 @@ export function createAnalogPass(renderer,{videoSource=null,onFrame=null}={}) {
   }
   function setClip(next){
     clip?.dispose();clip=next;stalledTime=null;
-    if(clip){const now=performance.now()/1000,period=W*525/GAME_SIGNAL.sampleRate;clip.started=(lastClockTime??now)+((now-(signalEpoch??now))%period);}
+    if(clip){const now=performance.now()/1000;clip.started=gameClipOrigin(now,signalEpoch);}
     uniforms.clipEnabled.value=0;
     uniforms.clipPrevious.value=uniforms.clipCurrent.value=uniforms.clipNext.value=picture.texture;
     if(!clip)return;

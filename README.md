@@ -294,7 +294,7 @@ missing waveform data with zero or skip forward. The sample stream wraps across
 recording boundaries; a finite recording's end-to-start edit can still cause a
 physical waveform discontinuity. Corrupt/missing files stop playback with an error.
 
-Use `?signal=signals/recordings/smooth-ntsc-30s/manifest.json&signalGain=0.15`
+Use `?signal=signals/recordings/smooth-cover-ntsc-30s/manifest.json&signalGain=0.15`
 for the local smooth 30 fps test footage, recorded from the existing local Lab
 video. It includes explicit source drift of +79 ppm and offset of 0.37 line,
 recorded by the actual Lab encoder. These are source-clock parameters, not screen
@@ -335,3 +335,11 @@ linear filtering except across packed scanline boundaries.
 that repeated display refreshes preserve Lab's receiver state and subsequent
 frame results. `tools/composite-performance.html` measures render and decoded
 view rates, median and 95th-percentile frame intervals, and asynchronous timings.
+
+Game exports center-crop the normal 4:3 camera raster to its middle 360 rows,
+then resample to 480 rows before the NTSC encoder, filling the game's 16:9 view.
+This does not stretch voltage samples, sync pulses, or carrier frequencies.
+Normal Lab preview, virtual camera, and non-game raw export retain their framing.
+The game starts clip playback on its NTSC two-frame carrier-phase boundary; only the drift and
+phase offsets designed into the recorded waveform remain. Older letterboxed
+recordings need to be re-exported to remove their baked-in bars.

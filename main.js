@@ -11,7 +11,7 @@ import { createGhoul } from './ghoul.js?v=12';
 import { createGhostPass, GHOST_LAYER } from './ghost.js?v=4';
 import { createTv } from './tv.js?v=8';
 import { openSignalURL } from './signal-clip.js?v=7';
-import { createAnalogPass } from './analog.js?v=18';
+import { createAnalogPass } from './analog.js?v=20';
 
 
 const $ = id => document.getElementById(id);
