@@ -1009,7 +1009,7 @@ function pillarLamp() {
   // to the pillar would just blow the pillar out)
   const light = new THREE.SpotLight(LAMP_COLOR, 17, 14, 1.2, 0.9, 2);
   light.name = 'lamp-pillar-light';
-  light.position.set(x, y + 0.3, z - 0.5);
+  light.position.set(x, y + 0.24, z - 0.4);                                 // right in the bulb
   light.target.position.set(X(440), FLOOR + 1.2, Z(440));
   return named('lamp-pillar',
     brass(new THREE.BoxGeometry(0.2, 0.45, 0.04), [x, y, z - 0.02]),                  // backplate
@@ -1329,21 +1329,85 @@ function sink() {
 }
 
 function master() {
-  const bedTop = FLOOR + 1.92;
   return named('master',
-    named('bed',
-      block(930, 1065, 893, 1060, 1.9),
-      block(925, 1070, 1060, 1068, 3.6),                    // headboard
-      block(945, 992, 1022, 1052, 2.3, 1.9),                // pillows
-      block(1003, 1050, 1022, 1052, 2.3, 1.9),
-      lines([[[X(930), bedTop, Z(985)], [X(1065), bedTop, Z(985)]]])   // turned-down sheet
-    ),
+    bed(),
     named('nightstands', block(875, 925, 1022, 1068, 2.1), block(1075, 1125, 1022, 1068, 2.1)),
     bookshelf(),
     computerDesk(),
     named('round-table', round(1206, 846, 0.6, 1.9, 1.84, 14), round(1206, 846, 0.08, 1.84, 0.1, 8), round(1206, 846, 0.35, 0.1, 0, 12),
       tint(block(1196, 1214, 838, 852, 1.98, 1.9), MAT.flannel))          // a book on it
   );
+}
+
+/* A soft slab with rounded edges and corners: a rounded rectangle pushed
+   up into a slab with a rounded bevel. puff > 0 bulges the middle, for
+   pillows. Centred on (x, y, z). */
+function softSlab(w, h, d, r, x, y, z, puff = 0) {
+  const c = 0.06, a = w / 2 - r - c, b = d / 2 - r - c;
+  const sh = new THREE.Shape();
+  sh.moveTo(-a, -b - c); sh.lineTo(a, -b - c); sh.quadraticCurveTo(a + c, -b - c, a + c, -b);
+  sh.lineTo(a + c, b); sh.quadraticCurveTo(a + c, b + c, a, b + c); sh.lineTo(-a, b + c);
+  sh.quadraticCurveTo(-a - c, b + c, -a - c, b); sh.lineTo(-a - c, -b); sh.quadraticCurveTo(-a - c, -b - c, -a, -b - c);
+  const geo = new THREE.ExtrudeGeometry(sh, { depth: h - 2 * r, bevelEnabled: true, bevelThickness: r, bevelSize: r, bevelSegments: 3, curveSegments: 4 });
+  return solid(remap(geo, (u, v, dd) => {
+    const yy = dd - (h - 2 * r) / 2;                                 // -h/2 .. h/2
+    const bulge = puff ? 1 - puff + puff * (1 - (u / (w / 2)) ** 2) * (1 - (v / (d / 2)) ** 2) : 1;
+    return [x + u, y + yy * bulge, z + v];
+  }));
+}
+
+/* The bed: a wood frame and headboard, a mattress with rounded edges, two
+   puffy pillows, and a 90s plaid flannel comforter hanging over the sides
+   and foot, its top corner flipped back so the sheet shows. */
+function bed() {
+  const x0 = X(930), x1 = X(1065), zf = Z(893), zh = Z(1060), cx = (x0 + x1) / 2;
+  const top = FLOOR + 1.9, lift = 0.05, over = 0.06;
+  const plaid = surface(0xffffff, 0.95, THREE.DoubleSide);
+  if (typeof document !== 'undefined') plaid.map = plaidPattern(); else plaid.color.set(0x2f4a35);
+  // a flat sheet of comforter from (x, z) points, facing up, plaid by the foot
+  const flat = (pts, y, mat) => {
+    const geo = new THREE.ShapeGeometry(new THREE.Shape(pts.map(([px, pz]) => new THREE.Vector2(px, -pz))));
+    const pos = geo.attributes.position, uv = geo.attributes.uv;
+    for (let i = 0; i < pos.count; i++) {
+      const px = pos.getX(i), pz = -pos.getY(i);
+      pos.setXYZ(i, px, y, pz);
+      uv.setXY(i, px / 1.5, pz / 1.5);
+    }
+    geo.computeVertexNormals();
+    return tint(solid(geo), mat);
+  };
+  // a hanging side of the comforter, from a to b along x or z
+  const drape = (a, b, at, alongX) => {
+    const len = b - a, hang = 0.85;
+    const geo = new THREE.PlaneGeometry(len, hang);
+    const uv = geo.attributes.uv;
+    for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * len / 1.5, uv.getY(i) * hang / 1.5);
+    const pos = alongX ? [(a + b) / 2, top + lift - hang / 2, at] : [at, top + lift - hang / 2, (a + b) / 2];
+    return tint(solid(geo, pos, alongX ? null : [0, Math.PI / 2, 0]), plaid);
+  };
+  const L = x0 - over, R = x1 + over, F = zf - over, B = Z(1000), c = 1.2;   // comforter edges; c: the folded corner
+  return named('bed',
+    tint(block(925, 1070, 890, 1060, 1.15, 0.3), MAT.furniture),                                  // frame
+    ...[[927, 892], [1064, 892]].map(([px, py]) => tint(block(px, px + 4, py, py + 4, 0.3), MAT.furniture)),   // feet
+    tint(block(925, 1070, 1060, 1068, 3.6), MAT.furniture),                                       // headboard
+    tint(softSlab(x1 - x0, 0.75, zh - zf, 0.12, cx, top - 0.375, (zf + zh) / 2), MAT.soft),       // mattress
+    tint(softSlab(1.65, 0.55, 1.05, 0.2, X(968), top + 0.24, Z(1037), 0.7), MAT.soft),           // pillows
+    tint(softSlab(1.65, 0.55, 1.05, 0.2, X(1027), top + 0.24, Z(1035), 0.7), MAT.soft),
+    flat([[L, F], [R, F], [R, B], [L + c, B], [L, B - c]], top + lift, plaid),                    // the comforter,
+    flat([[L + c, B], [L + c, B - c], [L, B - c]], top + lift + 0.02, MAT.flannel),              // its corner folded back: the red underside
+    drape(F, B, R, false), drape(F, B - c, L, false), drape(L, R, F, true));
+}
+
+// red and black flannel plaid on hunter green (it wraps)
+function plaidPattern() {
+  const tex = screenCanvas(64, 64, g => {
+    g.fillStyle = '#2f4a35'; g.fillRect(0, 0, 64, 64);
+    g.fillStyle = 'rgba(139,46,42,0.75)'; g.fillRect(0, 20, 64, 16); g.fillRect(20, 0, 16, 64);
+    g.fillStyle = 'rgba(20,20,20,0.45)'; g.fillRect(0, 26, 64, 4); g.fillRect(26, 0, 4, 64);
+    g.fillStyle = 'rgba(214,190,90,0.6)'; g.fillRect(0, 50, 64, 2); g.fillRect(50, 0, 2, 64);
+  });
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  return tex;
 }
 
 /* The bookshelf facing the bed: four shelves of books (a jumble of
@@ -1390,6 +1454,15 @@ function bookshelf() {
   return named('bookshelf', ...parts);
 }
 
+// soda can materials, made once (the pictures need a browser)
+const CAN = (() => {
+  const side = surface(0xffffff, 0.35), top = surface(0xffffff, 0.35), metal = surface(0xc3c3c8, 0.35);
+  for (const m of [side, top, metal]) m.metalness = 0.4;
+  if (typeof document !== 'undefined') { side.map = dietChoke(); top.map = canTop(); }
+  else { side.color.set(0xd8d8dc); top.color.set(0xc3c3c8); }
+  return { side, top, metal };
+})();
+
 /* A 90s computer desk under the bedroom window: a drawer pedestal, a
    pull-out keyboard tray, two beige CRT monitors (one at a DOS prompt, one
    on a teal desktop), a beige tower on the floor, keyboard, mouse and pad,
@@ -1432,13 +1505,24 @@ function computerDesk() {
     g.rotation.y = turn;
     return g;
   };
-  const [dos, desktop, can] = typeof document === 'undefined' ? [null, null, null] : [dosScreen(), win95Screen(), dietChoke()];
-  const canMat = surface(0xc8c8cc, 0.4);
-  canMat.metalness = 0.4;
-  if (can) canMat.map = can;
+  const [dos, desktop] = typeof document === 'undefined' ? [null, null] : [dosScreen(), win95Screen()];
+  // a soda can: the label wraps the side only; the top is plain aluminium
+  // with the opening and the tab, the bottom plain too
+  const can = (lying, crushed) => {
+    const h = crushed ? 0.22 : 0.36, g = new THREE.Group();
+    g.add(tint(solid(new THREE.CylinderGeometry(0.11, 0.11, h, 16, 1, true), [0, h / 2 + 0.02, 0]), CAN.side),
+      tint(solid(new THREE.CylinderGeometry(0.085, 0.11, 0.04, 16, 1, true), [0, h + 0.04, 0]), CAN.metal),   // the neck
+      tint(solid(new THREE.CylinderGeometry(0.11, 0.1, 0.02, 16, 1, true), [0, 0.01, 0]), CAN.metal),
+      tint(solid(new THREE.CircleGeometry(0.085, 16).rotateX(-Math.PI / 2), [0, h + 0.06, 0]), CAN.top),
+      tint(solid(new THREE.CircleGeometry(0.1, 16).rotateX(Math.PI / 2), [0, 0.001, 0]), CAN.metal));
+    if (crushed) g.scale.set(1.08, 1, 0.85);
+    return g;
+  };
   const soda = (x, z, lying, crushed) => {
-    const geo = new THREE.CylinderGeometry(0.11, 0.11, crushed ? 0.25 : 0.4, 12);
-    return tint(solid(geo, [x, top + (lying ? 0.11 : crushed ? 0.125 : 0.2), z], lying ? [Math.PI / 2, 0, 0.7] : [0, 1.3, crushed ? 0.15 : 0]), canMat);
+    const c = can(lying, crushed);
+    if (lying) { c.position.set(x, top + 0.11, z); c.rotation.set(Math.PI / 2, 0, 0.7); }
+    else { c.position.set(x, top, z); c.rotation.set(0, 1.3, crushed ? 0.12 : 0); }
+    return c;
   };
   // cigarette butts: white paper and a tan filter
   const butt = (x, y, z, turn) => {
@@ -1462,12 +1546,12 @@ function computerDesk() {
     butt(x0 + 0.9, top, zc - 0.2, 1.1), butt(x0 + 0.3, top, zc + 1.1, 2.6), butt(x0 + 0.6, top, z0 + 0.3, 0.4),
     butt(x0 - 0.6, FLOOR, zc + 0.4, 2), butt(x0 - 0.3, FLOOR, zc - 1.0, 0.9),            // on the floor
     soda(x0 + 0.8, zc - 0.6), soda(x0 + 1.1, z0 + 0.35), soda(x0 + 0.5, zc + 0.15, true), soda(x1 - 0.35, z1 - 0.4, false, true),
-    tint(solid(new THREE.CylinderGeometry(0.11, 0.11, 0.4, 12), [x0 - 0.5, FLOOR + 0.11, zc + 1.2], [Math.PI / 2, 0, 2.1]), canMat),   // one rolled under the chair
+    (() => { const c = can(true); c.position.set(x0 - 0.5, FLOOR + 0.11, zc + 1.2); c.rotation.set(Math.PI / 2, 0, 2.1); return c; })(),   // one rolled under the chair
     // a couple of floppy disks
     box(0.3, 0.01, 0.3, x0 + 0.95, top + 0.005, zc + 0.15, MAT.dark, [0, 0.4, 0]), box(0.3, 0.01, 0.3, x0 + 0.98, top + 0.016, zc + 0.2, MAT.denim, [0, 0.9, 0])
   );
-  // the tower, on the floor at the end of the desk: drive bays, floppy slot, power light
-  const tx = X(1211), tz = Z(1037);
+  // the tower, on the floor under the desk at the open end: drive bays, floppy slot, power light
+  const tx = x0 + 0.95, tz = z1 - 0.48;
   parts.push(
     box(1.5, 1.55, 0.62, tx, FLOOR + 0.78, tz, beige),
     box(0.02, 0.18, 0.5, tx - 0.76, FLOOR + 1.35, tz, keys), box(0.02, 0.18, 0.5, tx - 0.76, FLOOR + 1.1, tz, keys),   // 5.25" bays
@@ -1522,14 +1606,35 @@ function win95Screen() {
 
 // a silver can with a red swoosh: Diet Choke
 function dietChoke() {
-  return screenCanvas(128, 48, g => {
+  return screenCanvas(128, 64, g => {
+    // silver-white with grey pinstripes, a red ribbon, and the name running up the can
     const grad = g.createLinearGradient(0, 0, 128, 0);
-    grad.addColorStop(0, '#9a9aa0'); grad.addColorStop(0.5, '#e6e6ea'); grad.addColorStop(1, '#9a9aa0');
-    g.fillStyle = grad; g.fillRect(0, 0, 128, 48);
-    g.fillStyle = '#c4161c';
-    g.beginPath(); g.moveTo(0, 30); g.quadraticCurveTo(64, 18, 128, 32); g.lineTo(128, 38); g.quadraticCurveTo(64, 26, 0, 36); g.fill();
-    g.fillStyle = '#111111'; g.font = 'italic 8px serif'; g.fillText('diet', 20, 16);
-    g.fillStyle = '#c4161c'; g.font = 'bold 12px sans-serif'; g.fillText('Choke', 40, 18);
+    grad.addColorStop(0, '#c9c9ce'); grad.addColorStop(0.5, '#f4f4f6'); grad.addColorStop(1, '#c9c9ce');
+    g.fillStyle = grad; g.fillRect(0, 0, 128, 64);
+    g.strokeStyle = 'rgba(120,120,128,0.35)'; g.lineWidth = 1;
+    for (let k = -64; k < 128; k += 5) { g.beginPath(); g.moveTo(k, 64); g.lineTo(k + 40, 0); g.stroke(); }
+    for (const off of [0, 64]) {                                   // both sides of the can
+      g.fillStyle = '#c4161c';
+      g.beginPath(); g.moveTo(off + 44, 64); g.quadraticCurveTo(off + 38, 30, off + 56, 0); g.lineTo(off + 60, 0); g.quadraticCurveTo(off + 43, 30, off + 49, 64); g.fill();
+      g.save(); g.translate(off + 30, 60); g.rotate(-Math.PI / 2);
+      g.font = 'bold italic 13px serif'; g.fillText('diet', 0, -10);
+      g.font = 'bold 17px serif'; g.fillText('Choke', 0, 6);
+      g.restore();
+    }
+  });
+}
+
+// the can's top: aluminium, a rim, the drinking hole and the pull tab
+function canTop() {
+  return screenCanvas(64, 64, g => {
+    g.fillStyle = '#c3c3c8'; g.fillRect(0, 0, 64, 64);
+    g.strokeStyle = '#8d8d93'; g.lineWidth = 4; g.beginPath(); g.arc(32, 32, 29, 0, Math.PI * 2); g.stroke();
+    g.lineWidth = 1.5; g.beginPath(); g.arc(32, 32, 24, 0, Math.PI * 2); g.stroke();
+    g.fillStyle = '#1a1a1c';                                       // the opening
+    g.beginPath(); g.ellipse(32, 15, 8, 6, 0, 0, Math.PI * 2); g.fill();
+    g.strokeStyle = '#9c9ca2'; g.lineWidth = 3;                    // the tab, bent up
+    g.beginPath(); g.ellipse(32, 30, 7, 11, 0, 0, Math.PI * 2); g.stroke();
+    g.fillStyle = '#7a7a80'; g.beginPath(); g.arc(32, 32, 2.5, 0, Math.PI * 2); g.fill();   // rivet
   });
 }
 
@@ -1705,31 +1810,90 @@ function laundry() {
   );
 }
 
-// up on the laundry shelf: a jug of orange detergent, a bleach jug, and a basket of clothes
+// up on the laundry shelf: a jug of YEP detergent and a green laundry basket of folded clothes
 function laundryShelf() {
-  const y = FLOOR + 5.4, z = Z(842);
-  const box = (w, h, d, x, yb, zc, mat) => tint(solid(new THREE.BoxGeometry(w, h, d), [x, yb + h / 2, zc]), mat);
-  const jug = (px, body, label, cap) => [
-    box(0.5, 0.8, 0.36, X(px), y, z, body),
-    box(0.52, 0.3, 0.38, X(px), y + 0.25, z, label),                                // label
-    tint(solid(new THREE.CylinderGeometry(0.08, 0.08, 0.12, 8), [X(px) - 0.12, y + 0.86, z]), cap),
-    box(0.07, 0.3, 0.12, X(px) + 0.15, y + 0.62, z, body)                            // handle
-  ];
-  // the basket: four walls and a floor, with clothes heaped in it
-  const bx = X(721), bw = 2.1, bd = 1.0, bh = 0.85, t = 0.05, blue = surface(0x7fa7c9, 0.6);
-  const lump = (dx, dz, r, mat) => {
-    const geo = new THREE.IcosahedronGeometry(r, 0);
-    geo.scale(1, 0.55, 0.9);
-    return tint(solid(geo, [bx + dx, y + bh - 0.08, z + dz]), mat);
-  };
+  const y = FLOOR + 5.4;
+  return [...detergent(X(636), y, Z(830)), ...laundryBasket(X(724), y, Z(842))];
+}
+
+/* A big blue detergent jug: rounded body with a hole for the handle on
+   one side, a big ridged cap, and a label (YEP, 2 in One, a price tag). */
+function detergent(x0, y0, zBack) {
+  const W = 0.62, H = 0.98, T = 0.3, blue = surface(0x1f3a8a, 0.35);
+  const body = new THREE.Shape();
+  body.moveTo(0, 0); body.lineTo(W, 0); body.lineTo(W, 0.84);
+  body.quadraticCurveTo(W, H, W - 0.14, H); body.lineTo(0.12, H);
+  body.quadraticCurveTo(0, H, 0, 0.84); body.lineTo(0, 0);
+  const grip = new THREE.Path();                                         // the handle hole
+  grip.absarc(W - 0.14, 0.48, 0.05, Math.PI, 0, true); grip.lineTo(W - 0.09, 0.78);
+  grip.absarc(W - 0.14, 0.78, 0.05, 0, Math.PI, true); grip.lineTo(W - 0.19, 0.48);
+  body.holes.push(grip);
+  const geo = new THREE.ExtrudeGeometry(body, { depth: T, bevelEnabled: true, bevelThickness: 0.04, bevelSize: 0.04, bevelSegments: 3, curveSegments: 8 });
+  geo.translate(x0, y0 + 0.04, zBack + 0.04);
+  const label = surface(0xffffff, 0.6);
+  if (typeof document !== 'undefined') label.map = screenCanvas(64, 96, g => {
+    g.fillStyle = '#16245e'; g.fillRect(0, 0, 64, 96);
+    for (const [c, k] of [['#f08a1c', 0], ['#f6b21c', 8], ['#e85c1a', 16]]) {   // orange stripes
+      g.fillStyle = c; g.beginPath(); g.moveTo(10 + k, 52); g.lineTo(34 + k, 6); g.lineTo(42 + k, 6); g.lineTo(18 + k, 52); g.fill();
+    }
+    g.fillStyle = '#f6e04a'; g.fillRect(2, 12, 26, 11);                   // price tag
+    g.fillStyle = '#c4161c'; g.font = 'bold 9px sans-serif'; g.fillText('$3.29', 3, 21);
+    g.fillStyle = '#f6e04a'; g.font = 'bold 8px sans-serif'; g.fillText('2 in One', 4, 44);
+    g.fillStyle = '#ffffff'; g.font = 'bold 25px sans-serif'; g.fillText('YEP', 6, 74);
+    g.font = '6px sans-serif'; g.fillText('ULTRA  50 OZ', 10, 86);
+  });
+  else label.color.set(0x16245e);
+  const cap = new THREE.CylinderGeometry(0.12, 0.12, 0.15, 18);
   return [
-    ...jug(640, surface(0xe0782a, 0.5), MAT.denim, MAT.denim),        // detergent
-    ...jug(668, MAT.soft, MAT.flannel, MAT.flannel),                  // bleach
-    box(bw, t, bd, bx, y, z, blue),
-    box(bw, bh, t, bx, y, z - bd / 2 + t / 2, blue), box(bw, bh, t, bx, y, z + bd / 2 - t / 2, blue),
-    box(t, bh, bd - 2 * t, bx - bw / 2 + t / 2, y, z, blue), box(t, bh, bd - 2 * t, bx + bw / 2 - t / 2, y, z, blue),
-    lump(-0.5, 0.05, 0.42, MAT.denim), lump(0.15, -0.1, 0.45, MAT.flannel), lump(0.6, 0.12, 0.38, MAT.cream), lump(0.05, 0.2, 0.3, MAT.teal)
+    tint(solid(geo), blue),
+    tint(solid(new THREE.PlaneGeometry(0.4, 0.6), [x0 + 0.24, y0 + 0.45, zBack + T + 0.085]), label),
+    tint(solid(new THREE.CylinderGeometry(0.09, 0.1, 0.06, 14), [x0 + 0.2, y0 + H + 0.11, zBack + 0.04 + T / 2]), blue),   // neck
+    tint(solid(cap, [x0 + 0.2, y0 + H + 0.22, zBack + 0.04 + T / 2]), blue)
   ];
+}
+
+/* A green plastic laundry basket: sloped sides, each a grid of square
+   holes in panels, a rolled lip round the top, and folded clothes stacked
+   flat inside. */
+function laundryBasket(bx, y0, zc) {
+  const W0 = 2.0, D0 = 1.0, H = 0.8, t = 0.035, flare = 0.1, green = surface(0x2f6b45, 0.55);
+  const hw = v => W0 / 2 + flare * v / H, hd = v => D0 / 2 + flare * v / H;
+  // a side: a flat panel with rows of square holes, then bent into place
+  const side = (len, panels, cols, place) => {
+    const sh = new THREE.Shape();
+    sh.moveTo(-len / 2, 0); sh.lineTo(len / 2, 0); sh.lineTo(len / 2, H); sh.lineTo(-len / 2, H);
+    const m = 0.1, rib = 0.08, pw = (len - 2 * m - rib * (panels - 1)) / panels, bar = 0.03, rows = 4;
+    const hwid = (pw - bar * (cols - 1)) / cols, hh = (H - 0.22 - bar * (rows - 1)) / rows;
+    for (let p = 0; p < panels; p++) for (let c = 0; c < cols; c++) for (let r = 0; r < rows; r++) {
+      const a = -len / 2 + m + p * (pw + rib) + c * (hwid + bar), b = 0.1 + r * (hh + bar);
+      const hole = new THREE.Path();
+      hole.moveTo(a, b); hole.lineTo(a + hwid, b); hole.lineTo(a + hwid, b + hh); hole.lineTo(a, b + hh);
+      sh.holes.push(hole);
+    }
+    return tint(solid(remap(new THREE.ExtrudeGeometry(sh, { depth: t, bevelEnabled: false }), place)), green);
+  };
+  const parts = [
+    tint(solid(new THREE.BoxGeometry(W0, t, D0), [bx, y0 + t / 2, zc]), green),                       // floor
+    ...[-1, 1].map(s => side(W0, 3, 4, (u, v, d) => [bx + u * hw(v) / (W0 / 2), y0 + v, zc + s * (hd(v) - d)])),
+    ...[-1, 1].map(s => side(D0 - 2 * t, 1, 3, (u, v, d) => [bx + s * (hw(v) - d), y0 + v, zc + u * (hd(v) - t) / (D0 / 2 - t)]))
+  ];
+  // the rolled lip
+  const lip = 0.06, top = y0 + H;
+  parts.push(
+    tint(solid(new THREE.BoxGeometry(2 * hw(H) + 2 * lip, 0.05, lip), [bx, top, zc - hd(H) - lip / 2 + 0.02]), green),
+    tint(solid(new THREE.BoxGeometry(2 * hw(H) + 2 * lip, 0.05, lip), [bx, top, zc + hd(H) + lip / 2 - 0.02]), green),
+    tint(solid(new THREE.BoxGeometry(lip, 0.05, 2 * hd(H)), [bx - hw(H) - lip / 2 + 0.02, top, zc]), green),
+    tint(solid(new THREE.BoxGeometry(lip, 0.05, 2 * hd(H)), [bx + hw(H) + lip / 2 - 0.02, top, zc]), green));
+  // folded clothes: two neat stacks
+  const looks = [MAT.denim, MAT.cream, MAT.flannel, MAT.soft, MAT.teal, MAT.mustard, MAT.plum];
+  let k = 0;
+  for (const dx of [-0.45, 0.45]) {
+    for (let n = 0; n < 4; n++) {
+      parts.push(tint(solid(new THREE.BoxGeometry(0.82, 0.1, 0.72), [bx + dx + (n % 2 ? 0.03 : -0.02), y0 + t + 0.05 + n * 0.105, zc + (n % 3 - 1) * 0.02],
+        [0, (n % 2 ? 0.05 : -0.04), 0]), looks[k++ % looks.length]));
+    }
+  }
+  return parts;
 }
 
 /* The walk-in closet: on each side a white shelf on brackets, a chrome
@@ -2081,8 +2245,7 @@ function pendant(lamps, name, cx, cy, intensity) {
 }
 
 /* A bare bulb hanging on its cord, with a pull string, that sways very
-   very gently. Only the bulb, cord and string move (by a hair); the light
-   itself stays put, so its shadows never need redrawing. */
+   very gently, carrying its light with it so the shadows sway too. */
 function pullBulb(lamps, name, cx, cy, intensity) {
   const drop = CEIL - (FLOOR + 6.9);                                       // cord length
   const swing = new THREE.Group();
@@ -2093,29 +2256,39 @@ function pullBulb(lamps, name, cx, cy, intensity) {
     glow(new THREE.SphereGeometry(0.13, 10, 8), 0, -drop - 0.26, 0),
     lines([[[0.07, -drop - 0.12, 0], [0.07, -drop - 1.3, 0]]], new THREE.LineBasicMaterial({ color: 0xd8d0c0 })),   // pull string
     tint(solid(new THREE.SphereGeometry(0.03, 6, 4), [0.07, -drop - 1.32, 0]), MAT.cream));                       // its bead
-  const g = named(name, swing, bulb(lamps, name + '-light', cx, cy, 6.64, intensity));
-  let t = 0;
+  // the light hangs in the bulb and swings with it. Its shadows follow:
+  // redrawn every other frame, at half size, reaching only 16 feet, so it
+  // stays cheap.
+  const light = bulb(lamps, name + '-light', cx, cy, 6.64, intensity);
+  light.position.set(0, -drop - 0.26, 0);
+  light.distance = 16;
+  light.shadow.mapSize.set(256, 256);
+  swing.add(light);
+  const g = named(name, swing);
+  let t = 0, n = 0;
   g.userData.tick = dt => {
     t += dt;
     swing.rotation.z = 0.035 * Math.sin(t * 1.1);
     swing.rotation.x = 0.02 * Math.sin(t * 0.73 + 1);
+    if (++n % 2 === 0) light.shadow.needsUpdate = true;
   };
   return g;
 }
 
-/* A round flush light on the pantry ceiling: a milk glass dome on a
-   white base. Its light is a narrow spot straight down with soft edges,
-   so it makes a pool on the pantry floor and shelves without shining
-   through the walls (no texture slots left for a shadowed one). */
-function pantryLight() {
-  const x = X(1155), z = Z(724);
+/* A round flush ceiling light (the pantry, over the toilet): a milk glass
+   dome on a white base. Its light is a narrow spot straight down with
+   soft edges that fades out just past the floor, so it makes a pool of
+   light without shining through walls (no texture slots left for a
+   shadowed one). */
+function ceilingLight(name, cx, cy) {
+  const x = X(cx), z = Z(cy);
   const dome = new THREE.SphereGeometry(0.42, 16, 4, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2);
   dome.scale(1, 0.45, 1);
-  const light = new THREE.SpotLight(LAMP_COLOR, 70, 12, 0.34, 0.6, 2);
-  light.name = 'lamp-pantry-light';
+  const light = new THREE.SpotLight(LAMP_COLOR, 70, 9, 0.34, 0.6, 2);    // fades out just past the floor
+  light.name = name + '-light';
   light.position.set(x, CEIL - 0.25, z);
   light.target.position.set(x, FLOOR, z);
-  return named('lamp-pantry',
+  return named(name,
     tint(solid(new THREE.CylinderGeometry(0.5, 0.5, 0.05, 16), [x, CEIL - 0.025, z]), MAT.trim),
     solid(dome, [x, CEIL - 0.05, z], null, MAT.glow),
     light, light.target);
@@ -2134,7 +2307,8 @@ function roomLamps(lamps) {
     endTable('end-table', 345, 400, 248, 294, 1.9),
     tableLamp(lamps, 'lamp-sofa', 372, 271, 1.9, 22),
     pullBulb(lamps, 'lamp-laundry', 710, 898, 26),
-    pantryLight(),
+    ceilingLight('lamp-pantry', 1155, 724),
+    ceilingLight('lamp-toilet', 365, 905),          // over the toilet
     // bathroom: a light bar above the mirror
     named('lamp-bathroom',
       glow(new THREE.BoxGeometry(2, 0.18, 0.2), X(535), FLOOR + 6.75, wallZ - 0.12),
@@ -2328,8 +2502,6 @@ function paint(scene) {
   set('fridge', MAT.steel);
   set('washer', MAT.appliance);
   set('dryer', MAT.appliance);
-  set('bed', MAT.soft);
-  parts('bed', MAT.soft, MAT.furniture, MAT.soft);       // linens, wood headboard, pillows
   for (const n of ['toilet', 'shower']) set(n, MAT.porcelain);
   set('vanity', MAT.furniture);                          // oak cabinet (its top and sink keep their own)
   set('closet-shelves', MAT.trim);

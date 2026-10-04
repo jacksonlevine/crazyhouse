@@ -140,13 +140,17 @@ muted leaded glass on the pillar by the sofa, teal and plum counter stools with
 chrome posts, almond countertops, an oak vanity with an oval sink and
 brass knobs, frosted glass in a brass shower frame, a mauve bathmat,
 flannel and denim and a couple of shoeboxes in the walk-in closet,
-detergent and a basket of laundry on the shelf over the machines, a full
-bookshelf facing the bed, and a messy computer desk under the bedroom
-window: two beige CRTs (a DOS prompt and a teal desktop), a beige tower,
-an office chair, an ashtray full of butts and empty cans of Diet Choke. The rug pattern, the
+a blue jug of YEP detergent and a green laundry basket of folded clothes
+on the shelf over the machines, a bed with a rounded mattress, puffy
+pillows and a plaid flannel comforter with its corner turned back, a
+full bookshelf facing the bed, and a messy computer desk under the
+bedroom window: two beige CRTs (a DOS prompt and a teal desktop), a
+beige tower under the desk, an office chair, an ashtray full of butts
+and empty cans of Diet Choke. The rug pattern, the
 Tiffany glass, the newspaper's front page, the monitor screens, the can
-labels and the shower glass's grain are tiny pictures drawn by the game
-when it starts, not image files.
+labels and tops, the detergent label, the plaid and the shower glass's
+grain are tiny pictures drawn by the game when it starts, not image
+files.
 
 **The fire** (`woodStove()` and `fire()`): the stove is hollow, with
 firebrick inside, and two crossed logs (and one behind) sit on a grate
@@ -157,8 +161,17 @@ inside lights the firebrick and a soft spotlight warms the room.
 material, and graphics cards only have 16. The 13 shadowed lights use
 most of them, so **don't add another shadowed light** without taking one
 away (the shower glass is the first thing to break). The newer lights
-(the fire, the pillar sconce, the pantry's ceiling light) have no
-shadows and are aimed or limited so they can't shine through walls.
+(the fire, the pillar sconce, the round ceiling lights in the pantry
+and over the toilet) have no shadows and are aimed or limited so they
+can't shine through walls.
+
+**Shadows are live, nothing is painted on.** Every shadow is a real
+shadow map from its light. To keep it cheap, a lamp only redraws its
+shadows when something near it moves (ghoul1 walking past, a door). The
+laundry's swaying bulb carries its light with it, so its shadows sway
+too; it redraws every other frame at half size and only reaches 16 feet
+(about 0.3 ms a frame). (`bake()` has nothing to do with shadows: it
+only welds furniture parts together so there are fewer things to draw.)
 
 **The front porch** has a lantern by the door and a rocking chair
 (`frontPorch()`). The kitchen has a real double sink with a faucet
@@ -175,8 +188,9 @@ walls, a red front door, and so on. They're all in `MAT` near the top of
   table lamp in the living room, pendants over the dining table and the
   kitchen island, a lamp on an end table by the sectional, both
   nightstand lamps in the master, a bare bulb on a cord with a pull
-  string in the laundry that sways very gently (`pullBulb()`; only the
-  bulb moves, the light stays put so its shadows never need redrawing), a light bar over the bathroom mirror, a lantern on the patio,
+  string in the laundry that sways very gently, its light and shadows
+  swaying with it (`pullBulb()`), round ceiling lights in the pantry and
+  over the toilet (`ceilingLight()`), a light bar over the bathroom mirror, a lantern on the patio,
   a lantern on the front porch.
 - **Outside:** a road past the front of the house with curbs and a
   dashed yellow line (`road()`), a tall streetlight at the curb whose
