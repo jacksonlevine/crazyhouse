@@ -11,7 +11,7 @@ import { createGhoul } from './ghoul.js?v=12';
 import { createGhostPass, GHOST_LAYER } from './ghost.js?v=4';
 import { createTv } from './tv.js?v=8';
 import { openSignalURL } from './signal-clip.js?v=7';
-import { createAnalogPass } from './analog.js?v=20';
+import { createAnalogPass } from './analog.js?v=22';
 
 
 const $ = id => document.getElementById(id);
@@ -111,7 +111,9 @@ function setup() {
     if (o.shadow) o.shadow.camera.layers.enable(GHOST_LAYER);
   });
   ghost = createGhostPass(renderer);
-  analog = createAnalogPass(renderer);
+  // A line-comb receiver preserves luma detail instead of using the broad
+  // three-tap carrier trap. Recorded Lab receiver settings still override it.
+  analog = createAnalogPass(renderer, {receiverParameters:{comb:true}});
   const testInterference = Number(new URLSearchParams(location.search).get('interference'));
   if (Number.isFinite(testInterference)) analog.controls.interference = Math.max(0, Math.min(1, testInterference));
   const recordingURL=new URLSearchParams(location.search).get('signal');
@@ -155,7 +157,7 @@ function setup() {
       isNight: () => night, camIndex: () => camIndex
     };
     window.crazyhouse = api;
-    import('./debug.js?v=13').then(m => m.createDebug(api));
+    import('./debug.js?v=14').then(m => m.createDebug(api));
   }
 
   renderer.setAnimationLoop(now => {

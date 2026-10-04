@@ -15,7 +15,7 @@ export function gameClipOrigin(seconds,epoch){
   const clock=gameSignalClock(seconds,epoch);
   return clock.time-(clock.frame%2)*GAME_SIGNAL.samplesPerLine*GAME_SIGNAL.linesPerFrame/GAME_SIGNAL.sampleRate;
 }
-export function createAnalogPass(renderer,{videoSource=null,onFrame=null}={}) {
+export function createAnalogPass(renderer,{videoSource=null,onFrame=null,receiverParameters={}}={}) {
   const picture = new THREE.WebGLRenderTarget(768, H, {type: THREE.HalfFloatType, samples: 4});
   const source = new THREE.WebGLRenderTarget(720, H, {type:THREE.HalfFloatType, depthBuffer:false});
   source.texture.minFilter=source.texture.magFilter=THREE.NearestFilter;
@@ -248,7 +248,7 @@ export function createAnalogPass(renderer,{videoSource=null,onFrame=null}={}) {
     renderer.setRenderTarget(target);
     inFlight++;
     const started=performance.now();
-    const parameters={...(clip?.manifest.receiverParameters??{}),frame:signalFrame};
+    const parameters={...receiverParameters,...(clip?.manifest.receiverParameters??{}),frame:signalFrame};
     if(controls.bandwidthMHz>0)parameters.bandwidth=controls.bandwidthMHz;
     const readback=renderer.readRenderTargetPixelsAsync(signal,0,0,PACKED_W,SIGNAL_H,readbackPool.pop());
     // Two bounded readbacks overlap fence polling with the next screen refresh.
@@ -262,7 +262,7 @@ export function createAnalogPass(renderer,{videoSource=null,onFrame=null}={}) {
       timingTexture.image.data=new Float32Array(result.timing);timingTexture.needsUpdate=true;
       uniforms.comb.value=parameters.comb?1:0;uniforms.colorKiller.value=parameters.colorKiller===false?0:1;uniforms.receiverSetup.value=parameters.setupIRE??7.5;
       const target=renderer.getRenderTarget();quad.material=decode;renderer.setRenderTarget(decoded);renderer.render(scene,camera);renderer.setRenderTarget(target);
-      stats.receiverMilliseconds=result.milliseconds;stats.frames++;statsFrames++;
+      stats.receiverMode=parameters.comb?'line comb':'notch';stats.receiverMilliseconds=result.milliseconds;stats.frames++;statsFrames++;
       onFrame?.({frame:signalFrame,target:decoded,stats});
       const elapsed=performance.now()-statsStart;if(elapsed>=1000){stats.signalFPS=statsFrames*1000/elapsed;statsFrames=0;statsStart=performance.now();}
     }).catch(error=>{stats.error=error.message;console.error('Composite receiver:',error);}).finally(()=>{inFlight--;});

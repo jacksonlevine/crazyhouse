@@ -1,6 +1,6 @@
 <!doctype html><title>Composite performance</title><pre id="out">Measuring…</pre><canvas id="view"></canvas><script type="module">
 import * as THREE from '../vendor/three-r186/three.module.js';
-import {createAnalogPass} from '../analog.js?v=20';
+import {createAnalogPass} from '../analog.js?v=22';
 const renderer=new THREE.WebGLRenderer({canvas:document.getElementById('view')});renderer.setSize(960,600,false);
 const texture=new THREE.DataTexture(new Uint8Array(await(await fetch('./fixtures/runtime/source.rgba')).arrayBuffer()),720,480,THREE.RGBAFormat);texture.needsUpdate=true;
 const pass=createAnalogPass(renderer,{videoSource:texture});pass.controls.automaticHum=false;

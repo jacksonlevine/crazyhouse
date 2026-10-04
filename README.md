@@ -438,3 +438,14 @@ Normal Lab preview, virtual camera, and non-game raw export retain their framing
 The game starts clip playback on its NTSC two-frame carrier-phase boundary; only the drift and
 phase offsets designed into the recorded waveform remain. Older letterboxed
 recordings need to be re-exported to remove their baked-in bars.
+
+The game uses Lab's line-comb receiver as its default luma/chroma separator.
+The simple three-tap notch removed most fine luma contrast below the carrier:
+a GPU sinusoidal test measures only 17% retained contrast at 2.5 MHz, versus
+80% with the line comb. The picture remains 480 lines and encoder/chroma
+bandwidths stay unchanged. This is signal separation, without an image
+sharpening pass or brightness boost. Imported recordings keep their exported
+receiver settings, including an explicit `comb: false`.
+
+`tools/composite-visibility.html` compares both receivers on identical ramp and
+sinusoidal input and verifies brightness and horizontal contrast retention.
