@@ -8,7 +8,8 @@ const reference=JSON.parse(readFileSync(`${root}/game-receiver-rows.json`));
 const receiver=new CompositeReceiver();
 let worstPosition=0,worstPhase=0,worstClamp=0;
 const start=performance.now();
-for(const expected of reference){
+for(let frame=0;frame<reference.length;frame++){
+ const b=readFileSync(`${root}/game-receiver-input-${frame}.f32`),samples=new Float32Array(b.buffer,b.byteOffset,b.byteLength/4),expected=reference[frame];
  const actual=receiver.recover(samples);
  for(let line=0;line<480;line++){
   const offset=line*4;

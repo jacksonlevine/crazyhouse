@@ -10,8 +10,8 @@ import { CAMS, camAt } from './cams.js?v=7';
 import { createGhoul } from './ghoul.js?v=12';
 import { createGhostPass, GHOST_LAYER } from './ghost.js?v=4';
 import { createTv } from './tv.js?v=8';
-import { openSignalURL } from './signal-clip.js?v=4';
-import { createAnalogPass } from './analog.js?v=12';
+import { openSignalURL } from './signal-clip.js?v=7';
+import { createAnalogPass } from './analog.js?v=14';
 
 
 const $ = id => document.getElementById(id);
@@ -108,7 +108,7 @@ function setup() {
   const recordingURL=new URLSearchParams(location.search).get('signal');
   if(recordingURL){
     openSignalURL(recordingURL).then(async clip=>{
-      await Promise.all([clip.load(0),clip.load(1)]);
+      await clip.prime();
       if(clip.error){clip.dispose();throw new Error(clip.error);}
       const gain=Number(new URLSearchParams(location.search).get('signalGain') ?? 0.25);
       clip.gain=Number.isFinite(gain)?Math.max(0,Math.min(2,gain)):0.25;
@@ -144,7 +144,7 @@ function setup() {
       isNight: () => night, camIndex: () => camIndex
     };
     window.crazyhouse = api;
-    import('./debug.js?v=8').then(m => m.createDebug(api));
+    import('./debug.js?v=11').then(m => m.createDebug(api));
   }
 
   renderer.setAnimationLoop(now => {

@@ -4,3 +4,5 @@ node_modules/
 
 # Local raw voltage recordings (large, streamed on demand).
 signals/recordings/
+
+tools/fixtures/runtime/

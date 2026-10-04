@@ -193,27 +193,27 @@ The browser console also gets `crazyhouse.scene`, `.camera`, `.CAMS`,
 
 ## Live composite camera view
 
-The scene and ghost render at 768×480, then encode the game-specific
-Composite Lab raster: 480 progressive lines, 910 samples/line, and exactly
-14.318181818 MS/s. Horizontal sync (4.7 µs), nine-cycle -U burst (5.3 µs),
-active video (9.4–62.055 µs), 7.5 IRE setup, U/V modulation, and voltage units
-match the Lab game exporter. Source filtering uses Lab's 720-pixel, 49-tap
-Blackman filters (4.2 MHz Y; 1.3 MHz U/V). A normal flat Lab connection's
-32-sample causal latency is included in the game's base source.
+The scene and ghost render at 768×480, then use Composite Lab's normal NTSC
+encoder: 525 lines, two interlaced fields, 910 samples/line, exactly 14.318181818
+MS/s, equalizing/broad vertical-sync pulses, horizontal sync, blanking and
+nine-cycle -U burst. The decoded picture is 720×480. Source filtering uses the
+same 49-tap Blackman filters (4.2 MHz Y; 1.3 MHz U/V), 7.5 IRE setup, voltage
+units, U/V modulation, and 32-sample causal latency as a flat Lab connection.
 
-`composite-receiver.js` ports Lab's adaptive 50% sync slicer, horizontal timing
-tracker, burst-phase tracker, and back-porch clamp to the progressive raster.
-The shader uses Lab's notch luma decoder, 1.3 MHz quadrature chroma filter,
-and color killer. The default additional channel filter is off, as in Lab;
-`bandwidthMHz` enables Lab's causal exponential channel filter. The waveform
-is float32; horizontal tracking uses a GPU readback each signal frame.
-The 480-line clock runs at about 32.78 frames/s; display redraws reuse the last
-decoded signal between signal frames. The game source and recording advance on
-whole signal frames, so wall-clock draw jitter does not create fake clock drift.
-This adds a synchronization cost on the GPU, unlike the former independent
-scanline approximation. There is no vertical sync or interlace in this game
-format, and no cosmetic scanlines or scripted picture warps. Tone mapping
-uses Three.js ACES to convert scene radiance to video levels.
+`composite-receiver.js` ports the **normal** Lab receiver: horizontal and vertical
+acquisition, adaptive 50% slicer, timing tracking, burst-phase tracking, and
+back-porch clamp. The decoder uses Lab's notch/optional field comb and chroma
+filter/color killer. Exported receiver settings also configure amplifier,
+saturation, bias, noise, slew, bandwidth and decoder controls. The channel's
+finite exponential convolution is evaluated with an equivalent sliding recurrence,
+verified against Lab's actual output, rather than a different filter model.
+
+The GPU encodes the mixed waveform. Readback uses an asynchronous pixel-pack
+buffer/fence; a dedicated worker processes the receiver while the main thread
+remains responsive. The decoded output is cached and displayed between NTSC
+frames. Complete signal frames are processed in order at about 29.97 Hz;
+there are no decorative scanlines or scripted picture warps. Tone mapping uses
+Three.js ACES to convert scene radiance into source video levels.
 
 At `?debug`, `crazyhouse.analog.controls` exposes `bandwidthMHz`, `noise`,
 `interference`, and `automatic`. Noise and automatic bursts default off.
@@ -263,44 +263,61 @@ The kitchen TV itself no longer adds decorative scanlines or picture warp.
 Open the updated native Composite Lab app at
 `/Users/jacksonlevine/Documents/Codex/2026-09-30/cou/outputs/CompositeLab`.
 In **Connections**, check **Record** beside one or more connections, enter
-the duration (default 30 seconds), leave **Game export (480 progressive lines)**
-enabled, then **Record selected…** and choose a
-folder. Recording runs in real time and stops automatically. **Stop recording**
-keeps a marked partial recording. Each selected connection is recorded after
-its port selection, EQ, delay, level and feedback, before the destination mixer.
-To capture a finished mixer output, patch that mixer into another mixer and
-record that connection. Output/receiver master controls are downstream of the
-tap. Connection edits are locked while recording; live camera footage continues.
+the duration (default 30 seconds), leave **Game export (continuous NTSC signal)**
+enabled, then **Record selected…** and choose a folder. Recording runs in real
+time and stops automatically; **Stop recording** saves a partial recording.
+Every selected connection is captured after port selection, EQ, delay and level,
+before the destination mixer. Patch a mixer into another mixer to export its
+output. Edits are locked while recording, but live footage continues.
 
-In Crazyhouse with `?debug`, open **signals…**, then choose **load signal recording folder…** and
-select the entire exported folder. Choose a connection or **Mix all recorded
-connections**, toggle playback, and adjust **signal gain**. Chunks load on demand;
-the cache holds at most four blocks. Missing/corrupt chunks stop playback with
-an error. New game exports use a contiguous sample clock, independent of the
-normal Lab preview timer. Every 480-line block is computed with the patch's
-source settings, routes, EQ, delays, mixer settings and feedback, using a
-separate export engine. Recording starts after that engine is warmed up.
-The four-block writer applies backpressure during catch-up. Normal Lab simulation,
-output, virtual camera, and the optional original 525-line export are unchanged.
-Recorded voltages mix before sync recovery and decoding. New game exports use
-`voltageScale: 1`; legacy 525-line clips remain readable with their original scale.
-Native receiver/master processing is downstream of connection taps and is not
-exported, so non-default Lab receiver settings are not automatically applied.
+Game export runs a separate engine using Lab's unchanged normal encoder and
+receiver, at four samples/carrier. It writes contiguous 525-line blocks on a
+sample clock and preserves receiver parameters/source settings in the manifest.
+Normal Lab preview, output, virtual camera, and original raw export are untouched.
+The game uses the receiver settings to decode the sum of its base signal and the
+recorded voltages. Source drift and offsets are present in the waveform itself.
+The original optional raw export preserves its original native sample rate and
+wall-clock block timestamps. Legacy 480-line clips remain readable, but do not
+contain the vertical/interlaced timing of the normal Lab model.
 
-For a normal-game recording input, serve the folder beside the game and pass
-`?signal=signals/recordings/traffic-game-30s/manifest.json&signalGain=0.15`.
-Raw recordings are ignored by Git. Game export always uses four samples/carrier,
-approximately 1.72 GB per connection for 30 seconds, regardless of the normal
-Lab engine's sample rate. Export is float32 little-endian in Lab voltage units.
+In Crazyhouse with `?debug`, open **signals…**, choose **load signal recording
+folder…**, and select the entire folder. Choose one track or mix all tracks, toggle
+playback, and adjust gain. The window reports measured signal fps, GPU readback,
+receiver-worker time, and buffer stalls.
 
-The manifest records the raster (`game-progressive-480`), sample rate, voltage
-scale, dimensions, sample-clock timestamps, track labels and routes. Each track
-folder contains `000000.f32`, `000001.f32`, etc., each exactly
-`480 * samplesPerLine * 4` bytes. Loops and unavailable file chunks can still
-introduce discontinuities; recordings are finite waveform segments.
+A separate worker validates and mixes recorded voltages. Playback primes about
+0.7 seconds of lookahead, keeps at most 28 blocks, and allows four concurrent
+loads. Both preceding and following guard samples must be present before a
+waveform is submitted. If storage cannot keep up, the simulation pauses and
+holds its decoded view with an explicit buffering indication; it does not replace
+missing waveform data with zero or skip forward. The sample stream wraps across
+recording boundaries; a finite recording's end-to-start edit can still cause a
+physical waveform discontinuity. Corrupt/missing files stop playback with an error.
+
+Use `?signal=signals/recordings/smooth-ntsc-30s/manifest.json&signalGain=0.15`
+for the local smooth 30 fps test footage, recorded from the existing local Lab
+video. It includes explicit source drift of +79 ppm and offset of 0.37 line,
+recorded by the actual Lab encoder. These are source-clock parameters, not screen
+warps. Camera updates and waveform block counts use independent pacing clocks.
+This clip contains 900 full NTSC frames (30.03 seconds) so no frame is cut short.
+Raw recordings are ignored by Git; 30 seconds is about 1.72 GB per connection.
+
+The format is `composite-lab-signal`, version 1, `float32-le`. New game exports
+have `raster: game-ntsc-525`, `voltageScale: 1`, `linesPerFrame: 525`, contiguous
+sample-clock timestamps, and optional `receiverParameters` / `sourceSettings`.
+Each track folder contains `000000.f32`, etc., each exactly
+`525 * samplesPerLine * 4` bytes. Native legacy exports retain their voltage scale.
 
 Run `node tools/check-signal-clip.mjs` and `node tools/check-analog.mjs` for
 format/playback and waveform tests. The analog test takes the native validation
 output directory as an optional argument. Run the native `--self-test --test-output
-/tmp/composite-game-validation` first, then `node tools/check-composite-receiver.mjs`
+/tmp/composite-full-validation` first, then `node tools/check-composite-receiver.mjs`
 for cross-implementation clean/mixed timing, burst phase, clamp, and decoder checks.
+
+`node tools/check-signal-stream.mjs /tmp/composite-full-validation` tests sustained
+streaming with 100 ms artificial read latency and checks the optimized channel
+against Metal. `tools/composite-parity.html` checks the **actual game GPU pipeline**
+against normal Lab decoded pixels for clean and independently drifting mixed
+sources. Generate its ignored runtime fixtures by copying `source.rgba`,
+`game-{clean,mixed}-output-{0,1,2}.rgba`, and `interference-{0,1,2}.f32` from the
+native self-test directory into `tools/fixtures/runtime/`, then serve the page.

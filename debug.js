@@ -1,4 +1,4 @@
-import { openSignalFolder } from './signal-clip.js?v=4';
+import { openSignalFolder } from './signal-clip.js?v=7';
 
 /* ============================================================
    crazyhouse: the debug panel. Only loads with ?debug in the URL.
@@ -61,6 +61,7 @@ export function createDebug(api) {
     </div>
     <label>signal gain <input type="range" min="0" max="2" step="0.01" value="0.25" data-in="signal-gain"> <span data-out="signal-gain">0.25</span></label>
     <div class="dbg-help" data-out="signal-status">No recorded signal loaded.</div>
+    <div class="dbg-help" data-out="signal-performance"></div>
 `;
   document.body.append(signalLauncher, signalWindow);
   signalLauncher.addEventListener('click', () => {
@@ -117,7 +118,7 @@ export function createDebug(api) {
     try{
       const clip=await openSignalFolder(signalFiles.files);
       clip.gain=Number($('[data-in="signal-gain"]').value);
-      await Promise.all([clip.load(0),clip.load(1)]);
+      await clip.prime();
       if(request!==clipRequest){clip.dispose();return;}
       if(clip.error){clip.dispose();throw new Error(clip.error);}
       api.analog.setClip(clip);showClip();
@@ -259,6 +260,8 @@ export function createDebug(api) {
       btn('signal-toggle').setAttribute('aria-pressed','false');
     }
     if (now - lastRead < 150) return;
+    const stats=api.analog.stats;
+    if(stats)out('signal-performance').textContent=stats.error||`${stats.buffering?'Buffering · ':''}${stats.signalFPS.toFixed(1)} signal fps · GPU read ${stats.readMilliseconds.toFixed(1)} ms · receiver ${stats.receiverMilliseconds.toFixed(1)} ms · ${api.analog.clip?.underruns??0} buffer stalls`;
     lastRead = now;
     const p = camera.position;
     let text = `pos  ${r(p.x)}, ${r(p.y)}, ${r(p.z)}\nfov  ${Math.round(camera.fov)}°  ${debug.free ? '(free cam)' : '(cam ' + (api.camIndex() + 1) + ')'}\nghoul ${ghoul.state}`;
