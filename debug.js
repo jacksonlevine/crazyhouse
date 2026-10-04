@@ -53,7 +53,7 @@ export function createDebug(api) {
   signalWindow.setAttribute('aria-labelledby', 'signal-window-title');
   signalWindow.innerHTML = `
     <div class="signal-heading">
-      <div class="dbg-title" id="signal-window-title">signal recordings</div>
+      <div class="dbg-title" id="signal-window-title">composite signal</div>
       <button data-act="signal-close" aria-label="Close signal window">×</button>
     </div>
     <button data-act="signal-load">load signal recording folder…</button>
@@ -125,17 +125,77 @@ export function createDebug(api) {
       await clip.prime();
       if(request!==clipRequest){clip.dispose();return;}
       if(clip.error){clip.dispose();throw new Error(clip.error);}
-      api.analog.setClip(clip);showClip();
+      api.analog.setClip(clip);showClip();syncParameters();
     }catch(error){if(request===clipRequest)out('signal-status').textContent=error.message;}
     finally{signalFiles.value='';}
   });
   signalTrack.addEventListener('change',()=>api.analog.clip?.setTrack(signalTrack.value));
   btn('signal-toggle').addEventListener('click',()=>{if(api.analog.clip){api.analog.clip.enabled=!api.analog.clip.enabled;showClip();}});
-  btn('signal-clear').addEventListener('click',()=>{clipRequest++;api.analog.setClip(null);showClip();});
+  btn('signal-clear').addEventListener('click',()=>{clipRequest++;api.analog.setClip(null);showClip();syncParameters();});
   $('[data-in="signal-gain"]').addEventListener('input',e=>{
     out('signal-gain').textContent=e.target.value;
     if(api.analog.clip)api.analog.clip.gain=Number(e.target.value);
   });
+
+  // Controls live in the existing separate signal window, not Jake's panel.
+  const settings=document.createElement('div');settings.className='signal-settings';
+  settings.innerHTML='<div class="dbg-help">Live controls. 0 MHz bypasses a filter. Receiver edits override recorded settings; reset restores them.</div>';
+  const entries=[];
+  function group(title,fields,receiver=false){
+    const section=document.createElement('details');section.open=title==='Encoder filters'||title==='Receiver decoding';
+    const heading=document.createElement('summary');heading.textContent=title;section.append(heading);
+    for(const [key,label,min,max,step] of fields){
+      const row=document.createElement('label'),input=document.createElement('input');row.className='signal-param';
+      const text=document.createElement('span');text.textContent=label;row.append(text,input);
+      input.setAttribute('aria-label',label);input.dataset.parameter=key;
+      const boolean=min===null;input.type=boolean?'checkbox':'number';
+      if(!boolean){input.min=min;input.max=max;input.step=step;}
+      input.addEventListener('input',()=>{
+        if(!boolean&&!input.validity.valid)return;
+        const value=boolean?input.checked:input.valueAsNumber;if(!boolean&&!Number.isFinite(value))return;
+        const controls=api.analog.controls;
+        if(receiver)controls.receiverOverrides[key]=value;else controls[key]=value;
+        if(['sceneScale','displayWidth','sourceLinear','waveLinear','outputLinear'].includes(key))api.resizeAnalog();
+      });
+      section.append(row);entries.push({input,key,receiver,boolean});
+    }
+    settings.append(section);
+  }
+  group('Encoder filters',[
+    ['lumaMHz','Luma cutoff (MHz)',0,6.8,.1],['chromaMHz','Chroma cutoff (MHz)',0,6.8,.1],
+    ['sourceTaps','Encoder FIR taps (odd)',1,49,2],['sourceSetup','Encoder black setup (IRE)',0,30,.5],['sourceChromaGain','Encoder chroma gain',0,3,.05]
+  ]);
+  group('Receiver decoding',[
+    ['receiverChromaMHz','Decoded chroma cutoff (MHz)',0,7.1,.1],['receiverTaps','Decoder FIR taps (odd)',1,33,2],
+    ['notchSpacing','Notch spacing (samples)',0,8,.1]
+  ]);
+  group('Receiver tracking',[
+    ['comb','Line comb',null],['clamp','Back-porch clamp',null],['colorKiller','Color killer',null],['autoSlice','Automatic sync threshold',null],
+    ['threshold','Manual sync threshold (V)',-1,1,.01],['tracking','Horizontal tracking gain',0,1,.01],['colorTracking','Burst phase tracking gain',0,1,.01],
+    ['holdPPM','Receiver clock offset (ppm)',-10000,10000,1],['setupIRE','Receiver black setup (IRE)',0,30,.5]
+  ],true);
+  group('Received signal channel',[
+    ['bandwidth','Channel cutoff (MHz; 0 off)',0,7.1,.1],['gain','Channel voltage gain',0,3,.05],['bias','Channel DC bias (V)',-1,1,.01],
+    ['headroom','Channel headroom (V; 0 off)',0,3,.05],['noise','Channel noise level',0,1,.01],['slew','Slew limit (V/µs; 0 off)',0,20,.1]
+  ],true);
+  group('Injected signals',[
+    ['automaticHum','Intermittent mains hum',null],['automaticHumGain','Mains hum gain',0,2,.01],['noise','Encoder noise level',0,1,.01],
+    ['interference','Interfering oscillator gain',0,2,.01],['testGain','W injection gain',0,3,.05]
+  ]);
+  group('Sampling and reconstruction',[
+    ['sceneScale','Scene resolution scale',.25,2,.05],['displayWidth','Reconstruct at display width',null],
+    ['sourceLinear','Linear encoder sampling',null],['waveLinear','Linear waveform sampling',null],['outputLinear','Smooth output scaling',null]
+  ]);
+  const reset=document.createElement('button');reset.textContent='reset signal parameters';settings.append(reset);
+  const copy=document.createElement('button');copy.textContent='show parameters as JSON';settings.append(copy);
+  const json=document.createElement('textarea');json.readOnly=true;json.hidden=true;json.setAttribute('aria-label','Signal parameters JSON');settings.append(json);
+  copy.addEventListener('click',()=>{const c=api.analog.controls;json.value=JSON.stringify({encoder:Object.fromEntries(entries.filter(e=>!e.receiver).map(e=>[e.key,c[e.key]])),receiver:api.analog.getReceiverParameters()},null,2);json.hidden=false;json.select();});
+  function syncParameters(){
+    const receiver=api.analog.getReceiverParameters();
+    for(const {input,key,boolean,receiver:isReceiver} of entries){const value=isReceiver?receiver[key]:api.analog.controls[key];if(boolean)input.checked=value;else input.value=value;}
+  }
+  reset.addEventListener('click',()=>{api.analog.resetParameters();api.resizeAnalog();syncParameters();});
+  signalWindow.append(settings);syncParameters();
 
   /* ─── free cam ─── */
   let yaw = 0, pitch = 0, speed = 12;
@@ -278,7 +338,7 @@ export function createDebug(api) {
   let lastRead = 0;
   function readout() {
     const now = performance.now();
-    if(api.analog.clip!==shownClip)showClip();
+    if(api.analog.clip!==shownClip){showClip();syncParameters();}
     if(api.analog.clip?.error){
       out('signal-status').textContent=api.analog.clip.error;
       btn('signal-toggle').textContent='recorded signal: error';

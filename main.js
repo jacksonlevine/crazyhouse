@@ -11,8 +11,7 @@ import { createGhoul } from './ghoul.js?v=12';
 import { createGhostPass, GHOST_LAYER } from './ghost.js?v=4';
 import { createTv } from './tv.js?v=8';
 import { openSignalURL } from './signal-clip.js?v=7';
-import { createHDAnalogPass } from './hd-analog.js?v=1';
-import { createAnalogPass } from './analog.js?v=23';
+import { createAnalogPass } from './analog.js?v=24';
 
 
 const $ = id => document.getElementById(id);
@@ -112,10 +111,7 @@ function setup() {
     if (o.shadow) o.shadow.camera.layers.enable(GHOST_LAYER);
   });
   ghost = createGhostPass(renderer);
-  // NTSC is the default; the custom HD raster remains an explicit experiment.
-  analog = new URLSearchParams(location.search).get('analog')==='hd'
-    ? createHDAnalogPass(renderer)
-    : createAnalogPass(renderer, {receiverParameters:{comb:true}});
+  analog = createAnalogPass(renderer, {receiverParameters:{comb:true}});
   const testInterference = Number(new URLSearchParams(location.search).get('interference'));
   if (Number.isFinite(testInterference)) analog.controls.interference = Math.max(0, Math.min(1, testInterference));
   const recordingURL=new URLSearchParams(location.search).get('signal');
@@ -153,6 +149,7 @@ function setup() {
   if (new URLSearchParams(location.search).has('debug')) {
     const api = {
       THREE, scene, camera, renderer, CAMS, showCam, ghoul, lamps, fireEmp, toggleNight, frame, debug, tv, analog,
+      resizeAnalog: fit,
       setComposite: enabled => {
         debug.composite = enabled;
         ghost.setSize(enabled ? analog.picture.width : buffer.x, enabled ? analog.picture.height : buffer.y);
@@ -160,7 +157,7 @@ function setup() {
       isNight: () => night, camIndex: () => camIndex
     };
     window.crazyhouse = api;
-    import('./debug.js?v=14').then(m => m.createDebug(api));
+    import('./debug.js?v=16').then(m => m.createDebug(api));
   }
 
   renderer.setAnimationLoop(now => {

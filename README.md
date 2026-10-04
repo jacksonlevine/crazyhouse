@@ -358,40 +358,22 @@ its fixed 720×480 encoder once. The receiver reconstructs horizontally at displ
 width directly from the waveform, avoiding a second 720-pixel image enlargement.
 Vertical output remains 480 lines; NTSC luma/chroma bandwidth limits remain intact.
 
-## HD analog view
+## Live signal parameters
 
-The default game view uses the Lab-compatible NTSC path. Camera switching has
-no artificial blackout. The experimental `?analog=hd` view uses a custom
-1920×1080 progressive analog waveform:
-1125 total lines, 2402 voltage samples per line, 60 frames/second,
-162.135 MHz sampling, and a 40.53375 MHz quadrature color carrier. It has actual
-sync pulses, blanking, burst, 65 MHz luma and 30 MHz chroma filtering, voltage
-mixing, back-porch clamping, sync tracking, burst phase recovery and a line-comb
-receiver. This is a custom HD signal format, not standard NTSC. There are no
-added scanlines, sharpening or cosmetic distortion passes.
+With `?debug`, open **signals…**. Its separate window exposes encoder luma/chroma
+cutoffs and FIR tap counts, chroma amplitude and black setup, decoder chroma
+cutoff/taps and notch spacing, line comb, clamp, color killer, sync threshold and
+tracking gains, receiver clock offset, channel cutoff/gain/bias/headroom/noise/slew,
+intermittent hum and oscillator gains, scene resolution scale, receiver output
+width and source/waveform/output interpolation. Changes apply live to the signal
+or its actual sampling stages. A cutoff of 0 bypasses that filter. Tap counts are
+odd and bounded by the existing shader kernels, so edits do not compile shaders.
 
-The waveform stays on the GPU. Only two RGBA measurements per raster line
-(38,048 bytes/frame) go to the receiver worker. Two bounded waveform buffers and reusable pixel-pack buffers
-retain the matching signal until its timing is recovered and decoded. Missing
-sync free-runs the receiver; it is not replaced by the game's camera coordinates.
-The chroma FIR combines same-sign adjacent taps using texture interpolation,
-preserving the filter while reducing texture fetches. The game still renders at
-monitor refresh, independently of the 60 Hz signal clock.
-
-Use `?debug&analog=ntsc` for the original Lab-compatible 480-line mode. Existing
-Lab recordings contain NTSC timing and carrier frequencies; they **do not become
-HD recordings** when loaded in HD mode. They are mixed as foreign-frequency
-voltages there and will interfere differently. Their NTSC receiver settings are
-not applied to the HD receiver. Use NTSC mode when checking exact
-agreement with Lab. A matching custom HD export would be needed for HD parity;
-Lab's normal preview, recording and virtual camera behavior remain unchanged.
-
-Run `node tools/check-hd-receiver.mjs` for sync, burst, missing-frame, repeated
-refresh and clamp checks. Serve `tools/hd-signal-check.html` to validate the real
-GPU color/ramp round trip, injected DC rejection and carrier-voltage interference.
-Performance is visible in the separate `signals…` debug window. The GPU read
-measurement includes asynchronous fence/queue latency, rather than only GPU
-execution time; rendered and decoded frame rates are reported separately.
+Receiver edits explicitly override the recording's corresponding settings.
+**reset signal parameters** clears those overrides and restores the existing
+encoder/sampling settings; **show parameters as JSON** exposes the current values
+for copying. Changes are temporary debug-session settings. The normal game keeps
+its existing defaults. The signal raster/carrier clock stays NTSC for Lab compatibility.
 
 ## Designing recorded interferers in Composite Lab
 
@@ -429,7 +411,7 @@ missing waveform data with zero or skip forward. The sample stream wraps across
 recording boundaries; a finite recording's end-to-start edit can still cause a
 physical waveform discontinuity. Corrupt/missing files stop playback with an error.
 
-Use `?analog=ntsc&signal=signals/recordings/smooth-cover-ntsc-30s/manifest.json&signalGain=0.15`
+Use `?signal=signals/recordings/smooth-cover-ntsc-30s/manifest.json&signalGain=0.15`
 for the local smooth 30 fps test footage, recorded from the existing local Lab
 video. It includes explicit source drift of +79 ppm and offset of 0.37 line,
 recorded by the actual Lab encoder. These are source-clock parameters, not screen

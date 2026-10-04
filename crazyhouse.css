@@ -329,3 +329,9 @@ canvas {
 }
 .signal-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .signal-window select { width: 100%; min-width: 0; }
+
+.signal-settings details { margin-top: 12px; border-top: 1px solid #555; padding-top: 8px; }
+.signal-settings summary { cursor: pointer; margin-bottom: 8px; }
+.signal-param { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 6px 0; }
+.signal-param input[type="number"] { width: 76px; background: #111; color: white; border: 1px solid #777; padding: 3px; }
+.signal-settings textarea { width: 100%; min-height: 160px; background: #111; color: white; box-sizing: border-box; }
