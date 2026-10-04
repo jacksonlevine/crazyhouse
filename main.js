@@ -12,7 +12,7 @@ import { createGhostPass, GHOST_LAYER } from './ghost.js?v=4';
 import { createTv } from './tv.js?v=8';
 import { openSignalURL } from './signal-clip.js?v=7';
 import { createHDAnalogPass } from './hd-analog.js?v=1';
-import { createAnalogPass } from './analog.js?v=22';
+import { createAnalogPass } from './analog.js?v=23';
 
 
 const $ = id => document.getElementById(id);
@@ -138,6 +138,7 @@ function setup() {
     if (!w || !h) return;
     renderer.setSize(w, h, false);
     renderer.getDrawingBufferSize(buffer);
+    analog.setSize?.(buffer.x,buffer.y);
     ghost.setSize(debug.composite ? analog.picture.width : buffer.x, debug.composite ? analog.picture.height : buffer.y);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();

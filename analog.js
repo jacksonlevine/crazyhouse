@@ -16,7 +16,7 @@ export function gameClipOrigin(seconds,epoch){
   return clock.time-(clock.frame%2)*GAME_SIGNAL.samplesPerLine*GAME_SIGNAL.linesPerFrame/GAME_SIGNAL.sampleRate;
 }
 export function createAnalogPass(renderer,{videoSource=null,onFrame=null,receiverParameters={}}={}) {
-  const picture = new THREE.WebGLRenderTarget(768, H, {type: THREE.HalfFloatType, samples: 4});
+  const picture = new THREE.WebGLRenderTarget(720, H, {type: THREE.HalfFloatType, samples: 4});
   const source = new THREE.WebGLRenderTarget(720, H, {type:THREE.HalfFloatType, depthBuffer:false});
   source.texture.minFilter=source.texture.magFilter=THREE.NearestFilter;
   const filtered = new THREE.WebGLRenderTarget(720,H,{type:THREE.HalfFloatType,depthBuffer:false,minFilter:THREE.LinearFilter,magFilter:THREE.LinearFilter});
@@ -287,5 +287,12 @@ export function createAnalogPass(renderer,{videoSource=null,onFrame=null,receive
     }
     for(let i=0;i<17;i++)clipFilter[i]/=total;
   }
-  return {picture, controls, render, heldSignals, setClip, stats, get clip(){return clip;}, disturb(seconds=0.6){burstUntil=performance.now()/1000+seconds;}};
+  // Scene resolution and receiver output width follow the display; the signal
+  // raster and encoder filters retain the Lab-compatible 720 x 480 format.
+  function setSize(width,height){
+    width=Math.max(1,Math.round(width));height=Math.max(1,Math.round(height));
+    if(picture.width!==width||picture.height!==height)picture.setSize(width,height);
+    if(decoded.width!==width)decoded.setSize(width,H);
+  }
+  return {picture, controls, render, heldSignals, setClip, setSize, stats, get clip(){return clip;}, disturb(seconds=0.6){burstUntil=performance.now()/1000+seconds;}};
 }

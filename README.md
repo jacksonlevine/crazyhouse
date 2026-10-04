@@ -353,6 +353,11 @@ DC preservation, passbands, carrier rejection, clean sync recovery, and
 six uniform-color round trips (maximum channel error below 2.5%).
 The kitchen TV itself no longer adds decorative scanlines or picture warp.
 
+The NTSC scene renders at the display's drawing-buffer resolution, then enters
+its fixed 720×480 encoder once. The receiver reconstructs horizontally at display
+width directly from the waveform, avoiding a second 720-pixel image enlargement.
+Vertical output remains 480 lines; NTSC luma/chroma bandwidth limits remain intact.
+
 ## HD analog view
 
 The default game view uses the Lab-compatible NTSC path. Camera switching has
