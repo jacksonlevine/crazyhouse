@@ -14,7 +14,7 @@
    ============================================================ */
 
 import * as THREE from './vendor/three-r186/three.module.js';
-import { buildWorld } from './world.js?v=21';
+import { buildWorld } from './world.js?v=22';
 import { createGhoul } from './ghoul.js';
 import { camAt } from './cams.js?v=8';
 

@@ -4,7 +4,7 @@
    ============================================================ */
 
 import * as THREE from './vendor/three-r186/three.module.js';
-import { buildWorld, ROOMS, roomAt, GLASS_LAYER, CULL_LAYER, captureReflections } from './world.js?v=21';
+import { buildWorld, ROOMS, roomAt, GLASS_LAYER, CULL_LAYER, captureReflections } from './world.js?v=22';
 import { buildPVS } from './pvs.js?v=1';
 import { createEmp } from './emp.js?v=6';
 import { CAMS, camAt } from './cams.js?v=8';
@@ -36,40 +36,42 @@ let lastFrame = 0;
 /* Shadows are drawn once, then only redrawn when something moves. Each
    redraw of a lamp's shadows draws the house around it six times, so:
    - lamps only redraw for ghoul1 while he's actually here (he casts no
-     shadow while gone, see ghoul.js),
-   - lamps near him take turns: at most SHADOW_TURNS of them redraw per
-     frame, and only if he's moved since that lamp last drew him,
+     shadow while gone, see ghoul.js) and only once he's moved,
+   - and only the lamps whose light the current cam can see: those redraw
+     every frame he moves, so his shadow glides with him. Lamps the cam
+     can't see wait, and catch up all at once when the cam changes,
    - a lamp he just walked away from gets one more redraw to clear him,
    - when something else moves (a door, an anomaly), lamps near it redraw. */
 const NEAR_LAMP = 18;          // feet
-const SHADOW_TURNS = 1;        // lamps redrawn per frame for ghoul1 (they take turns)
-let nearLamps = new Set(), turn = 0, wasHere = false;
-const drawnAt = new Map(), lampAt = new THREE.Vector3();
+const LIT_REACH = 14;          // a lamp counts as "seen" if the cam sees this close round it
+let nearLamps = new Set(), wasHere = false, camChanged = true;
+const lastPos = new THREE.Vector3(), lampAt = new THREE.Vector3(), reach = new THREE.Sphere();
 function refreshShadows() {
   const here = ghoul.presence > 0.5, pos = ghoul.object.position;     // he casts a shadow while mostly here (ghoul.js)
+  const moved = pos.distanceTo(lastPos) > 0.02;
   const now = new Set();
   if (here || wasHere) {
     for (const l of lamps) if (l.isPointLight && l.getWorldPosition(lampAt).distanceTo(pos) < NEAR_LAMP) now.add(l);
   }
   const redraw = new Set();
-  if (here) {
-    const list = [...now].filter(l => !drawnAt.has(l) || drawnAt.get(l).distanceTo(pos) > 0.08);
-    for (let k = 0; k < Math.min(SHADOW_TURNS, list.length); k++) redraw.add(list[(turn + k) % list.length]);
-    turn++;
-  } else if (wasHere) {
-    now.forEach(l => redraw.add(l));                      // he just left: clear his shadow everywhere once
+  for (const l of now) {
+    reach.set(l.getWorldPosition(lampAt), LIT_REACH);
+    const seen = frustum.intersectsSphere(reach);
+    if (camChanged || (here !== wasHere) || (here && moved && seen)) redraw.add(l);
   }
   for (const l of nearLamps) if (!now.has(l)) redraw.add(l);
-  const moved = scene.userData.moved;
-  if (moved) {
-    for (const at of moved) for (const l of lamps) {
+  const things = scene.userData.moved;
+  if (things) {
+    for (const at of things) for (const l of lamps) {
       if (l.isPointLight && l.getWorldPosition(lampAt).distanceTo(at) < NEAR_LAMP) redraw.add(l);
     }
     scene.userData.moved = null;
   }
-  for (const l of redraw) { l.shadow.needsUpdate = true; drawnAt.set(l, pos.clone()); }
+  for (const l of redraw) l.shadow.needsUpdate = true;
   nearLamps = now;
   wasHere = here;
+  camChanged = false;
+  lastPos.copy(pos);
 }
 
 // what the current cam can see this frame (things like the swaying bulb ask it)
@@ -193,6 +195,7 @@ function setup() {
 
 function showCam(i) {
   camIndex = (i + CAMS.length) % CAMS.length;
+  camChanged = true;                        // lamps the last cam couldn't see catch up
   const c = CAMS[camIndex];
   camera.position.set(...c.pos);
   camera.fov = debug.fov || c.fov;

@@ -150,7 +150,9 @@ muted leaded glass on the pillar by the sofa, teal and plum counter stools with
 chrome posts, almond countertops, an oak vanity with an oval sink and
 brass knobs, frosted glass in a brass shower frame, a mauve bathmat,
 flannel and denim and a couple of shoeboxes in the walk-in closet,
-bottles of Tried and YEP detergent and a green laundry basket of folded
+a dish drainer and dish soap by the kitchen sink, pizza boxes on the
+island (one open, a couple of pepperoni slices left), a striped afghan
+thrown over the sofa, bottles of Tried and YEP detergent and a green laundry basket of folded
 clothes on the shelf over the machines, photos, a to-do memo, a crayon
 drawing and magnets on the fridge, a bed with a rounded mattress, puffy
 pillows and a plaid flannel comforter with its corner turned back, a
@@ -201,19 +203,24 @@ below the floor line, cream corner boards and wide capped window
 casings (`craftsman()`, set per outside wall in `walls()` with
 `out(face, from, to)`), cedar shingles and knee braces on the gables
 (`gableShingles()`, `kneeBraces()`), and tapered porch columns on stone
-piers (`column()`). A gravel driveway comes up from the road to a
-parking pad by the house (`DRIVE`, `PAD`, `driveway()`), with
-flagstones across to the front walk.
+piers (`column()`). Down at the bottom of the hill it's a country
+road: worn asphalt crumbling into gravel shoulders, no curbs. Beside
+the bottom of the walk there's a short gravel driveway to park on (no
+car yet), fanning out of the road's shoulder with two tyre tracks. The
+road and driveway are painted point by point over the land
+(`groundPatch()`), so their edges fade raggedly into the grass.
 
 **Performance.** What keeps it fast, roughly in order of how much it
 matters:
 
 - **Shadow redraws are rationed.** Redrawing one lamp's shadows means
   drawing the house round it six times. Lamps redraw only when ghoul1
-  is actually here (not while he's gone) and has moved, and they take
-  turns, one per frame (`SHADOW_TURNS` in `main.js`). Before this, five
-  lamps redrew every frame whenever he was near, visible or not, which
-  cost about five times the whole rest of the frame.
+  is actually here (not while he's gone) and has moved, and only the
+  lamps whose light the current cam can see, so his shadow glides
+  smoothly where you're looking. The others catch up when you switch
+  cams. Before this, five lamps redrew every frame whenever he was near,
+  visible or not, which cost about five times the whole rest of the
+  frame.
 - **Per-cam culling** (`pvs.js`). The cams never move, so at the start
   each one works out what it can actually see (drawing the house once
   in ID colours, every door open) and from then on skips the rest; most

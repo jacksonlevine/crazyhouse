@@ -1061,7 +1061,47 @@ function sofa() {
     backCushion(362, 445, 517, 535, false), backCushion(447, 529, 517, 535, false),
     ...arm(322, 405, 300, 318, true), ...arm(530, 548, 478, 535, false),
     pillow(368, 336, MAT.flannel, [0, Math.PI / 2 - 0.3, 0.25]),
-    pillow(382, 508, MAT.mustard, [0.25, 0.5, 0]));
+    pillow(382, 508, MAT.mustard, [0.25, 0.5, 0]),
+    throwBlanket());
+}
+
+/* A knit 90s afghan thrown over the sofa: over a back cushion, down onto
+   the seat, across it and hanging off the front, with a few soft folds. */
+function throwBlanket() {
+  const zc = Z(435), width = 2.4;
+  // its line in profile (x across the sofa, y up), from the back cushion to the hem
+  const profile = new THREE.CatmullRomCurve3([[X(338), FLOOR + 2.72], [X(352), FLOOR + 2.62], [X(361), FLOOR + 1.95], [X(366), FLOOR + 1.5],
+    [X(392), FLOOR + 1.49], [X(405) + 0.1, FLOOR + 1.36], [X(405) + 0.17, FLOOR + 0.9], [X(405) + 0.2, FLOOR + 0.5]].map(([x, y]) => new THREE.Vector3(x, y, 0)));
+  const n = 40, m = 12, pos = [], uv = [], index = [];
+  for (let i = 0; i <= n; i++) {
+    const p = profile.getPoint(i / n), hang = THREE.MathUtils.smoothstep(i / n, 0.7, 1);
+    for (let j = 0; j <= m; j++) {
+      const f = j / m, z = zc + (f - 0.5) * width;
+      const fold = Math.sin(f * Math.PI * 3.2 + 0.6) * 0.06 * (0.3 + hang);            // soft folds, deeper where it hangs
+      pos.push(p.x + fold * hang, p.y + fold * (1 - hang) * 0.4 + 0.02, z);
+      uv.push(f * 2, i / n * 2.6);
+    }
+  }
+  for (let i = 0; i < n; i++) for (let j = 0; j < m; j++) {
+    const a = i * (m + 1) + j, b = a + m + 1;
+    index.push(a, b, a + 1, b, b + 1, a + 1);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  geo.setIndex(index);
+  geo.computeVertexNormals();
+  const knit = surface(0xffffff, 1, THREE.DoubleSide);
+  if (typeof document !== 'undefined') {
+    knit.map = screenCanvas(32, 32, g => {
+      [['#7b2a2c', 0, 10], ['#d9cfb8', 10, 4], ['#2f4a35', 14, 10], ['#d9cfb8', 24, 4], ['#b58a3c', 28, 4]].forEach(([c, y, h]) => { g.fillStyle = c; g.fillRect(0, y, 32, h); });
+      g.fillStyle = 'rgba(0,0,0,0.12)'; for (let x = 0; x < 32; x += 2) g.fillRect(x, 0, 1, 32);     // the knit
+    });
+    knit.map.wrapS = knit.map.wrapT = THREE.RepeatWrapping;
+  } else knit.color.set(0x7b2a2c);
+  const mesh = new THREE.Mesh(geo, knit);
+  mesh.userData.keep = true;
+  return mesh;
 }
 
 /* A casual 90s rug in front of the sofa, 4' x 6', sitting a bit crooked:
@@ -1352,6 +1392,8 @@ function kitchen() {
         [[[1189, 475], [1225, 475], [1225, 547], [1189, 547]]], FLOOR + 2.85, FLOOR + 3), MAT.counter)),
     sink(),
     sinkLight(),
+    dishDrainer(),
+    ...pizzaBoxes(),
     cabinets('counter-south', { along: 'x', a0: 807, a1: 980, back: Z(715), front: Z(660), splits: [865, 922],
       stuff: counterStuff }, tint(block(807, 980, 658, 715, 3, 2.85), MAT.counter)),
     fridge(),
@@ -1452,6 +1494,84 @@ function counterStuff(box, sections, { toe, s }) {
              tint(box(u0 + 0.3, u0 + 1.6, 0.4, 1.2, floor, floor + 0.5), MAT.denim));   // pans
   });
   return out;
+}
+
+/* By the sink: a chrome-wire dish drainer on its tray, plates standing
+   in it, a mug upside down, a cup of cutlery, and a green bottle of
+   dish soap beside the faucet. */
+function dishDrainer() {
+  const top = FLOOR + 3, cx = X(1210), cz = Z(420), chrome = (geo, p, rot) => tint(solid(geo, p, rot), MAT.chrome);
+  const parts = [
+    tint(solid(new THREE.BoxGeometry(1.35, 0.05, 1.75), [cx, top + 0.025, cz]), surface(0xdcdcd4, 0.5)),   // drip tray
+  ];
+  // the wire basket: rails round the top and bottom, and uprights
+  for (const y of [0.1, 0.42]) {
+    parts.push(chrome(new THREE.BoxGeometry(1.2, 0.025, 0.025), [cx, top + y, cz - 0.8]), chrome(new THREE.BoxGeometry(1.2, 0.025, 0.025), [cx, top + y, cz + 0.8]),
+      chrome(new THREE.BoxGeometry(0.025, 0.025, 1.6), [cx - 0.6, top + y, cz]), chrome(new THREE.BoxGeometry(0.025, 0.025, 1.6), [cx + 0.6, top + y, cz]));
+  }
+  for (let k = 0; k < 9; k++) {
+    const z = cz - 0.8 + k * 0.2;
+    parts.push(chrome(new THREE.BoxGeometry(0.02, 0.32, 0.02), [cx - 0.6, top + 0.26, z]), chrome(new THREE.BoxGeometry(0.02, 0.32, 0.02), [cx + 0.6, top + 0.26, z]));
+  }
+  // plates standing on edge, a mug upside down, cutlery
+  for (let k = 0; k < 4; k++) {
+    parts.push(tint(solid(new THREE.CylinderGeometry(0.42, 0.42, 0.03, 18).rotateZ(Math.PI / 2), [cx - 0.15, top + 0.5, cz - 0.55 + k * 0.17], [0, Math.PI / 2, 0.08]), MAT.soft));
+  }
+  parts.push(tint(solid(new THREE.CylinderGeometry(0.14, 0.12, 0.32, 12), [cx + 0.3, top + 0.27, cz + 0.45]), MAT.teal),
+    tint(solid(new THREE.CylinderGeometry(0.11, 0.09, 0.3, 10), [cx + 0.3, top + 0.25, cz - 0.4]), MAT.soft),
+    ...[[-0.03, 0.05], [0.04, -0.03], [0, 0.02]].map(([dx, lean]) => chrome(new THREE.BoxGeometry(0.03, 0.45, 0.02), [cx + 0.3 + dx, top + 0.45, cz - 0.4], [lean, 0, lean])));
+  // dish soap: a tall green bottle with a white flip cap
+  const sx = X(1229), sz = Z(556);
+  parts.push(tint(solid(new THREE.CylinderGeometry(0.1, 0.12, 0.62, 12).scale(1, 1, 0.6), [sx, top + 0.31, sz]), surface(0x2f8a3a, 0.35)),
+    tint(solid(new THREE.CylinderGeometry(0.05, 0.08, 0.1, 10), [sx, top + 0.67, sz]), MAT.soft));
+  return named('dish-drainer', ...parts);
+}
+
+/* Two pizza boxes on the island: one shut, one open with a couple of
+   pepperoni slices left in it, lid up. The lids' art is a tiny picture. */
+function pizzaBoxes() {
+  const top = FLOOR + 3, S = 1.35, T = 0.15, card = surface(0xc9a46a, 0.95);
+  const lidArt = surface(0xffffff, 0.9);
+  if (typeof document !== 'undefined') lidArt.map = screenCanvas(64, 64, g => {
+    g.fillStyle = '#f2ece0'; g.fillRect(0, 0, 64, 64);
+    g.strokeStyle = '#c4161c'; g.lineWidth = 3; g.strokeRect(4, 4, 56, 56);
+    g.fillStyle = '#2f6b45'; g.fillRect(8, 8, 48, 6); g.fillRect(8, 50, 48, 6);
+    g.fillStyle = '#c4161c'; g.font = 'bold italic 14px serif'; g.fillText('Pizza', 12, 30);
+    g.font = 'bold 9px sans-serif'; g.fillText('HOT & FRESH', 6, 44);
+  }); else lidArt.color.set(0xf2ece0);
+  const box = (x, z, turn) => {
+    const g = new THREE.Group();
+    g.add(tint(solid(new THREE.BoxGeometry(S, T, S), [0, T / 2, 0]), card),
+      tint(solid(new THREE.PlaneGeometry(S - 0.06, S - 0.06).rotateX(-Math.PI / 2), [0, T + 0.002, 0]), lidArt));
+    g.position.set(x, top, z); g.rotation.y = turn;
+    return g;
+  };
+  // the open one: a tray, its lid standing up at the back, grease, slices
+  const open = new THREE.Group();
+  const tray = new THREE.Group();
+  tray.add(tint(solid(new THREE.BoxGeometry(S, 0.02, S), [0, 0.01, 0]), card),
+    ...[[S, T, 0.02, 0, T / 2, -S / 2], [S, T, 0.02, 0, T / 2, S / 2], [0.02, T, S, -S / 2, T / 2, 0], [0.02, T, S, S / 2, T / 2, 0]]
+      .map(([w, h, d, x, y, z]) => tint(solid(new THREE.BoxGeometry(w, h, d), [x, y, z]), card)));
+  const lid = new THREE.Group();
+  lid.add(tint(solid(new THREE.BoxGeometry(S, 0.02, S), [0, 0, S / 2]), card));
+  lid.position.set(0, T, -S / 2);
+  lid.rotation.x = -1.85;                                                      // flopped open, past upright
+  // pepperoni slices: wedges of cheese with a crust along the arc and pepperoni on top
+  const slice = (x, z, turn) => {
+    const r = 0.6, a = Math.PI / 4, sh = new THREE.Shape();
+    sh.moveTo(0, 0); sh.absarc(0, 0, r, -a / 2, a / 2, false); sh.lineTo(0, 0);
+    const g = new THREE.Group();
+    g.add(tint(solid(remap(new THREE.ExtrudeGeometry(sh, { depth: 0.04, bevelEnabled: false, curveSegments: 6 }), (u, v, d) => [u, d, v])), surface(0xe3b04b, 0.7)),
+      tint(solid(new THREE.TorusGeometry(r, 0.045, 5, 8, a).rotateX(Math.PI / 2).rotateY(a / 2), [0, 0.04, 0]), surface(0xb87a3a, 0.9)),
+      ...[[0.25, 0.04], [0.42, -0.07], [0.45, 0.1]].map(([pr, pz]) => tint(solid(new THREE.CylinderGeometry(0.06, 0.06, 0.02, 10), [pr, 0.05, pz]), surface(0x9c2a1c, 0.6))));
+    g.position.set(x, 0.02, z); g.rotation.y = turn;
+    return g;
+  };
+  open.add(tray, lid, slice(-0.15, 0.05, 0.4), slice(-0.1, 0.0, -0.4),
+    tint(solid(new THREE.CircleGeometry(0.3, 10).rotateX(-Math.PI / 2), [0.3, 0.022, 0.25]), surface(0xa8823e, 1)));   // a grease spot
+  open.position.set(X(1050), top, Z(512));
+  open.rotation.y = 0.15;
+  return [named('pizza-boxes', box(X(895), Z(518), -0.2), box(X(897), Z(516), 0.1).translateY(T), open)];
 }
 
 /* A little schoolhouse pendant over the kitchen sink. Its light is a
@@ -1717,8 +1837,8 @@ function master() {
 /* A soft slab with rounded edges and corners: a rounded rectangle pushed
    up into a slab with a rounded bevel. puff > 0 bulges the middle, for
    pillows. Centred on (x, y, z). */
-function softSlab(w, h, d, r, x, y, z, puff = 0) {
-  const c = 0.06, a = w / 2 - r - c, b = d / 2 - r - c;
+function softSlab(w, h, d, r, x, y, z, puff = 0, { corner = 0.06, flatBottom = false } = {}) {
+  const c = corner, a = w / 2 - r - c, b = d / 2 - r - c;
   const sh = new THREE.Shape();
   sh.moveTo(-a, -b - c); sh.lineTo(a, -b - c); sh.quadraticCurveTo(a + c, -b - c, a + c, -b);
   sh.lineTo(a + c, b); sh.quadraticCurveTo(a + c, b + c, a, b + c); sh.lineTo(-a, b + c);
@@ -1726,7 +1846,7 @@ function softSlab(w, h, d, r, x, y, z, puff = 0) {
   const geo = new THREE.ExtrudeGeometry(sh, { depth: h - 2 * r, bevelEnabled: true, bevelThickness: r, bevelSize: r, bevelSegments: 3, curveSegments: 4 });
   return solid(remap(geo, (u, v, dd) => {
     const yy = dd - (h - 2 * r) / 2;                                 // -h/2 .. h/2
-    const bulge = puff ? 1 - puff + puff * (1 - (u / (w / 2)) ** 2) * (1 - (v / (d / 2)) ** 2) : 1;
+    const bulge = puff && !(flatBottom && yy < 0) ? 1 - puff + puff * (1 - (u / (w / 2)) ** 2) * (1 - (v / (d / 2)) ** 2) : 1;
     return [x + u, y + yy * bulge, z + v];
   }));
 }
@@ -1766,11 +1886,34 @@ function bed() {
     ...[[927, 892], [1064, 892]].map(([px, py]) => tint(block(px, px + 4, py, py + 4, 0.3), MAT.furniture)),   // feet
     tint(block(925, 1070, 1060, 1068, 3.6), MAT.furniture),                                       // headboard
     tint(softSlab(x1 - x0, 0.75, zh - zf, 0.12, cx, top - 0.375, (zf + zh) / 2), MAT.soft),       // mattress
-    tint(softSlab(1.65, 0.55, 1.05, 0.2, X(968), top + 0.24, Z(1037), 0.7), MAT.soft),           // pillows
-    tint(softSlab(1.65, 0.55, 1.05, 0.2, X(1027), top + 0.24, Z(1035), 0.7), MAT.soft),
+    ...pillow(X(968), top, Z(1037)), ...pillow(X(1027), top, Z(1035)),
     flat([[L, F], [R, F], [R, B], [L + c, B], [L, B - c]], top + lift, plaid),                    // the comforter,
     flat([[L + c, B], [L + c, B - c], [L, B - c]], top + lift + 0.02, MAT.flannel),              // its corner folded back: the red underside
     drape(F, B, R, false), drape(F, B - c, L, false), drape(L, R, F, true));
+}
+
+/* A bed pillow sitting on the mattress (top = the mattress top):
+   rectangular from above, flat underneath, its top bulging up in the
+   middle and thinning to soft flat edges and corners, with the
+   pillowcase's seam running across one end. */
+function pillow(x, top, z) {
+  const w = 1.7, h = 0.48, d = 1.1, hw = w / 2, hd = d / 2;
+  const rise = (u, v) => Math.max(0.14, Math.sqrt(Math.max(0, 1 - (u / hw) ** 2)) * Math.sqrt(Math.max(0, 1 - (v / hd) ** 2)));
+  const geo = new THREE.BoxGeometry(w, h, d, 16, 1, 10);
+  const pos = geo.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const u = pos.getX(i), v = pos.getZ(i), up = pos.getY(i) > 0;
+    pos.setY(i, up ? -h / 2 + h * rise(u, v) : -h / 2);
+  }
+  geo.computeVertexNormals();
+  const body = tint(solid(geo, [x, top + h / 2, z]), MAT.soft);
+  const u = -hw + 0.24, seam = [];                                // the end facing the cam
+  for (let k = 0; k < 10; k++) {
+    const v0 = -hd + 0.1 + k * (d - 0.2) / 10, v1 = v0 + (d - 0.2) / 10;
+    const yAt = v => top + h * rise(u, v) + 0.01;
+    seam.push([[x + u, yAt(v0), z + v0], [x + u, yAt(v1), z + v1]]);
+  }
+  return [body, lines(seam, new THREE.LineBasicMaterial({ color: 0x8f8a80 }))];
 }
 
 // red and black flannel plaid on hunter green (it wraps)
@@ -2581,12 +2724,11 @@ function rockingChair() {
 const WALK = new THREE.CatmullRomCurve3([[-27.8, 1.0], [-35, 2.2], [-45, 6.5], [-57, 8.5], [-68, 5.0], [-78, -2.5], [-90, -6], [-100, -4.5], [-105.4, -3]]
   .map(([x, z]) => new THREE.Vector3(x, 0, z)));
 const WALK_PTS = WALK.getSpacedPoints(80);
-/* The gravel driveway: off the road, up along the north side to a
-   parking pad by the house (no car yet). */
-const DRIVE = new THREE.CatmullRomCurve3([[-105.4, -44], [-92, -47.5], [-77, -46], [-63, -41.5], [-51, -36], [-42, -33]]
-  .map(([x, z]) => new THREE.Vector3(x, 0, z)));
-const DRIVE_PTS = DRIVE.getSpacedPoints(50);
-const PAD = { x0: -50, x1: -32, z0: -41, z1: -26 };
+/* The driveway: a short gravel pull-off down by the road, south of the
+   walk. You park at the bottom and walk up the hill to the house, like
+   plenty of country places. DRIVE is roughly where it is, for levelling
+   the ground and keeping trees off it. */
+const DRIVE = { x0: -107, x1: -84, z0: 4, z1: 36 };
 const ROAD = [-130, -106];                              // the road's x range, in feet
 
 // how far (x, z) is from the walk's centre line (or another line of points)
@@ -2608,9 +2750,9 @@ function groundHeight(x, z) {
   const ss = THREE.MathUtils.smoothstep;
   const out = Math.hypot(Math.max(0, -32 - x, x - 26), Math.max(0, -24 - z, z - 22));   // outside the house's flat patch
   const fall = -0.075 * THREE.MathUtils.clamp(-40 - x, 0, 64);
-  const pad = Math.hypot(Math.max(0, PAD.x0 - x, x - PAD.x1), Math.max(0, PAD.z0 - z, z - PAD.z1));
+  const drive = Math.hypot(Math.max(0, DRIVE.x0 - x, x - DRIVE.x1), Math.max(0, DRIVE.z0 - z, z - DRIVE.z1));
   const keep = ss(out, 2, 30) * ss(walkDistance(x, z), 5, 16) * ss(Math.abs(x - (ROAD[0] + ROAD[1]) / 2), 15, 28)
-    * ss(walkDistance(x, z, DRIVE_PTS), 8, 20) * ss(pad, 3, 14);
+    * ss(drive, 3, 14);
   const roll = 3.5 * Math.sin(x * 0.045 + 1.3) * Math.cos(z * 0.04 - 0.7) + 1.8 * Math.sin(x * 0.11 + z * 0.08);
   const a = Math.atan2(z, x), hills = ss(Math.hypot(x, z), 140, 270) * (30 + 14 * Math.sin(a * 3 + 0.8) + 8 * Math.sin(a * 7));
   return fall + keep * (roll + hills);
@@ -2627,16 +2769,74 @@ function ground() {
 
 /* The road out front, running past the house: asphalt, concrete curbs,
    a dashed yellow line down the middle. ROAD is its x range, in feet. */
+/* A country road: worn asphalt with a faded centre line, crumbling into
+   gravel shoulders that fade into the grass. No curbs out here. */
+const ROAD_HALF = (ROAD[1] - ROAD[0]) / 2 - 2, ROAD_X = (ROAD[0] + ROAD[1]) / 2;
+// what the ground looks like at (x, z) as far as the road's concerned: tar, then gravel shoulder, then grass
+function roadColour(x, z) {
+  const ASPHALT = new THREE.Color(0x2b2c2f), WORN = new THREE.Color(0x3c3c3b);
+  const d = Math.abs(x - ROAD_X), n = wobble(x, z * 0.6), half = ROAD_HALF;
+  const tar = half - 0.3 + n * 0.5, shoulder = half + 2.4 + n * 0.8, grass = half + 5 + n;
+  const c = ASPHALT.lerp(WORN, 0.5 + 0.5 * Math.sin(z * 0.23 + x * 0.5) * Math.sin(z * 0.071));
+  if (d > tar - 0.6) c.lerp(GRAVEL, THREE.MathUtils.smoothstep(d, tar - 0.6, tar + 0.6));
+  if (d > shoulder) c.lerp(GRASS, THREE.MathUtils.smoothstep(d, shoulder, grass));
+  return c;
+}
+
 function road() {
-  const [x0, x1] = ROAD, cx = (x0 + x1) / 2, len = 620, y = groundHeight(cx, 0);
-  const parts = [
-    tint(solid(new THREE.BoxGeometry(x1 - x0, 0.3, len), [cx, y - 0.1, 0]), surface(0x2b2c2f, 1)),
-    tint(solid(new THREE.BoxGeometry(0.6, 0.6, len), [x0 - 0.3, y + 0.1, 0]), MAT.concrete),
-    tint(solid(new THREE.BoxGeometry(0.6, 0.6, len), [x1 + 0.3, y + 0.1, 0]), MAT.concrete)
-  ];
-  const yellow = surface(0xc9a227, 0.8);
-  for (let z = -300; z <= 300; z += 20) parts.push(tint(solid(new THREE.BoxGeometry(0.35, 0.01, 9), [cx, y + 0.055, z]), yellow));
+  const cx = ROAD_X, half = ROAD_HALF, y = groundHeight(cx, 0);
+  const parts = [groundPatch(cx - half - 7, cx + half + 7, -310, 310, 44, 310, roadColour)];
+  const line = surface(0xa8913c, 0.9);                                           // faded centre line
+  for (let z = -300; z <= 300; z += 20) parts.push(tint(solid(new THREE.BoxGeometry(0.3, 0.01, 9), [cx, y + 0.035, z]), line));
   return named('road', ...parts);
+}
+
+/* A patch of ground surface laid over the land, coloured point by point:
+   colourAt(x, z) says what it is there, and where it says grass the patch
+   matches the lawn exactly. So gravel and worn asphalt fade raggedly into
+   the grass instead of stopping at a hard edge. */
+function groundPatch(x0, x1, z0, z1, nx, nz, colourAt, offset = -1) {
+  const geo = new THREE.PlaneGeometry(x1 - x0, z1 - z0, nx, nz).rotateX(-Math.PI / 2);
+  const pos = geo.attributes.position, col = [];
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i) + (x0 + x1) / 2, z = pos.getZ(i) + (z0 + z1) / 2;
+    pos.setXYZ(i, x, groundHeight(x, z) + 0.02, z);
+    const c = colourAt(x, z);
+    col.push(c.r, c.g, c.b);
+  }
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  geo.computeVertexNormals();
+  const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({
+    vertexColors: true, roughness: 1, polygonOffset: true, polygonOffsetFactor: offset, polygonOffsetUnits: offset
+  }));
+  m.userData.keep = true;
+  return m;
+}
+
+// a little roughness for ragged edges and worn patches
+// (all gentle enough to change smoothly between the points they're painted on)
+const wobble = (x, z) => Math.sin(x * 0.9 + z * 0.4) * 0.55 + Math.sin(z * 1.3 - x * 0.35) * 0.45;
+const GRASS = MAT.ground.color, GRAVEL = new THREE.Color(0x8a8273), GRAVEL_DARK = new THREE.Color(0x6f685b);
+
+/* The driveway: gravel fanning out from the road's shoulder into a
+   parking spot, with two worn tyre tracks, its edges fading raggedly
+   into the grass. */
+function driveway() {
+  const cz = 20, c = new THREE.Color();
+  const amount = (x, z) => {
+    const hz = 10 + THREE.MathUtils.clamp((-98 - x) / 8, 0, 1) * 6;      // widens where it meets the road
+    const dz = Math.abs(z - cz) - hz, dx = x + 86, r = 5;                    // the far end has round corners
+    const sd = dx > -r && dz > -r ? Math.hypot(Math.max(dx + r, 0), Math.max(dz + r, 0)) - r : Math.max(dx, dz);
+    return 1 - THREE.MathUtils.smoothstep(sd + wobble(x, z), -1.2, 1.4);
+  };
+  const colourAt = (x, z) => {
+    const m = amount(x, z);
+    c.copy(GRAVEL).lerp(GRAVEL_DARK, 0.35 + 0.3 * Math.sin(x * 0.35 + 1) * Math.cos(z * 0.3));
+    const rut = Math.min(Math.abs(z - cz - 2.8), Math.abs(z - cz + 2.8));
+    if (rut < 1.0 && x < -88) c.lerp(GRAVEL_DARK, 0.5 * (1 - rut / 1.0));   // tyre tracks
+    return c.clone().lerp(roadColour(x, z), 1 - m);                       // fades into the shoulder or the grass
+  };
+  return named('driveway', groundPatch(DRIVE.x0, DRIVE.x1 + 4, DRIVE.z0 - 4, DRIVE.z1 + 4, 60, 72, colourAt, -2));
 }
 
 function path() {
@@ -2664,43 +2864,6 @@ function path() {
   return named('path', walk, lines([...edge, ...joints]));
 }
 
-/* The gravel driveway up from the road, its parking pad by the house,
-   and a few flagstones from the pad across to the front walk. */
-function driveway() {
-  const gravel = surface(0x8a8273, 1), stone = surface(0x7d7a72, 0.9);
-  const n = 100, hw = 5, pts = DRIVE.getSpacedPoints(n), pos = [], edge = [];
-  const side = (p, s, t) => {
-    const l = Math.hypot(t.x, t.z), x = p.x + s * hw * -t.z / l, z = p.z + s * hw * t.x / l;
-    return [x, groundHeight(x, z) + 0.04, z];
-  };
-  const rows = pts.map((p, i) => { const t = DRIVE.getTangentAt(i / n); return [side(p, 1, t), side(p, -1, t)]; });
-  for (let i = 1; i <= n; i++) {
-    const [a, b] = rows[i - 1], [c, d] = rows[i];
-    pos.push(...a, ...b, ...c, ...b, ...d, ...c);
-    edge.push([a, c], [b, d]);
-  }
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  geo.computeVertexNormals();
-  const road = new THREE.Mesh(geo, gravel);
-  gravel.side = THREE.DoubleSide;
-  // the pad: a gravel patch, levelled
-  const padGeo = new THREE.PlaneGeometry(PAD.x1 - PAD.x0, PAD.z1 - PAD.z0, 6, 6).rotateX(-Math.PI / 2);
-  const pp = padGeo.attributes.position;
-  for (let i = 0; i < pp.count; i++) {
-    const x = pp.getX(i) + (PAD.x0 + PAD.x1) / 2, z = pp.getZ(i) + (PAD.z0 + PAD.z1) / 2;
-    pp.setXYZ(i, x, groundHeight(x, z) + 0.045, z);
-  }
-  padGeo.computeVertexNormals();
-  const parts = [road, new THREE.Mesh(padGeo, gravel), lines(edge, new THREE.LineBasicMaterial({ color: 0x5a5448 }))];
-  // flagstones from the pad's east edge to the walk
-  for (let k = 0; k <= 9; k++) {
-    const f = k / 9, x = -33 + f * 3.2 + Math.sin(k * 1.7) * 0.4, z = -25.5 + f * 24 + Math.cos(k * 2.3) * 0.3;
-    const st = new THREE.CylinderGeometry(0.9 + (k % 3) * 0.12, 0.95 + (k % 3) * 0.12, 0.08, 7);
-    parts.push(tint(solid(st, [x, groundHeight(x, z) + 0.04, z], [0, k * 0.9, 0]), stone));
-  }
-  return named('driveway', ...parts);
-}
 
 /* Little 90s pagoda path lights lining the walk: a stake, three tiers of
    bronze shades with a glow between them, and a soft pool of light on the
@@ -2786,7 +2949,8 @@ function forest() {
     const a = rand() * Math.PI * 2, r = 60 + rand() * 170, x = Math.cos(a) * r, z = Math.sin(a) * r;
     const cam = new THREE.Vector2(x + 78, z - 50), look = new THREE.Vector2(73, -49).normalize();
     if (cam.length() < 95 && cam.clone().normalize().dot(look) > 0.85) continue;     // would hide the house from the front cam
-    if (walkDistance(x, z) < 12 || walkDistance(x, z, DRIVE_PTS) < 14 || Math.abs(x - (ROAD[0] + ROAD[1]) / 2) < 20) continue;
+    const nearDrive = x > DRIVE.x0 - 12 && x < DRIVE.x1 + 12 && z > DRIVE.z0 - 12 && z < DRIVE.z1 + 12;
+    if (walkDistance(x, z) < 12 || nearDrive || Math.abs(x - (ROAD[0] + ROAD[1]) / 2) < 20) continue;
     const s = 0.7 + rand() * 0.7, y = groundHeight(x, z);
     const t = new THREE.Mesh(new THREE.CylinderGeometry(0.35 * s, 0.55 * s, 6 * s, 6), MAT.bark);
     t.position.set(x, y + 3 * s, z);
@@ -3274,7 +3438,7 @@ export function buildWorld({ weld = true } = {}) {
     driveway(),
     pathLamps(),
     lampPost(lamps, -33.5, -6.5),
-    yardAt(mailbox(), -103.5, -37),               // at the end of the driveway
+    yardAt(mailbox(), -103.5, 2),                 // at the bottom of the walk, by the driveway
     yardAt(pineTree(1.05, 1), -39, -13),
     yardAt(pineTree(0.9, 2), -24, -31),
     yardAt(pineTree(1.1, 3), 30, 30),
