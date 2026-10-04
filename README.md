@@ -132,15 +132,17 @@ nearby redraw their shadows. Careful: wide open, the fridge door
 reaches into ghoul1's path round the island, so he'd walk through it.
 
 **The 90s.** The house is set in the 90s: a 4' x 6' oatmeal and sage
-rug with fringed ends in front of the sectional (cushions, rolled arms,
-throw pillows), a fire in the wood stove, a gaudy little Tiffany glass
-sconce on the pillar by the sofa, teal and plum counter stools with
+rug lying a bit crooked in front of the sectional, with messy fringe
+(the sectional has square arms and throw pillows), end tables with a
+shelf of magazines underneath, a newspaper and a bud vase on the dining
+table, a fire in the wood stove, a gaudy little Tiffany glass sconce in
+muted leaded glass on the pillar by the sofa, teal and plum counter stools with
 chrome posts, almond countertops, an oak vanity with an oval sink and
 brass knobs, frosted glass in a brass shower frame, a mauve bathmat,
 flannel and denim in the walk-in closet, a full bookshelf facing the bed
-and a dusty rose chaise under the bedroom window. The rug pattern and
-the shower glass's grain are tiny pictures drawn by the game when it
-starts, not image files.
+and a dusty rose chaise under the bedroom window. The rug pattern, the
+Tiffany glass, the newspaper's front page and the shower glass's grain
+are tiny pictures drawn by the game when it starts, not image files.
 
 **The fire** (`woodStove()` and `fire()`): the stove is hollow, with
 firebrick inside, and two crossed logs (and one behind) sit on a grate
@@ -151,8 +153,8 @@ inside lights the firebrick and a soft spotlight warms the room.
 material, and graphics cards only have 16. The 13 shadowed lights use
 most of them, so **don't add another shadowed light** without taking one
 away (the shower glass is the first thing to break). The newer lights
-(the fire, the pillar sconce) have no shadows and are aimed or limited
-so they can't shine through walls.
+(the fire, the pillar sconce, the pantry's ceiling light) have no
+shadows and are aimed or limited so they can't shine through walls.
 
 **The front porch** has a lantern by the door and a rocking chair
 (`frontPorch()`). The kitchen has a real double sink with a faucet
@@ -176,9 +178,9 @@ walls, a red front door, and so on. They're all in `MAT` near the top of
   reaches up onto the roof (`streetlight()`), soft moonlight, and a
   faint fill that keeps dark corners dim rather than pitch black
   (`sky()`).
-- **Sky:** stars, a big low moon rising behind the house (where the
-  front yard cam can see it, `MOON_AT`) and a few slowly drifting clouds
-  (`heavens()`). Kept cheap: about a dozen draws, no lights or shadows.
+- **Sky:** stars, a moon high up where the moonlight comes from
+  (`MOON_DIR`; bright enough to give the grass a soft glow) and a few
+  slowly drifting clouds (`heavens()`). Kept cheap: about a dozen draws, no lights or shadows.
 - **Brightness:** each lamp's number is its strength (in
   `floorLamp(lamps, 'lamp-foyer', 140, 775, 28)` it's the 28). The whole
   picture's brightness is `EXPOSURE` at the top of `main.js`. Surface

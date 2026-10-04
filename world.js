@@ -735,6 +735,65 @@ function at(obj, cx, cy, face = 0, y = FLOOR) {
   return obj;
 }
 
+/* An end table: a top, a shelf underneath with a couple of magazines
+   on it, and four square legs. */
+function endTable(name, x0, x1, y0, y1, h) {
+  const leg = (x, y) => block(x, x + 3, y, y + 3, h - 0.08);
+  return named(name,
+    block(x0, x1, y0, y1, h, h - 0.08),                                       // top
+    block(x0 + 3, x1 - 3, y0 + 3, y1 - 3, 0.62, 0.55),                         // shelf
+    leg(x0 + 1, y0 + 1), leg(x1 - 4, y0 + 1), leg(x0 + 1, y1 - 4), leg(x1 - 4, y1 - 4),
+    tint(solid(new THREE.BoxGeometry(0.75, 0.04, 0.95), [X(x0 + 20), FLOOR + 0.64, Z(y0 + 22)], [0, 0.2, 0]), MAT.cream),   // magazines
+    tint(solid(new THREE.BoxGeometry(0.72, 0.04, 0.92), [X(x0 + 21), FLOOR + 0.68, Z(y0 + 21)], [0, -0.1, 0]), MAT.flannel));
+}
+
+// a folded newspaper lying on the table (its front page is a tiny picture)
+function newspaper(cx, cy) {
+  const m = surface(0xe3dfd2, 0.9);
+  if (typeof document !== 'undefined') {
+    const c = document.createElement('canvas');
+    c.width = 96; c.height = 64;
+    const g = c.getContext('2d');
+    g.fillStyle = '#e3dfd2'; g.fillRect(0, 0, 96, 64);
+    g.fillStyle = '#2a2a2a'; g.fillRect(6, 4, 84, 6);                   // the masthead
+    g.fillRect(6, 13, 60, 4);                                            // headline
+    g.fillStyle = '#9a968c'; g.fillRect(56, 21, 34, 22);                 // a photo
+    let seed = 7;
+    const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    g.fillStyle = '#7d7a72';
+    for (let col = 0; col < 3; col++) {                                  // columns of print
+      for (let y = 22; y < 60; y += 3) {
+        if (col === 2 && y < 45) continue;
+        g.fillRect(6 + col * 26, y, 20 + rand() * 4, 1);
+      }
+    }
+    m.map = new THREE.CanvasTexture(c);
+    m.map.colorSpace = THREE.SRGBColorSpace;
+  }
+  return tint(solid(new THREE.BoxGeometry(1.2, 0.04, 0.8), [X(cx), FLOOR + 2.52, Z(cy)], [0, 0.35, 0]), m);
+}
+
+// a small cobalt bud vase with one flower in it
+function budVase(cx, cy) {
+  const x = X(cx), z = Z(cy), y = FLOOR + 2.5;
+  const vase = new THREE.LatheGeometry([[0.07, 0], [0.12, 0.08], [0.11, 0.22], [0.04, 0.38], [0.035, 0.5], [0.05, 0.54]]
+    .map(([r, h]) => new THREE.Vector2(r, h)), 16);
+  const petals = [0, 1, 2, 3, 4].map(i => {
+    const a = i / 5 * Math.PI * 2, p = new THREE.SphereGeometry(0.055, 6, 4);
+    p.scale(1, 0.35, 0.6);
+    return tint(solid(p, [x + Math.cos(a) * 0.06, y + 1.02, z + Math.sin(a) * 0.06], [0, -a, 0.3]), MAT.flannel);
+  });
+  const leaf = new THREE.SphereGeometry(0.08, 6, 4);
+  leaf.scale(1, 0.2, 0.4);
+  return [
+    tint(solid(vase, [x, y, z]), surface(0x2f4f9a, 0.25)),
+    tint(solid(new THREE.CylinderGeometry(0.01, 0.012, 0.55, 5), [x, y + 0.75, z], [0, 0, 0.05]), MAT.leaves),
+    tint(solid(leaf, [x + 0.06, y + 0.72, z], [0, 0, -0.5]), MAT.leaves),
+    ...petals,
+    tint(solid(new THREE.SphereGeometry(0.035, 6, 4), [x, y + 1.03, z]), MAT.mustard)
+  ];
+}
+
 function livingRoom() {
   const armchair = new THREE.Group();
   armchair.add(
@@ -746,13 +805,15 @@ function livingRoom() {
   const table = named('dining-table',
     block(655, 735, 455, 590, 2.5, 2.35),
     block(659, 666, 459, 466, 2.35), block(724, 731, 459, 466, 2.35),
-    block(659, 666, 579, 586, 2.35), block(724, 731, 579, 586, 2.35)
+    block(659, 666, 579, 586, 2.35), block(724, 731, 579, 586, 2.35),
+    newspaper(718, 488),
+    ...budVase(690, 532)
   );
   return named('living-room',
     sofa(),
     rug(),
     named('armchair', at(armchair, 650, 262, -45)),
-    named('side-table', block(555, 598, 193, 237, 2)),
+    endTable('side-table', 555, 598, 193, 237, 2),
     table,
     named('dining-chairs',
       at(chair(), 644, 492, 90), at(chair(), 644, 555, 90),
@@ -767,7 +828,7 @@ function livingRoom() {
 }
 
 /* The sectional: a skirted base, separate seat and back cushions,
-   rolled arms at both ends, and a couple of throw pillows. */
+   square arms at both ends, and a couple of throw pillows. */
 function sofa() {
   const seat = 1.45, base = 0.85, backTop = 2.65, lean = 0.12;
   const cushion = (x0, x1, y0, y1) => block(x0 + 1, x1 - 1, y0 + 1, y1 - 1, seat, base);   // small gaps so each one reads
@@ -777,14 +838,8 @@ function sofa() {
     return solid(new THREE.BoxGeometry(w, h, d), [(X(x0) + X(x1)) / 2, FLOOR + seat + h / 2, (Z(y0) + Z(y1)) / 2],
       alongWall ? [0, 0, lean] : [lean, 0, 0]);
   };
-  // a rolled arm: a box with a fat cylinder along its top
-  const arm = (x0, x1, y0, y1, alongX) => {
-    const r = (alongX ? Z(y1) - Z(y0) : X(x1) - X(x0)) / 2, len = alongX ? X(x1) - X(x0) : Z(y1) - Z(y0);
-    const roll = new THREE.CylinderGeometry(r, r, len, 14);
-    roll.rotateZ(alongX ? Math.PI / 2 : 0);
-    if (!alongX) roll.rotateX(Math.PI / 2);
-    return [block(x0, x1, y0, y1, 2.0), solid(roll, [(X(x0) + X(x1)) / 2, FLOOR + 2.0, (Z(y0) + Z(y1)) / 2])];
-  };
+  // a square arm
+  const arm = (x0, x1, y0, y1) => [block(x0, x1, y0, y1, 2.25)];
   const pillow = (cx, cy, mat, rot) => tint(solid(new THREE.BoxGeometry(0.75, 0.75, 0.22), [X(cx), FLOOR + seat + 0.42, Z(cy)], rot), mat);
   return named('sofa',
     block(342, 405, 318, 535, base), block(405, 530, 478, 535, base),       // skirted base
@@ -798,20 +853,30 @@ function sofa() {
     pillow(382, 508, MAT.mustard, [0.25, 0.5, 0]));
 }
 
-/* A casual 90s rug in front of the sofa, 4' x 6': oatmeal with a sage
-   border, a thin rust stripe and a little woven speckle, and fringe on
-   the two short ends. The pattern is one small picture drawn when the
+/* A casual 90s rug in front of the sofa, 4' x 6', sitting a bit crooked:
+   oatmeal with a sage border, a thin rust stripe and a little woven
+   speckle, and slightly messy fringe on the two short ends. The pattern is one small picture drawn when the
    game starts, no image files. */
 function rug() {
-  const x0 = X(440), z0 = Z(305), W = X(550) - x0, D = Z(470) - z0;
+  const W = X(550) - X(440), D = Z(470) - Z(305);
   const top = surface(0xffffff, 1);
   if (typeof document !== 'undefined') top.map = rugPattern();
-  const r = solid(new THREE.PlaneGeometry(W, D).rotateX(-Math.PI / 2), [x0 + W / 2, FLOOR + 0.015, z0 + D / 2], null, top);
+  const r = tint(solid(new THREE.PlaneGeometry(W, D).rotateX(-Math.PI / 2), [0, 0.015, 0], null, top), top);
+  // fringe: each tassel a slightly different length, bent a little, some splayed
+  let seed = 17;
+  const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
   const fringe = [];
-  for (let x = x0 + 0.08; x < x0 + W - 0.05; x += 0.09) {
-    fringe.push([[x, FLOOR + 0.01, z0], [x, FLOOR + 0.01, z0 - 0.28]], [[x, FLOOR + 0.01, z0 + D], [x, FLOOR + 0.01, z0 + D + 0.28]]);
+  for (let x = -W / 2 + 0.08; x < W / 2 - 0.05; x += 0.09) {
+    for (const end of [-1, 1]) {
+      const z = end * D / 2, len = 0.2 + rand() * 0.14, bend = (rand() - 0.5) * 0.12, mid = len * (0.4 + rand() * 0.3);
+      const a = [x, 0.01, z], b = [x + bend * 0.4, 0.01, z + end * mid], c = [x + bend, 0.01, z + end * len];
+      fringe.push([a, b], [b, c]);
+    }
   }
-  return named('rug', tint(r, top), lines(fringe, new THREE.LineBasicMaterial({ color: 0xb8a984 })));
+  const g = named('rug', r, lines(fringe, new THREE.LineBasicMaterial({ color: 0xb8a984 })));
+  g.position.set(X(485), FLOOR, Z(387.5));
+  g.rotation.y = 0.14;                       // kicked a little crooked, the way rugs end up
+  return g;
 }
 
 function rugPattern() {
@@ -931,18 +996,19 @@ function pillarLamp() {
     c.rotateY(Math.PI / 2);
     return brass(c, [x + dx, y - 0.12, z - 0.24]);
   };
-  // the cup: 8 panes of coloured glass, each its own colour
-  const cup = new THREE.CylinderGeometry(0.24, 0.06, 0.32, 8, 1, true).toNonIndexed();
-  const colours = [0xd9a03a, 0x4f8a3c, 0xa8323a, 0x2f4f9a].map(c => new THREE.Color(c));
-  const col = [];
-  for (let i = 0; i < cup.attributes.position.count; i++) col.push(...colours[Math.floor(i / 6) % 4].toArray());
-  cup.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
-  const glassMat = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide, transparent: true, opacity: 0.88 });
+  // the cup: muted pieces of glass in dark lead, a tiny picture drawn at start
+  const cup = new THREE.CylinderGeometry(0.24, 0.06, 0.32, 24, 1, true);
+  const glassMat = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide });
+  if (typeof document !== 'undefined') glassMat.map = leadedGlass(); else glassMat.color.set(0x8a6a32);
+  glassMat.color.multiplyScalar(1.3);                                        // lit from inside
+  const aura = halo(1.4);
+  if (aura.material) { aura.material.color.set(0xffc27a).multiplyScalar(1.6); aura.scale.set(1.4, 1.4, 1); }   // a warm haze round the glass,
+  aura.position.set(x, y + 0.28, z - 0.8);                                   // just in front of it, so the cup doesn't hide it
   const bulb = new THREE.SphereGeometry(0.05, 10, 8);
   bulb.scale(1, 2.2, 1);
   // its light: a wide soft spot down onto the sofa (a plain bulb this close
   // to the pillar would just blow the pillar out)
-  const light = new THREE.SpotLight(LAMP_COLOR, 14, 14, 1.2, 0.9, 2);
+  const light = new THREE.SpotLight(LAMP_COLOR, 17, 14, 1.2, 0.9, 2);
   light.name = 'lamp-pillar-light';
   light.position.set(x, y + 0.3, z - 0.5);
   light.target.position.set(X(440), FLOOR + 1.2, Z(440));
@@ -954,7 +1020,40 @@ function pillarLamp() {
     brass(new THREE.CylinderGeometry(0.07, 0.05, 0.1, 8), [x, y + 0.03, z - 0.4]),    // collar
     solid(cup, [x, y + 0.24, z - 0.4], null, glassMat),
     glow(bulb, x, y + 0.24, z - 0.4),
-    light, light.target);
+    aura, light, light.target);
+}
+
+// Tiffany glass: three rows of irregular pieces in muted colours, thick dark lead between
+function leadedGlass() {
+  const c = document.createElement('canvas');
+  c.width = 256; c.height = 64;
+  const g = c.getContext('2d');
+  const colours = ['#8a6a32', '#5d6b3f', '#7a3f2c', '#46566a', '#9a8350', '#6b4a5a', '#7d7445'];
+  let seed = 13;
+  const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const rows = [[0, 18, 8], [18, 38, 11], [38, 58, 14]];                 // bottom to top: y0, y1, pieces
+  for (const [y0, y1, n] of rows) {
+    let x = 0;
+    const cuts = Array.from({ length: n }, (_, i) => (i + 0.3 + rand() * 0.4) * 256 / n);
+    cuts.push(256 + cuts[0]);
+    for (let i = 0; i < n; i++) {
+      const a = cuts[i], b = cuts[i + 1], lean = (rand() - 0.5) * 8;
+      g.fillStyle = colours[Math.floor(rand() * colours.length)];
+      g.beginPath();
+      for (const dx of [0, -256]) {                                         // wraps round the cup
+        g.moveTo(a + dx, 64 - y0); g.lineTo(b + dx, 64 - y0); g.lineTo(b + dx + lean, 64 - y1); g.lineTo(a + dx + lean, 64 - y1); g.closePath();
+      }
+      g.fill();
+      g.strokeStyle = '#17110c'; g.lineWidth = 3; g.stroke();
+      x = b;
+    }
+  }
+  g.fillStyle = '#2a2016';
+  g.fillRect(0, 0, 256, 6);                                                  // the rim
+  g.fillRect(0, 62, 256, 2);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
 }
 
 /* A 90s counter stool: chrome base, post and foot ring, a coloured
@@ -1838,6 +1937,24 @@ function bareBulb(lamps, name, cx, cy, intensity) {
     bulb(lamps, name + '-light', cx, cy, 6.95, intensity));
 }
 
+/* A round flush light on the pantry ceiling: a milk glass dome on a
+   white base. Its light is a narrow spot straight down with soft edges,
+   so it makes a pool on the pantry floor and shelves without shining
+   through the walls (no texture slots left for a shadowed one). */
+function pantryLight() {
+  const x = X(1155), z = Z(724);
+  const dome = new THREE.SphereGeometry(0.42, 16, 4, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2);
+  dome.scale(1, 0.45, 1);
+  const light = new THREE.SpotLight(LAMP_COLOR, 70, 12, 0.34, 0.6, 2);
+  light.name = 'lamp-pantry-light';
+  light.position.set(x, CEIL - 0.25, z);
+  light.target.position.set(x, FLOOR, z);
+  return named('lamp-pantry',
+    tint(solid(new THREE.CylinderGeometry(0.5, 0.5, 0.05, 16), [x, CEIL - 0.025, z]), MAT.trim),
+    solid(dome, [x, CEIL - 0.05, z], null, MAT.glow),
+    light, light.target);
+}
+
 function roomLamps(lamps) {
   const wallZ = Z(1068), patioZ = Z(345);
   return named('lamps',
@@ -1848,9 +1965,10 @@ function roomLamps(lamps) {
     tableLamp(lamps, 'lamp-master', 900, 1045, 2.1, 16),
     tableLamp(lamps, 'lamp-master-2', 1100, 1045, 2.1, 14),               // the other nightstand
     // an end table at the north end of the sectional, so the couch gets light
-    named('end-table', block(345, 400, 248, 294, 1.9)),
+    endTable('end-table', 345, 400, 248, 294, 1.9),
     tableLamp(lamps, 'lamp-sofa', 372, 271, 1.9, 22),
     bareBulb(lamps, 'lamp-laundry', 710, 915, 26),
+    pantryLight(),
     // bathroom: a light bar above the mirror
     named('lamp-bathroom',
       glow(new THREE.BoxGeometry(2, 0.18, 0.2), X(535), FLOOR + 6.75, wallZ - 0.12),
@@ -1904,9 +2022,9 @@ function streetlight(lamps) {
 
 // faint moonlight and a whisper of fill, so the dark isn't completely flat
 function sky() {
-  const moon = shadowed(new THREE.DirectionalLight(0xb8c8ff, 0.5), 2048, 240);
+  const moon = shadowed(new THREE.DirectionalLight(0xb8c8ff, 0.95), 2048, 240);     // soft enough to make the grass glow a little
   moon.name = 'moon';
-  moon.position.set(-70, 90, 50);
+  moon.position.copy(MOON_DIR);
   const cam = moon.shadow.camera;
   cam.left = cam.bottom = -60;
   cam.right = cam.top = 60;
@@ -1924,9 +2042,8 @@ function sky() {
    it. */
 const SKY_R = 420;
 
-/* Where the moon hangs: low over the house's back corner, rising, so the
-   front yard cam (the only one that sees much sky) catches it top right. */
-const MOON_AT = new THREE.Vector3(286, 12, -59);
+/* Where the moon hangs: high up, where the moonlight comes from. */
+const MOON_DIR = new THREE.Vector3(-70, 90, 50);
 
 function heavens() {
   const g = new THREE.Group();
@@ -1948,7 +2065,7 @@ function heavens() {
   if (typeof document === 'undefined') return g;      // no canvas outside a browser
 
   // the moon: a pale disc with a soft glow round it
-  const m = MOON_AT;
+  const m = MOON_DIR.clone().normalize().multiplyScalar(SKY_R * 0.95);
   const moon = new THREE.Sprite(new THREE.SpriteMaterial({ map: softDisc(0.94), color: 0xf0f2ff, fog: false }));
   moon.position.copy(m);
   moon.scale.set(20, 20, 1);

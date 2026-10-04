@@ -4,7 +4,7 @@
    ============================================================ */
 
 import * as THREE from './vendor/three-r186/three.module.js';
-import { buildWorld, ROOMS, roomAt, GLASS_LAYER, captureReflections } from './world.js?v=15';
+import { buildWorld, ROOMS, roomAt, GLASS_LAYER, captureReflections } from './world.js?v=16';
 import { createEmp } from './emp.js?v=6';
 import { CAMS, camAt } from './cams.js?v=8';
 import { createGhoul } from './ghoul.js?v=12';
