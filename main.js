@@ -112,10 +112,10 @@ function setup() {
     if (o.shadow) o.shadow.camera.layers.enable(GHOST_LAYER);
   });
   ghost = createGhostPass(renderer);
-  // HD uses a custom analog raster. Select NTSC for exact Lab recording parity.
-  analog = new URLSearchParams(location.search).get('analog')==='ntsc'
-    ? createAnalogPass(renderer, {receiverParameters:{comb:true}})
-    : createHDAnalogPass(renderer);
+  // NTSC is the default; the custom HD raster remains an explicit experiment.
+  analog = new URLSearchParams(location.search).get('analog')==='hd'
+    ? createHDAnalogPass(renderer)
+    : createAnalogPass(renderer, {receiverParameters:{comb:true}});
   const testInterference = Number(new URLSearchParams(location.search).get('interference'));
   if (Number.isFinite(testInterference)) analog.controls.interference = Math.max(0, Math.min(1, testInterference));
   const recordingURL=new URLSearchParams(location.search).get('signal');
@@ -207,10 +207,6 @@ function showCam(i) {
   camName.textContent = c.name;
   [...dots.children].forEach((d, n) => d.classList.toggle('on', n === camIndex));
 
-  // a quick drop to black, like the feed switching over
-  frame.classList.remove('cut');
-  void frame.offsetWidth;
-  frame.classList.add('cut');
 }
 
 const next = () => showCam(camIndex + 1);

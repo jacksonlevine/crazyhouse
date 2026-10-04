@@ -355,7 +355,9 @@ The kitchen TV itself no longer adds decorative scanlines or picture warp.
 
 ## HD analog view
 
-The default game view uses a custom 1920×1080 progressive analog waveform:
+The default game view uses the Lab-compatible NTSC path. Camera switching has
+no artificial blackout. The experimental `?analog=hd` view uses a custom
+1920×1080 progressive analog waveform:
 1125 total lines, 2402 voltage samples per line, 60 frames/second,
 162.135 MHz sampling, and a 40.53375 MHz quadrature color carrier. It has actual
 sync pulses, blanking, burst, 65 MHz luma and 30 MHz chroma filtering, voltage
