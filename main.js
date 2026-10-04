@@ -21,7 +21,9 @@ const camName = $('camName');
 const clock   = $('clock');
 const dots    = $('dots');
 
-let state = 'title';       // 'title' | 'playing'
+let state = 'title';
+// filled in by debug.js when ?debug is on
+const debug = { free: false, fov: null, tick: null, onCam: null };       // 'title' | 'playing'
 let camIndex = 0;
 let renderer, scene, camera, ghoul, ghost, lamps, emp, skyTick, ir;
 const EXPOSURE = 0.75;         // overall brightness of the picture
@@ -110,9 +112,15 @@ function setup() {
 
   CAMS.forEach(() => dots.appendChild(document.createElement('i')));
 
-  // add ?debug to the URL to poke at the scene from the browser console
+  // add ?debug to the URL for the debug panel (free cam, FOV, lighting
+  // modes) and to poke at the scene from the browser console
   if (new URLSearchParams(location.search).has('debug')) {
-    window.crazyhouse = { THREE, scene, camera, renderer, CAMS, showCam, ghoul, lamps, fireEmp, toggleNight };
+    const api = {
+      THREE, scene, camera, renderer, CAMS, showCam, ghoul, lamps, fireEmp, toggleNight, frame, debug,
+      isNight: () => night, camIndex: () => camIndex
+    };
+    window.crazyhouse = api;
+    import('./debug.js?v=1').then(m => m.createDebug(api));
   }
 
   renderer.setAnimationLoop(now => {
@@ -122,6 +130,7 @@ function setup() {
     lastFrame = now;
     ghoul.update(dt, camAt);
     emp.update(dt);
+    if (debug.tick) debug.tick(dt);
     ir.position.copy(camera.position);
     skyTick(dt);
     tickEmp();
@@ -140,7 +149,8 @@ function showCam(i) {
   camIndex = (i + CAMS.length) % CAMS.length;
   const c = CAMS[camIndex];
   camera.position.set(...c.pos);
-  camera.fov = c.fov;
+  camera.fov = debug.fov || c.fov;
+  if (debug.free) { debug.free = false; if (debug.onCam) debug.onCam(); }
   camera.updateProjectionMatrix();
   camera.lookAt(...c.look);
 
@@ -262,6 +272,8 @@ nvBt.addEventListener('click', () => { toggleNight(); nvBt.blur(); });
 
 addEventListener('keydown', e => {
   if (e.repeat) return;
+  // the debug free cam owns these keys while it's flying
+  if (debug.free && ['w', 'a', 's', 'd', 'c', 'shift', 'control', 'escape'].includes(e.key.toLowerCase())) return;
   if (state === 'title') {
     if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); start(); }
     return;

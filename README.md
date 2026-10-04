@@ -60,6 +60,7 @@ him on the cams and fire the EMP while you're watching his room.
   he fades in and out
 - `ghost.js` draws him blurred and faded over the frame
 - `emp.js` is the EMP's electric arcs, flash and zap sound
+- `debug.js` is the debug panel (see Debugging)
 - `check-route.mjs` tests his walking loop for clipping (see below)
 - `vendor/three-r186/` is Three.js, the 3D library, saved here so the
   game doesn't depend on anything else
@@ -142,12 +143,28 @@ He lurches round a loop forever, about 90 seconds a lap.
 
 ## Debugging
 
-Add `?debug` to the URL (http://localhost:8000/?debug) and the browser
-console gets `crazyhouse.scene`, `.camera`, `.CAMS`, `.showCam(n)`,
-`.ghoul`, `.lamps` and `.fireEmp()`. `crazyhouse.ghoul.paused = true` stops him in
-place, `crazyhouse.ghoul.jumpTo(x, y)` drops him at a spot, and
-`crazyhouse.ghoul.forcePresence = 0.5` pins how faded he is (`1` = fully
-here, `null` = back to normal).
+Add `?debug` to the URL (http://localhost:8000/?debug, or the live
+site's address). A panel appears top left (`debug.js`, which only loads
+in debug mode):
+
+- **Free cam** (F or the button): WASD moves, click the view and the
+  mouse looks around, Shift goes up, Ctrl or C goes down, Esc lets go of
+  the mouse. Careful: Ctrl+W closes the browser tab and no web page can
+  stop that, so C is the safe way down. Switching cams or pressing F
+  again snaps back to the real cam. There's a speed slider too.
+- **FOV slider** with the number, for the current cam, or tick the box
+  to try it on all cams.
+- **Night vision** and **fully lit** (strong even light everywhere, no
+  fog) buttons.
+- **Show ghoul** pins him visible, **freeze ghoul** stops him walking.
+- **Copy cam** copies the current view as a line you can paste into
+  `cams.js`, so a spot you find in free cam can become a real cam.
+- A readout of where the camera is, its FOV and ghoul1's state.
+
+The browser console also gets `crazyhouse.scene`, `.camera`, `.CAMS`,
+`.showCam(n)`, `.ghoul`, `.lamps`, `.fireEmp()` and `.toggleNight()`.
+`crazyhouse.ghoul.jumpTo(x, y)` drops him at a spot, and
+`crazyhouse.ghoul.forcePresence = 0.5` pins how faded he is.
 
 ## Making your own version (for friends)
 

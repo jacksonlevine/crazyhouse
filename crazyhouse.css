@@ -287,3 +287,44 @@ canvas {
 .nv:hover { background: rgba(255, 255, 255, 0.15); }
 .nv.on { background: #fff; color: #000; text-shadow: none; }
 .night .hud-rec::after { content: ' · ir'; }
+
+/* ─── debug panel (only with ?debug) ────────── */
+.debug-panel {
+  position: fixed;
+  top: 10px;
+  left: 10px;
+  z-index: 50;
+  width: 236px;
+  padding: 10px 11px 11px;
+  background: rgba(0, 0, 0, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: #fff;
+  font: 12px/1.35 -apple-system, system-ui, sans-serif;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.debug-panel .dbg-title { font: 500 15px 'EB Garamond', serif; letter-spacing: 0.08em; }
+.debug-panel .dbg-help { color: #aaa; font-size: 11px; }
+.debug-panel label { display: flex; align-items: center; gap: 6px; }
+.debug-panel input[type=range] { flex: 1; min-width: 0; accent-color: #fff; }
+.debug-panel .dbg-check { font-size: 11px; color: #ccc; }
+.debug-panel .dbg-row { display: flex; gap: 6px; }
+.debug-panel .dbg-row button { flex: 1; }
+.debug-panel button {
+  font: inherit;
+  color: #fff;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  padding: 4px 6px;
+  cursor: pointer;
+}
+.debug-panel button:hover { background: rgba(255, 255, 255, 0.12); }
+.debug-panel button.on { background: #fff; color: #000; }
+.debug-panel .dbg-read {
+  margin: 0;
+  font: 11px/1.4 ui-monospace, Menlo, monospace;
+  color: #bbb;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
