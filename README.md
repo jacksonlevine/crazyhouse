@@ -2,7 +2,7 @@
 
 A security-cam horror game in the browser, in the spirit of "I'm on
 Observation Duty". You watch a house at night through eight cams while
-ghoul1 lurches around inside it. Black and white, lit by real lamps.
+ghoul1 lurches around inside it, lit only by real lamps.
 
 Playable at [jakeworldwide.com/games/crazyhouse](https://jakeworldwide.com/games/crazyhouse/).
 
@@ -21,7 +21,29 @@ Then open http://localhost:8000. Edit a file, refresh the page.
 ## Controls
 
 Left / right arrow keys, the number pad (4 / 6), A / D, or the on-screen
-arrows switch cams. Enter or Space starts. Esc goes back to the title.
+arrows switch cams. **B** or the `emp` button fires the EMP at the room
+you're watching. **N** or the `nv` button toggles night vision. Enter or Space starts. Esc goes back to the title.
+
+## The EMP
+
+ghoul1 is out of reality most of the time. Every so often he fades
+back in, and once he's here he stays until you get rid of him: find
+him on the cams and fire the EMP while you're watching his room.
+
+- It only hits the room the current cam is watching. Electric arcs
+  crackle round that room's edges and the room strobes, so you can see
+  where it went.
+- If he's in that room, he dies: he stops dead, arches back and reaches
+  both arms up to the sky, head thrown back, shaking, then stutters out
+  of reality (about 2.5 seconds, `ZAPPED` and `AGONY` in `ghoul.js`).
+  He stays gone for 25 to 50 seconds before turning up somewhere else.
+  If he isn't in that room, you wasted it.
+- It makes a crackling electric zap, made on the fly in the browser (no
+  sound files), in `emp.js`.
+- It takes 6 seconds to recharge (`RECHARGE` in `main.js`); the bar
+  along the bottom of the button fills back up.
+- The arcs and flash are `emp.js`. Which rooms count as which is
+  `ROOMS` in `world.js`.
 
 ## What's in here
 
@@ -29,7 +51,7 @@ arrows switch cams. Enter or Space starts. Esc goes back to the title.
 - `crazyhouse.css` sizes everything in `cqw` (1% of the frame's width),
   so it all scales with the frame on any screen
 - `cams.js` is the list of cams: name, position in feet, what it looks
-  at, zoom
+  at, zoom (inside cams are 80°)
 - `main.js` runs the game: renderer, input, the clock, shadows
 - `world.js` builds the house, the furniture, the yard and the lights,
   and has `ROOMS`: which part of the house is which room, and which cam
@@ -37,9 +59,8 @@ arrows switch cams. Enter or Space starts. Esc goes back to the title.
 - `ghoul.js` is ghoul1: his body, his walking loop, his stare, and when
   he fades in and out
 - `ghost.js` draws him blurred and faded over the frame
-- `tv.js` is the kitchen TV (see below), `crt.js` its model (see CREDITS.md)
-- `tv/` is the TV's video and its prebaked glow table; `tools/build-tv.sh`
-  rebuilds both from a video atlas
+- `emp.js` is the EMP's electric arcs, flash and zap sound
+- `debug.js` is the debug panel (see Debugging)
 - `check-route.mjs` tests his walking loop for clipping (see below)
 - `vendor/three-r186/` is Three.js, the 3D library, saved here so the
   game doesn't depend on anything else
@@ -64,15 +85,32 @@ feet: the floor sits 2.5' above the yard and ceilings are 8'.
 
 **Lighting.** Every light is a real light that casts real shadows, so
 it only reaches what it can actually see: through doorways, out of
-windows, onto the yard. All lights are white so the picture stays black
-and white.
+windows, onto the yard. Lamps are warm, the streetlight a little
+orange, the moon a little blue (`LAMP_COLOR` and the light colours in
+`world.js`; set them to `0xffffff` for plain white).
+
+**Windows and doors.** Every window has a white frame with bars
+between the panes and a sheet of faint glass (`glazing()` in
+`world.js`); each is one solid frame plus one sheet, so they're cheap.
+Glass sits on its own layer so it never hides ghoul1 from view. The
+patio has sliding glass doors (`slidingDoor()`), and the front door is
+centred on its wall with the steps and walk lined up to it.
+
+**Colours.** Everything is a flat colour, no texture images, so it costs
+nothing extra to draw: green lawn, concrete walk, wood floors, warm
+walls, a red front door, and so on. They're all in `MAT` near the top of
+`world.js`, and `paint()` decides which thing gets which.
 
 - **Lamps** (`roomLamps()` in `world.js`): a floor lamp in the foyer, a
   table lamp in the living room, pendants over the dining table and the
-  kitchen island, a nightstand lamp in the master, a bare bulb in the
+  kitchen island, a lamp on an end table by the sectional, both
+  nightstand lamps in the master, a bare bulb in the
   laundry, a light bar over the bathroom mirror, a lantern on the patio.
-- **Outside:** a streetlight by the front walk (`streetlight()`) and
-  faint moonlight (`sky()`).
+- **Outside:** a tall streetlight by the front walk that reaches up
+  onto the roof (`streetlight()`), moonlight, and a faint fill that
+  keeps dark corners dim rather than pitch black (`sky()`).
+- **Sky:** stars, a moon and a few slowly drifting clouds
+  (`heavens()`). Kept cheap: about a dozen draws, no lights or shadows.
 - **Brightness:** each lamp's number is its strength (in
   `floorLamp(lamps, 'lamp-foyer', 140, 775, 28)` it's the 28). The whole
   picture's brightness is `EXPOSURE` at the top of `main.js`. Surface
@@ -80,18 +118,13 @@ and white.
 - **Cost:** shadows are worked out once at the start, then only redrawn
   for lamps near ghoul1, so it stays fast.
 
-## The kitchen TV
+## Night vision
 
-On the south counter next to the fridge, a CRT (credit in CREDITS.md). Like Farlands Views, it plays
-one video that holds a grid of feeds (`tv/reel.mp4`, an 8x8 atlas) and
-shows just its own tile; `TILE` at the top of `tv.js` picks which of the
-64. Its screen is drawn grey with scanlines. The glow it casts is a real
-shadowed lamp whose strength follows the picture: `tv/glow.png` is
-prebaked, one pixel per tile per frame holding that tile's average
-brightness, so nothing ever reads the video back. To use different
-footage, run `tools/build-tv.sh atlas.mp4` (needs ffmpeg) on a 64-frame,
-8-fps clip with the same 8x8 layout. The footage is traffic and beach
-cams from the Roadside / Farlands Views reel.
+Like a real security cam: switching it on turns on an infrared light at
+the camera that floods the room it's watching, and the picture goes
+bright and monochrome. Lamps blow out and ghoul1's pupils glow.
+Strength is `IR_STRENGTH` and `NV_GAIN` in `main.js`; source video
+becomes monochrome before composite encoding.
 
 ## ghoul1
 
@@ -101,9 +134,11 @@ He lurches round a loop forever, about 90 seconds a lap.
 
 - **The stare:** in any room with a cam, his head turns to look straight
   into it, all the way round if it has to.
-- **Slipping in and out of reality:** every so often he blurs out of
-  focus and fades away, keeps walking unseen, then blurs back in. The
-  timings are `SEEN`, `GONE` and `FADE` near the top of `ghoul.js`.
+- **Slipping in and out of reality:** he's gone most of the time,
+  walking unseen. He first shows up about 10 seconds in, fades in over
+  a couple of seconds, and stays until an EMP hits his room. The
+  timings are `FIRST`, `GONE`, `FADE` and `ZAPPED` near the top of
+  `ghoul.js`.
 - **His route** is `ROUTE` at the top of `ghoul.js`, smoothed into a
   curve.
 - **No walking through things.** After changing his route, his arms or
@@ -115,12 +150,28 @@ He lurches round a loop forever, about 90 seconds a lap.
 
 ## Debugging
 
-Add `?debug` to the URL (http://localhost:8000/?debug) and the browser
-console gets `crazyhouse.scene`, `.camera`, `.CAMS`, `.showCam(n)`,
-`.ghoul` and `.lamps`. `crazyhouse.ghoul.paused = true` stops him in
-place, `crazyhouse.ghoul.jumpTo(x, y)` drops him at a spot, and
-`crazyhouse.ghoul.forcePresence = 0.5` pins how faded he is (`1` = fully
-here, `null` = back to normal).
+Add `?debug` to the URL (http://localhost:8000/?debug, or the live
+site's address). A panel appears top left (`debug.js`, which only loads
+in debug mode):
+
+- **Free cam** (F or the button): WASD moves, click the view and the
+  mouse looks around, Shift goes up, Ctrl or C goes down, Esc lets go of
+  the mouse. Careful: Ctrl+W closes the browser tab and no web page can
+  stop that, so C is the safe way down. Switching cams or pressing F
+  again snaps back to the real cam. There's a speed slider too.
+- **FOV slider** with the number, for the current cam, or tick the box
+  to try it on all cams.
+- **Night vision** and **fully lit** (strong even light everywhere, no
+  fog) buttons.
+- **Show ghoul** pins him visible, **freeze ghoul** stops him walking.
+- **Copy cam** copies the current view as a line you can paste into
+  `cams.js`, so a spot you find in free cam can become a real cam.
+- A readout of where the camera is, its FOV and ghoul1's state.
+
+The browser console also gets `crazyhouse.scene`, `.camera`, `.CAMS`,
+`.showCam(n)`, `.ghoul`, `.lamps`, `.fireEmp()` and `.toggleNight()`.
+`crazyhouse.ghoul.jumpTo(x, y)` drops him at a spot, and
+`crazyhouse.ghoul.forcePresence = 0.5` pins how faded he is.
 
 ## Making your own version (for friends)
 
@@ -142,15 +193,17 @@ here, `null` = back to normal).
 
 ## Live composite camera view
 
-The scene and ghost render at 768×480, then `analog.js` encodes monochrome
+The scene and ghost render at 768×480, then `analog.js` encodes color
 composite voltage at 910 samples per line (14.31818 MHz), including sync
 and blanking. A receiver pass detects each line's sync trailing edge with
 a voltage comparator and clamps the back-porch level. Decoding uses that
 recovered timing and a windowed-sinc low-pass filter with a 4.2 MHz cutoff.
-There are no decorative scanlines, vignette, or scripted picture warps.
+Chroma uses a 1 MHz demodulation filter; luma is limited to 2.5 MHz
+to separate it from the carrier. There are no decorative scanlines, vignette, or scripted picture warps.
 
 This is still a partial receiver model: progressive active rows only,
-no vertical sync, interlace, color burst/chroma, or temporal PLL. On lost
+no vertical sync, interlace, or temporal PLL. Color uses quadrature
+modulation and burst-referenced demodulation. On lost
 horizontal sync it free-runs at nominal timing. It is not a full NTSC
 simulation. Tone mapping converts scene radiance to source video levels.
 
@@ -188,3 +241,8 @@ Mains hum also injects automatically for random 1–5 second stretches,
 separated by random 1–5 second quiet gaps. Set
 `crazyhouse.analog.controls.automaticHum = false` to disable scheduling;
 holding W still injects mains hum manually.
+
+Merged remote color, glass/windows, EMP, night vision, and debug features.
+E remains the interference key; B now fires EMP (the button still works).
+In debug free-camera mode, W and Shift belong to movement. Night mode uses
+the IR lamp, exposure, and monochrome encoding, without CSS grain/vignette.
