@@ -14,9 +14,9 @@
    ============================================================ */
 
 import * as THREE from './vendor/three-r186/three.module.js';
-import { buildWorld } from './world.js?v=10';
+import { buildWorld } from './world.js?v=11';
 import { createGhoul } from './ghoul.js';
-import { camAt } from './cams.js?v=6';
+import { camAt } from './cams.js?v=7';
 
 const scene = buildWorld();
 scene.updateMatrixWorld(true);

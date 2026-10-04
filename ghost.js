@@ -129,12 +129,14 @@ export function createGhostPass(renderer) {
     renderer.setRenderTarget(sharp);
     renderer.clear();
     renderer.autoClear = false;
+    const keepLayers = camera.layers.mask;
+    camera.layers.set(0);                     // solid things only (not glass)
     scene.overrideMaterial = depthOnly;
     renderer.render(scene, camera);
     scene.overrideMaterial = null;
     camera.layers.set(GHOST_LAYER);
     renderer.render(scene, camera);
-    camera.layers.set(0);
+    camera.layers.mask = keepLayers;
 
     // 2. blur: the 13-tap kernel is about 2.5 steps wide, so bigger
     //    blurs take a few rounds (each round stacks on the last)

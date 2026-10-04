@@ -102,6 +102,15 @@ export const MAT = {
   leaves:    surface(0x2f5a2b, 1),
   pine:      surface(0x24432a, 1),
   pole:      metal(0x2e3832, 0.6),       // streetlight, dark green paint
+  trim:      surface(0xefede6, 0.6),     // white window frames
+  track:     metal(0x6b6f72, 0.5),       // sliding door frames
+  glass:     (() => {                     // faint, slightly reflective, see-through
+    const m = new THREE.MeshStandardMaterial({
+      color: 0xa9bcc8, roughness: 0.05, metalness: 0.3, transparent: true, opacity: 0.22,
+      depthWrite: false, side: THREE.DoubleSide
+    });
+    return m;
+  })(),
   glow:      new THREE.MeshBasicMaterial({ color: 0xfff0d4 })   // lampshades, bulbs: they ARE the light
 };
 
@@ -202,6 +211,47 @@ function rectOn(P, u0, u1, y0, y1) {
   return [[P(u0, y0), P(u1, y0)], [P(u1, y0), P(u1, y1)], [P(u1, y1), P(u0, y1)], [P(u0, y1), P(u0, y0)]];
 }
 
+/* ─── glass ─────────────────────────────────── */
+
+export const GLASS_LAYER = 2;
+
+/* A window frame with its glass, inside an opening. place(u, y, w) maps
+   along-the-opening, height and depth to the world (same as walls).
+   The frame is ONE solid (a rectangle with a hole per pane, so the
+   bars between panes come free) and the glass is one sheet, so each
+   window costs only a couple of draws. Kept parts aren't repainted. */
+function glazing(place, u0, u1, y0, y1, w, { panes = 1, border = 0.14, bar = 0.08, depth = 0.12, mat = MAT.trim } = {}) {
+  const shape = new THREE.Shape();
+  shape.moveTo(u0, y0); shape.lineTo(u1, y0); shape.lineTo(u1, y1); shape.lineTo(u0, y1);
+  const inner = (u1 - u0 - border * 2 - bar * (panes - 1)) / panes;
+  for (let k = 0; k < panes; k++) {
+    const a = u0 + border + k * (inner + bar), b = a + inner;
+    const hole = new THREE.Path();
+    hole.moveTo(a, y0 + border); hole.lineTo(b, y0 + border); hole.lineTo(b, y1 - border); hole.lineTo(a, y1 - border);
+    shape.holes.push(hole);
+  }
+  const frameGeo = remap(new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false }),
+    (u, y, d) => place(u, y, w - depth / 2 + d));
+  const frame = solid(frameGeo, [0, 0, 0], null, mat);
+
+  const glassGeo = new THREE.PlaneGeometry(1, 1);
+  const pos = glassGeo.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const u = pos.getX(i) < 0 ? u0 + border : u1 - border, y = pos.getY(i) < 0 ? y0 + border : y1 - border;
+    pos.setXYZ(i, ...place(u, y, w));
+  }
+  glassGeo.computeVertexNormals();
+  const glass = new THREE.Mesh(glassGeo, MAT.glass);
+  glass.layers.set(GLASS_LAYER);       // see-through, so it mustn't hide ghoul1 (ghost.js skips this layer)
+
+  frame.traverse(o => { if (o.isMesh) o.userData.keep = true; });
+  glass.userData.keep = true;
+  glass.userData.noShadow = true;
+  const g = new THREE.Group();
+  g.add(frame, glass);
+  return g;
+}
+
 /* ─── walls ─────────────────────────────────── */
 
 const win  = (from, to, sill, head = 7) => [from, to, sill, head];
@@ -259,22 +309,12 @@ function wall(dir, c0, c1, a, b, openings = [], { bottom = FLOOR, top = CEIL } =
     return place(u, y, w);
   });
 
-  // glass: a frame and mullions in the middle of each window hole
-  const glass = [];
-  const P = (u, y) => place(u, y, t / 2);
-  for (const o of ops) if (o.sill > 0) {
-    const i = 0.12, u0 = o.u0 + i, u1 = o.u1 - i;
-    const y0 = bottom + o.sill + i, y1 = bottom + o.head - i;
-    glass.push(...rectOn(P, u0, u1, y0, y1));
-    const panes = Math.ceil((o.u1 - o.u0) / 3.2);
-    for (let k = 1; k < panes; k++) {
-      const u = u0 + (u1 - u0) * k / panes;
-      glass.push([P(u, y0), P(u, y1)]);
-    }
-  }
-
+  // a real window in each hole: white frame, bars between panes, glass
   const g = solid(geo);
-  if (glass.length) g.add(lines(glass));
+  for (const o of ops) if (o.sill > 0) {
+    const panes = Math.max(1, Math.ceil((o.u1 - o.u0) / 3.2));
+    g.add(glazing(place, o.u0, o.u1, bottom + o.sill, bottom + o.head, t / 2, { panes }));
+  }
   return g;
 }
 
@@ -294,7 +334,7 @@ function walls() {
 
   // foyer
   add('h', 482, 501, [105, 295], [124, 295]);                                                   // north
-  add('v', 105, 124, [482, 814], [501, 794], [door(571, 666)]);                                // west: front door
+  add('v', 105, 124, [482, 814], [501, 794], [door(600, 695)]);                                // west: front door, centred
   add('h', 794, 814, [124, 295], [105, 295], [win(163, 263, 3)]);                               // south
   add('h', 558, 566, [124, 295], [124, 315], [door(141, 284)]);                                 // coat closet front
 
@@ -339,9 +379,8 @@ function leaf(name, hx, hy, ex, ey, open = 0, tx = 0, ty = 0) {
 function doors() {
   return named('doors',
     // flush with the outside face, so from the yard it reads as one door
-    leaf('door-front', 107, 571, 107, 666),
-    leaf('door-patio-left', 776, 355, 857, 355),
-    leaf('door-patio-right', 939, 355, 858, 355),
+    leaf('door-front', 107, 600, 107, 695),
+    slidingDoor(),
     leaf('door-master', 811, 733, 811, 804, 75, 900, 733),
     // coat closet bifolds, shut
     block(141, 212, 559, 565, DOOR_H - 0.1),
@@ -349,10 +388,30 @@ function doors() {
     lines([[[X(176), FLOOR, Z(562)], [X(176), FLOOR + DOOR_H - 0.1, Z(562)]],
            [[X(248), FLOOR, Z(562)], [X(248), FLOOR + DOOR_H - 0.1, Z(562)]]]),
     // pantry slider, half open, on the kitchen side
-    named('door-pantry', block(1104, 1170, 652, 658, DOOR_H - 0.1)),
-    // fixed glass beside the patio doors
-    lines(rectOn((u, y) => [u, y, Z(354.5)], X(942), X(1021), FLOOR + 0.2, FLOOR + DOOR_H - 0.1))
+    named('door-pantry', block(1104, 1170, 652, 658, DOOR_H - 0.1))
   );
+}
+
+/* Sliding glass doors onto the patio: two big glass panels in metal
+   frames on two tracks, the left one fixed, the right one (with the
+   handle) slides in front of it. Plus the tracks along top and bottom. */
+function slidingDoor() {
+  const z0 = Z(345), t = Z(364) - Z(345);
+  const place = (u, y, w) => [u, y, z0 + w];
+  const a = X(774), b = X(1024), mid = (a + b) / 2, lap = 0.15;
+  const y0 = FLOOR + 0.06, y1 = FLOOR + DOOR_H - 0.06;
+  const opts = { panes: 1, border: 0.16, depth: 0.1, mat: MAT.track };
+  const handle = solid(new THREE.BoxGeometry(0.06, 0.9, 0.08), [mid + 0.35, FLOOR + 3.4, z0 + t / 2 + 0.2], null, MAT.track);
+  handle.traverse(o => { if (o.isMesh) o.userData.keep = true; });
+  const tracks = [y0 - 0.04, y1 + 0.04].map(y => {
+    const tr = solid(new THREE.BoxGeometry(b - a, 0.08, t * 0.7), [mid, y, z0 + t / 2], null, MAT.track);
+    tr.traverse(o => { if (o.isMesh) o.userData.keep = true; });
+    return tr;
+  });
+  return named('door-patio',
+    glazing(place, a, mid + lap, y0, y1, t / 2 - 0.08, opts),       // fixed panel, outer track
+    glazing(place, mid - lap, b, y0, y1, t / 2 + 0.08, opts),       // sliding panel, inner track
+    handle, ...tracks);
 }
 
 /* ─── floor, ceilings, roof ─────────────────── */
@@ -588,7 +647,7 @@ function porches() {
   parts.push(block(0, 11, 485, 497, beamLo, 0, 0), block(0, 11, 799, 811, beamLo, 0, 0));
   parts.push(block(0, 11, 482, 814, CEIL, beamLo, 0));
   for (let i = 0; i < 3; i++) {
-    parts.push(block(-(i + 1) * K, -i * K, 563, 673, FLOOR - 0.625 * (i + 1), 0, 0));
+    parts.push(block(-(i + 1) * K, -i * K, 593, 703, FLOOR - 0.625 * (i + 1), 0, 0));
   }
   return named('porches', ...parts);
 }
@@ -605,7 +664,7 @@ function ground() {
 
 function path() {
   // paving slabs from the front steps out to the street
-  const z = Z(618), hw = 2, y = 0.02, x0 = X(-3 * K), x1 = -72;
+  const z = Z(647.5), hw = 2, y = 0.02, x0 = X(-3 * K), x1 = -72;      // lined up with the front door
   const pairs = [[[x0, y, z - hw], [x1, y, z - hw]], [[x0, y, z + hw], [x1, y, z + hw]]];
   for (let x = x0; x >= x1; x -= 4) pairs.push([[x, y, z - hw], [x, y, z + hw]]);
   const walk = new THREE.Mesh(new THREE.BoxGeometry(x0 - x1, 0.04, hw * 2), MAT.concrete);
@@ -891,14 +950,14 @@ function cloudImage() {
    every solid casts and catches them, except things that glow. */
 function paint(scene) {
   const set = (name, mat) => scene.traverse(o => {
-    if (o.name === name) o.traverse(m => { if (m.isMesh && !m.material.isMeshBasicMaterial) m.material = mat; });
+    if (o.name === name) o.traverse(m => { if (m.isMesh && !m.material.isMeshBasicMaterial && !m.userData.keep) m.material = mat; });
   });
   // a group's solids in order, e.g. a tree's trunk then its canopy
   const parts = (name, ...mats) => scene.traverse(o => {
     if (o.name !== name) return;
     o.children.forEach((c, i) => {
       const mat = mats[Math.min(i, mats.length - 1)];
-      c.traverse(m => { if (m.isMesh) m.material = mat; });
+      c.traverse(m => { if (m.isMesh && !m.userData.keep) m.material = mat; });
     });
   });
   set('walls', MAT.wall);
@@ -932,7 +991,7 @@ function paint(scene) {
   for (const n of ['lamp-foyer', 'lamp-living', 'lamp-master', 'lamp-master-2', 'lamp-sofa']) set(n, MAT.dark);   // shades keep glowing
   scene.traverse(o => {
     if (!o.isMesh) return;
-    const glows = o.material.isMeshBasicMaterial;
+    const glows = o.material.isMeshBasicMaterial || o.userData.noShadow;
     o.castShadow = !glows;
     o.receiveShadow = !glows;
   });

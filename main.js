@@ -4,11 +4,11 @@
    ============================================================ */
 
 import * as THREE from './vendor/three-r186/three.module.js';
-import { buildWorld, ROOMS, roomAt } from './world.js?v=10';
-import { createEmp } from './emp.js?v=5';
-import { CAMS, camAt } from './cams.js?v=6';
-import { createGhoul } from './ghoul.js?v=11';
-import { createGhostPass, GHOST_LAYER } from './ghost.js?v=2';
+import { buildWorld, ROOMS, roomAt, GLASS_LAYER } from './world.js?v=11';
+import { createEmp } from './emp.js?v=6';
+import { CAMS, camAt } from './cams.js?v=7';
+import { createGhoul } from './ghoul.js?v=12';
+import { createGhostPass, GHOST_LAYER } from './ghost.js?v=3';
 
 
 const $ = id => document.getElementById(id);
@@ -97,6 +97,7 @@ function setup() {
   });
   ghost = createGhostPass(renderer);
   camera = new THREE.PerspectiveCamera(52, 16 / 9, 0.1, 600);
+  camera.layers.enable(GLASS_LAYER);        // the main view draws window glass too
 
   const fit = () => {
     const w = canvas.clientWidth, h = canvas.clientHeight;

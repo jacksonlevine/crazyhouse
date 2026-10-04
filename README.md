@@ -51,7 +51,7 @@ him on the cams and fire the EMP while you're watching his room.
 - `crazyhouse.css` sizes everything in `cqw` (1% of the frame's width),
   so it all scales with the frame on any screen
 - `cams.js` is the list of cams: name, position in feet, what it looks
-  at, zoom
+  at, zoom (inside cams are 80°)
 - `main.js` runs the game: renderer, input, the clock, shadows
 - `world.js` builds the house, the furniture, the yard and the lights,
   and has `ROOMS`: which part of the house is which room, and which cam
@@ -88,6 +88,13 @@ it only reaches what it can actually see: through doorways, out of
 windows, onto the yard. Lamps are warm, the streetlight a little
 orange, the moon a little blue (`LAMP_COLOR` and the light colours in
 `world.js`; set them to `0xffffff` for plain white).
+
+**Windows and doors.** Every window has a white frame with bars
+between the panes and a sheet of faint glass (`glazing()` in
+`world.js`); each is one solid frame plus one sheet, so they're cheap.
+Glass sits on its own layer so it never hides ghoul1 from view. The
+patio has sliding glass doors (`slidingDoor()`), and the front door is
+centred on its wall with the steps and walk lined up to it.
 
 **Colours.** Everything is a flat colour, no texture images, so it costs
 nothing extra to draw: green lawn, concrete walk, wood floors, warm
