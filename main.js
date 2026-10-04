@@ -4,7 +4,7 @@
    ============================================================ */
 
 import * as THREE from './vendor/three-r186/three.module.js';
-import { buildWorld, ROOMS, roomAt, GLASS_LAYER } from './world.js?v=11';
+import { buildWorld, ROOMS, roomAt, GLASS_LAYER, captureReflections } from './world.js?v=12';
 import { createEmp } from './emp.js?v=6';
 import { CAMS, camAt } from './cams.js?v=7';
 import { createGhoul } from './ghoul.js?v=12';
@@ -41,6 +41,12 @@ function refreshShadows() {
   const now = new Set();
   for (const l of lamps) {
     if (l.isPointLight && l.getWorldPosition(lampAt).distanceTo(ghoul.object.position) < NEAR_LAMP) now.add(l);
+  }
+  // something in the house moved (the closet door, an anomaly): lamps near it redraw too
+  const moved = scene.userData.moved;
+  if (moved) {
+    for (const l of lamps) if (l.isPointLight && l.getWorldPosition(lampAt).distanceTo(moved) < NEAR_LAMP) now.add(l);
+    scene.userData.moved = null;
   }
   for (const l of now) l.shadow.needsUpdate = true;
   for (const l of nearLamps) if (!now.has(l)) l.shadow.needsUpdate = true;
@@ -96,6 +102,8 @@ function setup() {
     if (o.shadow) o.shadow.camera.layers.enable(GHOST_LAYER);
   });
   ghost = createGhostPass(renderer);
+  // each window's reflection: one small snapshot apiece, taken now, never again
+  captureReflections(renderer, scene);
   camera = new THREE.PerspectiveCamera(52, 16 / 9, 0.1, 600);
   camera.layers.enable(GLASS_LAYER);        // the main view draws window glass too
 
@@ -121,7 +129,7 @@ function setup() {
       isNight: () => night, camIndex: () => camIndex
     };
     window.crazyhouse = api;
-    import('./debug.js?v=1').then(m => m.createDebug(api));
+    import('./debug.js?v=2').then(m => m.createDebug(api));
   }
 
   renderer.setAnimationLoop(now => {

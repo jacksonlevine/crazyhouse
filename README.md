@@ -93,8 +93,28 @@ orange, the moon a little blue (`LAMP_COLOR` and the light colours in
 between the panes and a sheet of faint glass (`glazing()` in
 `world.js`); each is one solid frame plus one sheet, so they're cheap.
 Glass sits on its own layer so it never hides ghoul1 from view. The
-patio has sliding glass doors (`slidingDoor()`), and the front door is
-centred on its wall with the steps and walk lined up to it.
+patio has sliding glass doors (`slidingDoor()`), and the red front door
+has a 4-pane window and is centred on its wall with the steps and walk
+lined up to it.
+
+- **Glass reflections:** glass isn't lit (lit glass showed every lamp
+  as a hard white dot). Instead, at the start each pane takes one small
+  snapshot of what's around it and faintly reflects that
+  (`captureReflections()`). Costs a quarter second once, then nothing.
+  The reflections don't move, and the sky is left out of them.
+- **The bathroom mirror** (`mirror()`) is a real mirror: while a cam can
+  see it, the room is drawn a second time from the mirrored view. About
+  1.5 ms a frame, only while it's on screen. ghoul1 has no reflection
+  (he's on a layer it doesn't draw), like a vampire.
+- **The storage closet** by the hall has an accordion door facing the
+  couch, ready for anomalies:
+  `scene.getObjectByName('door-closet').userData.setOpen(0.5)` (0 shut,
+  1 open). Anything that moves can set `scene.userData.moved` to where
+  it is, so nearby lamps redraw their shadows.
+
+**The front porch** has a lantern by the door and a rocking chair
+(`frontPorch()`). The kitchen has a real double sink with a faucet
+(`sink()`).
 
 **Colours.** Everything is a flat colour, no texture images, so it costs
 nothing extra to draw: green lawn, concrete walk, wood floors, warm
@@ -105,7 +125,8 @@ walls, a red front door, and so on. They're all in `MAT` near the top of
   table lamp in the living room, pendants over the dining table and the
   kitchen island, a lamp on an end table by the sectional, both
   nightstand lamps in the master, a bare bulb in the
-  laundry, a light bar over the bathroom mirror, a lantern on the patio.
+  laundry, a light bar over the bathroom mirror, a lantern on the patio,
+  a lantern on the front porch.
 - **Outside:** a tall streetlight by the front walk that reaches up
   onto the roof (`streetlight()`), moonlight, and a faint fill that
   keeps dark corners dim rather than pitch black (`sky()`).
@@ -164,6 +185,7 @@ in debug mode):
 - **Night vision** and **fully lit** (strong even light everywhere, no
   fog) buttons.
 - **Show ghoul** pins him visible, **freeze ghoul** stops him walking.
+- **Closet door** folds the accordion closet door open or shut.
 - **Copy cam** copies the current view as a line you can paste into
   `cams.js`, so a spot you find in free cam can become a real cam.
 - A readout of where the camera is, its FOV and ghoul1's state.

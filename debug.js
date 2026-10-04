@@ -9,6 +9,7 @@
    - Night vision and fully lit buttons.
    - Copy cam: copies where you are as a line for cams.js.
    - ghoul1: show him / freeze him.
+   - Closet door: folds the accordion door open or shut.
    ============================================================ */
 
 export function createDebug(api) {
@@ -32,6 +33,7 @@ export function createDebug(api) {
       <button data-act="ghoul">show ghoul</button>
       <button data-act="freeze">freeze ghoul</button>
     </div>
+    <button data-act="closet">closet door</button>
     <button data-act="copy">copy cam</button>
     <pre class="dbg-read" data-out="read"></pre>`;
   document.body.appendChild(panel);
@@ -91,6 +93,12 @@ export function createDebug(api) {
       if (keys.has('shift')) camera.position.y += step;
       if (keys.has('control') || keys.has('c')) camera.position.y -= step;
     }
+    // fold the closet door toward where the button sent it
+    if (closet && closetGoal !== null) {
+      const o = closet.userData.open, step = dt * 1.2;
+      closet.userData.setOpen(Math.abs(closetGoal - o) <= step ? closetGoal : o + Math.sign(closetGoal - o) * step);
+      if (closet.userData.open === closetGoal) closetGoal = null;
+    }
     readout();
   };
 
@@ -136,6 +144,14 @@ export function createDebug(api) {
   btn('freeze').addEventListener('click', () => {
     ghoul.paused = !ghoul.paused;
     btn('freeze').classList.toggle('on', ghoul.paused);
+  });
+
+  /* ─── closet door ─── */
+  const closet = scene.getObjectByName('door-closet');
+  let closetGoal = null;           // only set while the button is moving it
+  btn('closet').addEventListener('click', () => {
+    closetGoal = closet.userData.open > 0.5 ? 0 : 1;
+    btn('closet').classList.toggle('on', closetGoal === 1);
   });
 
   /* ─── copy the current view as a cams.js line ─── */

@@ -104,11 +104,16 @@ export const MAT = {
   pole:      metal(0x2e3832, 0.6),       // streetlight, dark green paint
   trim:      surface(0xefede6, 0.6),     // white window frames
   track:     metal(0x6b6f72, 0.5),       // sliding door frames
-  glass:     (() => {                     // faint, slightly reflective, see-through
-    const m = new THREE.MeshStandardMaterial({
-      color: 0xa9bcc8, roughness: 0.05, metalness: 0.3, transparent: true, opacity: 0.22,
-      depthWrite: false, side: THREE.DoubleSide
-    });
+  // faint see-through glass. Unlit on purpose: lit glass shows every lamp
+  // as a hard white dot. It reflects a snapshot of what's around it instead
+  // (captureReflections), so this colour is just the slight dark tint.
+  glass:     new THREE.MeshBasicMaterial({
+    color: 0x10161b, transparent: true, opacity: 0.32, depthWrite: false, side: THREE.DoubleSide,
+    combine: THREE.MixOperation, reflectivity: 0.45
+  }),
+  basin:     (() => {                     // the inside of the kitchen sink
+    const m = surface(0xa7adb1, 0.3, THREE.BackSide);
+    m.metalness = 0.35;
     return m;
   })(),
   glow:      new THREE.MeshBasicMaterial({ color: 0xfff0d4 })   // lampshades, bulbs: they ARE the light
@@ -215,41 +220,155 @@ function rectOn(P, u0, u1, y0, y1) {
 
 export const GLASS_LAYER = 2;
 
-/* A window frame with its glass, inside an opening. place(u, y, w) maps
-   along-the-opening, height and depth to the world (same as walls).
-   The frame is ONE solid (a rectangle with a hole per pane, so the
-   bars between panes come free) and the glass is one sheet, so each
-   window costs only a couple of draws. Kept parts aren't repainted. */
-function glazing(place, u0, u1, y0, y1, w, { panes = 1, border = 0.14, bar = 0.08, depth = 0.12, mat = MAT.trim } = {}) {
+/* A frame for windows and mirrors, inside an opening. place(u, y, w)
+   maps along-the-opening, height and depth to the world (same as
+   walls). It's ONE solid: a rectangle with a hole per pane, so the bars
+   between panes come free. panes across, rows up. Kept parts aren't
+   repainted. */
+function paneFrame(place, u0, u1, y0, y1, w, { panes = 1, rows = 1, border = 0.14, bar = 0.08, depth = 0.12, mat = MAT.trim } = {}) {
   const shape = new THREE.Shape();
   shape.moveTo(u0, y0); shape.lineTo(u1, y0); shape.lineTo(u1, y1); shape.lineTo(u0, y1);
-  const inner = (u1 - u0 - border * 2 - bar * (panes - 1)) / panes;
-  for (let k = 0; k < panes; k++) {
-    const a = u0 + border + k * (inner + bar), b = a + inner;
+  const across = (u1 - u0 - border * 2 - bar * (panes - 1)) / panes;
+  const up = (y1 - y0 - border * 2 - bar * (rows - 1)) / rows;
+  for (let k = 0; k < panes; k++) for (let r = 0; r < rows; r++) {
+    const a = u0 + border + k * (across + bar), b = a + across;
+    const c = y0 + border + r * (up + bar), d = c + up;
     const hole = new THREE.Path();
-    hole.moveTo(a, y0 + border); hole.lineTo(b, y0 + border); hole.lineTo(b, y1 - border); hole.lineTo(a, y1 - border);
+    hole.moveTo(a, c); hole.lineTo(b, c); hole.lineTo(b, d); hole.lineTo(a, d);
     shape.holes.push(hole);
   }
-  const frameGeo = remap(new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false }),
+  const geo = remap(new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false }),
     (u, y, d) => place(u, y, w - depth / 2 + d));
-  const frame = solid(frameGeo, [0, 0, 0], null, mat);
+  const frame = solid(geo, [0, 0, 0], null, mat);
+  frame.traverse(o => { if (o.isMesh) o.userData.keep = true; });
+  return frame;
+}
 
-  const glassGeo = new THREE.PlaneGeometry(1, 1);
-  const pos = glassGeo.attributes.position;
+/* A window frame with its glass. The glass is one sheet behind all the
+   panes, so each window costs only a couple of draws. */
+function glazing(place, u0, u1, y0, y1, w, opts = {}) {
+  const b = opts.border ?? 0.14;
+  const geo = new THREE.PlaneGeometry(1, 1);
+  const pos = geo.attributes.position;
   for (let i = 0; i < pos.count; i++) {
-    const u = pos.getX(i) < 0 ? u0 + border : u1 - border, y = pos.getY(i) < 0 ? y0 + border : y1 - border;
+    const u = pos.getX(i) < 0 ? u0 + b : u1 - b, y = pos.getY(i) < 0 ? y0 + b : y1 - b;
     pos.setXYZ(i, ...place(u, y, w));
   }
-  glassGeo.computeVertexNormals();
-  const glass = new THREE.Mesh(glassGeo, MAT.glass);
+  geo.computeVertexNormals();
+  const glass = new THREE.Mesh(geo, MAT.glass);
   glass.layers.set(GLASS_LAYER);       // see-through, so it mustn't hide ghoul1 (ghost.js skips this layer)
-
-  frame.traverse(o => { if (o.isMesh) o.userData.keep = true; });
   glass.userData.keep = true;
   glass.userData.noShadow = true;
+  glass.userData.reflect = true;       // gets its own reflection snapshot (captureReflections)
   const g = new THREE.Group();
-  g.add(frame, glass);
+  g.add(paneFrame(place, u0, u1, y0, y1, w, opts), glass);
   return g;
+}
+
+/* Window reflections. Once, at the start, each pane of glass takes a
+   tiny six-way snapshot from where it sits, and then faintly reflects
+   it. So a window shows the room right around it from inside, and the
+   yard and sky from outside. One snapshot each and then it costs
+   nothing; the reflections just don't move. (Needs a renderer, so
+   main.js calls it.) */
+export function captureReflections(renderer, scene) {
+  scene.updateMatrixWorld(true);
+  const panes = [];
+  scene.traverse(o => { if (o.userData.reflect) panes.push(o); });
+  // no sky: blown up in a reflection, each star turns into a white block
+  const heavens = scene.getObjectByName('heavens');
+  if (heavens) heavens.visible = false;
+  for (const glass of panes) {
+    glass.geometry.computeBoundingSphere();
+    const target = new THREE.WebGLCubeRenderTarget(128, { type: THREE.HalfFloatType });
+    const snap = new THREE.CubeCamera(0.2, 600, target);      // sees layer 0 only: no glass, no ghoul1
+    snap.position.copy(glass.geometry.boundingSphere.center).applyMatrix4(glass.matrixWorld);
+    snap.updateMatrixWorld(true);
+    snap.update(renderer, scene);
+    glass.material = MAT.glass.clone();
+    glass.material.envMap = target.texture;
+  }
+  if (heavens) heavens.visible = true;
+}
+
+/* A real mirror. While a cam can see it, the scene is drawn a second
+   time from the cam's reflection, into a picture the mirror shows (the
+   same trick as three.js's Reflector). It costs nothing while no cam is
+   looking at it. ghoul1 lives on a layer the reflection doesn't draw,
+   so he has no reflection. Like a vampire. */
+function mirror(u0, u1, y0, y1, z) {
+  const target = new THREE.WebGLRenderTarget(1024, 576, { type: THREE.HalfFloatType, samples: 4 });
+  const textureMatrix = new THREE.Matrix4();
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(u1 - u0, y1 - y0), new THREE.ShaderMaterial({
+    uniforms: { map: { value: target.texture }, textureMatrix: { value: textureMatrix }, tint: { value: new THREE.Color(0xd4dade) } },
+    vertexShader: `
+      uniform mat4 textureMatrix;
+      varying vec4 vUv;
+      void main() {
+        vUv = textureMatrix * vec4(position, 1.0);
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }`,
+    fragmentShader: `
+      uniform sampler2D map;
+      uniform vec3 tint;
+      varying vec4 vUv;
+      void main() {
+        gl_FragColor = vec4(texture2DProj(map, vUv).rgb * tint, 1.0);
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
+      }`
+  }));
+  mesh.position.set((u0 + u1) / 2, (y0 + y1) / 2, z);
+  mesh.rotation.y = Math.PI;                      // facing north, into the room
+  mesh.layers.set(GLASS_LAYER);                   // so window snapshots and the ghost pass skip it
+  mesh.userData.keep = mesh.userData.noShadow = true;
+
+  const view = new THREE.PerspectiveCamera();
+  view.layers.set(0);
+  view.layers.enable(GLASS_LAYER);
+  const at = new THREE.Vector3(), eye = new THREE.Vector3(), normal = new THREE.Vector3();
+  const look = new THREE.Vector3(), aim = new THREE.Vector3(), turn = new THREE.Matrix4();
+  const plane = new THREE.Plane(), clip = new THREE.Vector4(), q = new THREE.Vector4();
+
+  mesh.onBeforeRender = (renderer, scene, camera) => {
+    at.setFromMatrixPosition(mesh.matrixWorld);
+    eye.setFromMatrixPosition(camera.matrixWorld);
+    turn.extractRotation(mesh.matrixWorld);
+    normal.set(0, 0, 1).applyMatrix4(turn);
+    look.subVectors(at, eye);
+    if (look.dot(normal) > 0) return;             // looking at its back
+    // the camera, mirrored through the glass
+    look.reflect(normal).negate().add(at);
+    turn.extractRotation(camera.matrixWorld);
+    aim.set(0, 0, -1).applyMatrix4(turn).add(eye);
+    aim.subVectors(at, aim).reflect(normal).negate().add(at);
+    view.position.copy(look);
+    view.up.set(0, 1, 0).applyMatrix4(turn).reflect(normal);
+    view.lookAt(aim);
+    view.far = camera.far;
+    view.updateMatrixWorld();
+    view.projectionMatrix.copy(camera.projectionMatrix);
+    textureMatrix.set(0.5, 0, 0, 0.5, 0, 0.5, 0, 0.5, 0, 0, 0.5, 0.5, 0, 0, 0, 1)
+      .multiply(view.projectionMatrix).multiply(view.matrixWorldInverse).multiply(mesh.matrixWorld);
+    // move the near plane onto the mirror, so the wall and yard behind it don't get drawn
+    plane.setFromNormalAndCoplanarPoint(normal, at).applyMatrix4(view.matrixWorldInverse);
+    clip.set(plane.normal.x, plane.normal.y, plane.normal.z, plane.constant);
+    const e = view.projectionMatrix.elements;
+    q.set((Math.sign(clip.x) + e[8]) / e[0], (Math.sign(clip.y) + e[9]) / e[5], -1, (1 + e[10]) / e[14]);
+    clip.multiplyScalar(2 / clip.dot(q));
+    e[2] = clip.x; e[6] = clip.y; e[10] = clip.z + 1; e[14] = clip.w;
+
+    mesh.visible = false;
+    const was = renderer.getRenderTarget(), shadows = renderer.shadowMap.autoUpdate;
+    renderer.shadowMap.autoUpdate = false;        // the shadows are already drawn this frame
+    renderer.setRenderTarget(target);
+    renderer.state.buffers.depth.setMask(true);
+    renderer.render(scene, view);
+    renderer.setRenderTarget(was);
+    renderer.shadowMap.autoUpdate = shadows;
+    mesh.visible = true;
+  };
+  return mesh;
 }
 
 /* ─── walls ─────────────────────────────────── */
@@ -329,7 +448,7 @@ function walls() {
   add('h', 345, 364, [738, 1256], [719, 1237], [door(774, 1024), win(1099, 1172, 3)]);          // kitchen, north: patio doors
   add('v', 1237, 1256, [364, 1068], [345, 1087], [win(416, 607, 3.6), win(826, 1016, 2.5)]);    // east: sink + master windows
   add('h', 1068, 1087, [315, 1237], [295, 1256],
-    [win(487, 588, 4.2), win(839, 912, 3), win(1087, 1159, 3)]);                                // south: bath + master windows
+    [win(839, 912, 3), win(1087, 1159, 3)]);                                                    // south: master windows (a mirror over the bath sink)
   add('v', 295, 315, [645, 1087], [645, 1068], [win(928, 969, 4.2)]);                           // west of the hall, storage, bath
 
   // foyer
@@ -339,8 +458,8 @@ function walls() {
   add('h', 558, 566, [124, 295], [124, 315], [door(141, 284)]);                                 // coat closet front
 
   // storage, bathroom, laundry (the hall where the stairs were is left open)
-  add('h', 731, 740, [315, 428], [315, 419]);                                                   // storage, north
-  add('v', 419, 428, [740, 902], [731, 902], [door(746, 800)]);                                 // storage, east (pocket door)
+  add('h', 731, 740, [315, 428], [315, 419], [door(325, 409)]);                                 // storage, north: accordion door, facing the couch
+  add('v', 419, 428, [740, 902], [731, 902]);                                                   // storage, east
   add('h', 853, 861, [315, 419]);                                                               // storage, south
   add('h', 810, 825, [428, 807], null, [door(438, 511)]);                                       // bathroom + laundry, north
   add('v', 605, 614, [825, 1068], null, [door(830, 979)]);                                      // bathroom | laundry
@@ -358,8 +477,9 @@ function walls() {
 /* ─── doors ─────────────────────────────────── */
 
 /* A door leaf. Hinge at blueprint (hx, hy), latch edge at (ex, ey)
-   when shut. open = degrees, swinging toward the point (tx, ty). */
-function leaf(name, hx, hy, ex, ey, open = 0, tx = 0, ty = 0) {
+   when shut. open = degrees, swinging toward the point (tx, ty).
+   lite = { panes, rows } puts a window in the top half. */
+function leaf(name, hx, hy, ex, ey, open = 0, tx = 0, ty = 0, lite = null) {
   const x0 = X(hx), z0 = Z(hy), dx = X(ex) - x0, dz = Z(ey) - z0;
   const w = Math.hypot(dx, dz), h = DOOR_H - 0.01;     // fills the opening, no double edge
   let th = Math.atan2(dz, dx);
@@ -367,8 +487,23 @@ function leaf(name, hx, hy, ex, ey, open = 0, tx = 0, ty = 0) {
     const toward = Math.atan2(Z(ty) - z0, X(tx) - x0);
     th += Math.sign(Math.sin(toward - th)) * open * Math.PI / 180;
   }
+  let body = solid(new THREE.BoxGeometry(w, h, 0.15), [w / 2, FLOOR + h / 2, 0]);
+  if (lite) {
+    // the door with a hole cut in it, and a framed window in the hole
+    const m = 0.5, y0 = 3.75, y1 = h - 0.55;
+    const shape = new THREE.Shape();
+    shape.moveTo(0, 0); shape.lineTo(w, 0); shape.lineTo(w, h); shape.lineTo(0, h);
+    const hole = new THREE.Path();
+    hole.moveTo(m, y0); hole.lineTo(w - m, y0); hole.lineTo(w - m, y1); hole.lineTo(m, y1);
+    shape.holes.push(hole);
+    const geo = new THREE.ExtrudeGeometry(shape, { depth: 0.15, bevelEnabled: false });
+    geo.translate(0, FLOOR, -0.075);
+    body = new THREE.Group();
+    body.add(solid(geo), glazing((u, y, d) => [u, y, d], m, w - m, FLOOR + y0, FLOOR + y1, 0,
+      { ...lite, border: 0.1, bar: 0.07, depth: 0.17 }));
+  }
   const g = named(name,
-    solid(new THREE.BoxGeometry(w, h, 0.15), [w / 2, FLOOR + h / 2, 0]),
+    body,
     solid(new THREE.BoxGeometry(0.12, 0.12, 0.4), [w - 0.28, FLOOR + 3, 0])      // knob
   );
   g.position.set(x0, 0, z0);
@@ -379,7 +514,7 @@ function leaf(name, hx, hy, ex, ey, open = 0, tx = 0, ty = 0) {
 function doors() {
   return named('doors',
     // flush with the outside face, so from the yard it reads as one door
-    leaf('door-front', 107, 600, 107, 695),
+    leaf('door-front', 107, 600, 107, 695, 0, 0, 0, { panes: 2, rows: 2 }),
     slidingDoor(),
     leaf('door-master', 811, 733, 811, 804, 75, 900, 733),
     // coat closet bifolds, shut
@@ -388,8 +523,48 @@ function doors() {
     lines([[[X(176), FLOOR, Z(562)], [X(176), FLOOR + DOOR_H - 0.1, Z(562)]],
            [[X(248), FLOOR, Z(562)], [X(248), FLOOR + DOOR_H - 0.1, Z(562)]]]),
     // pantry slider, half open, on the kitchen side
-    named('door-pantry', block(1104, 1170, 652, 658, DOOR_H - 0.1))
+    named('door-pantry', block(1104, 1170, 652, 658, DOOR_H - 0.1)),
+    accordionDoor()
   );
+}
+
+/* The storage closet's accordion door, facing the couch: six narrow
+   panels folding in a zigzag along a track. Shut, it's a shallow
+   zigzag across the doorway; open, it bunches up at the west end.
+   For anomalies:
+     scene.getObjectByName('door-closet').userData.setOpen(0.5)
+   0 is shut, 1 is open, anything between works. userData.open says
+   where it is now. */
+function accordionDoor() {
+  const x0 = X(325), x1 = X(409), z = Z(735.5), N = 6;
+  const SHUT = 12 * Math.PI / 180, OPEN = 80 * Math.PI / 180;
+  const p = (x1 - x0) / (N * Math.cos(SHUT)), h = DOOR_H - 0.12;
+  const panels = [];
+  for (let i = 0; i < N; i++) {
+    const geo = new THREE.BoxGeometry(p, h, 0.06);
+    geo.translate(p / 2, h / 2, 0);                       // hinged on its left edge
+    const panel = solid(geo, [0, FLOOR + 0.06, 0]);
+    if (i === N - 1) panel.add(solid(new THREE.BoxGeometry(0.05, 0.45, 0.14), [p - 0.12, 3.1, 0]));   // pull
+    panels.push(panel);
+  }
+  const g = named('door-closet', ...panels);
+  g.userData.setOpen = t => {
+    t = THREE.MathUtils.clamp(t, 0, 1);
+    const th = SHUT + (OPEN - SHUT) * t, du = p * Math.cos(th), dz = p * Math.sin(th);
+    panels.forEach((panel, i) => {
+      const out = i % 2 === 0;                            // zig, then zag
+      panel.position.x = x0 + i * du;
+      panel.position.z = z + (out ? -dz : dz) / 2;
+      panel.rotation.y = out ? -th : th;
+    });
+    g.userData.open = t;
+    // tell main.js something moved, so nearby lamps redraw their shadows
+    let root = g;
+    while (root.parent) root = root.parent;
+    if (root !== g) root.userData.moved = new THREE.Vector3((x0 + x1) / 2, FLOOR + 3, z);
+  };
+  g.userData.setOpen(0);
+  return g;
 }
 
 /* Sliding glass doors onto the patio: two big glass panels in metal
@@ -552,16 +727,41 @@ function livingRoom() {
 function kitchen() {
   const stool = () => solid(new THREE.CylinderGeometry(0.62, 0.5, 2.4, 8), [0, 1.2, 0]);
   const top = FLOOR + 3.01;
-  const sink = rectOn((u, v) => [u, top, v], X(1192), X(1230), Z(478), Z(508))
-    .concat(rectOn((u, v) => [u, top, v], X(1192), X(1230), Z(514), Z(544)));
   const cooktop = rectOn((u, v) => [u, top, v], X(945), X(1015), Z(508), Z(560));
   return named('kitchen',
     named('island', block(868, 1087, 470, 565, 3), lines(cooktop)),
     named('stools', at(stool(), 902, 452), at(stool(), 947, 452), at(stool(), 993, 452), at(stool(), 1047, 452)),
-    named('counter-east', block(1183, 1237, 364, 660, 3), lines(sink)),
+    // the east counter has a hole cut in it for the sink
+    named('counter-east', slab([[1183, 364], [1237, 364], [1237, 660], [1183, 660]],
+      [[[1189, 475], [1225, 475], [1225, 547], [1189, 547]]], FLOOR, FLOOR + 3)),
+    sink(),
     named('counter-south', block(807, 980, 660, 715, 3)),
     named('fridge', block(980, 1060, 655, 715, 6.3)),
     named('pantry-shelves', block(1190, 1237, 669, 780, 6.5), block(1072, 1190, 748, 780, 6.5))
+  );
+}
+
+/* A double stainless sink under the east window, with a faucet. Each
+   bowl is a box drawn inside out (only its inner faces show), so from
+   above it looks like an open basin. A steel rim hides the cut edge. */
+function sink() {
+  const top = FLOOR + 3, deep = 0.75;
+  const bowl = (y0, y1) => {
+    const b = block(1191, 1223, y0, y1, 3, 3 - deep);
+    b.traverse(o => { if (o.isMesh) { o.material = MAT.basin; o.userData.keep = true; } });
+    return b;
+  };
+  const fx = X(1231), fz = Z(511), spout = 0.78;
+  return named('kitchen-sink',
+    bowl(477, 510), bowl(513, 545),
+    slab([[1187, 473], [1227, 473], [1227, 549], [1187, 549]],
+      [[[1191, 477], [1223, 477], [1223, 510], [1191, 510]], [[1191, 513], [1223, 513], [1223, 545], [1191, 545]]],
+      top, top + 0.03),
+    solid(new THREE.CylinderGeometry(0.11, 0.13, 0.12, 10), [fx, top + 0.06, fz]),               // faucet base
+    solid(new THREE.CylinderGeometry(0.045, 0.045, 1.1, 8), [fx, top + 0.65, fz]),              // riser
+    solid(new THREE.BoxGeometry(spout, 0.07, 0.07), [fx - spout / 2, top + 1.2, fz]),           // spout
+    solid(new THREE.BoxGeometry(0.07, 0.18, 0.07), [fx - spout + 0.035, top + 1.1, fz]),        // nozzle
+    solid(new THREE.BoxGeometry(0.05, 0.05, 0.32), [fx, top + 0.8, fz + 0.18])                  // lever
   );
 }
 
@@ -590,7 +790,6 @@ function bathroom() {
   const basin = rectOn((u, v) => [u, top, v], X(505), X(565), Z(1024), Z(1058));
   const glassN = rectOn((u, y) => [u, y, Z(985)], X(322), X(460), FLOOR + 0.35, FLOOR + 6.6);
   const glassE = rectOn((v, y) => [X(460), y, v], Z(985), Z(1066), FLOOR + 0.35, FLOOR + 6.6);
-  const mirror = rectOn((u, y) => [u, y, Z(1068) - 0.02], X(490), X(580), FLOOR + 3.8, FLOOR + 6.3);
   // oval bowl: a cylinder squashed front to back
   const bowlGeo = new THREE.CylinderGeometry(0.62, 0.45, 1.35, 14);
   bowlGeo.scale(1, 1, 1.45);
@@ -598,8 +797,17 @@ function bathroom() {
   return named('bathroom',
     named('toilet', block(338, 392, 861, 877, 2.6, 1.2), bowl),
     named('shower', block(320, 460, 985, 1068, 0.35), lines([...glassN, ...glassE])),
-    named('vanity', block(468, 600, 1012, 1068, 2.8), lines([...basin, ...mirror]))
+    named('vanity', block(468, 600, 1012, 1068, 2.8), lines(basin)),
+    vanityMirror()
   );
+}
+
+// a wood-framed mirror on the wall over the bathroom sink
+function vanityMirror() {
+  const wallZ = Z(1068), u0 = X(492), u1 = X(578), y0 = FLOOR + 3.5, y1 = FLOOR + 6.35, b = 0.16;
+  return named('mirror',
+    paneFrame((u, y, w) => [u, y, wallZ - w], u0, u1, y0, y1, 0.06, { border: b, depth: 0.12, mat: MAT.furniture }),
+    mirror(u0 + b, u1 - b, y0 + b, y1 - b, wallZ - 0.07));
 }
 
 function laundry() {
@@ -650,6 +858,51 @@ function porches() {
     parts.push(block(-(i + 1) * K, -i * K, 593, 703, FLOOR - 0.625 * (i + 1), 0, 0));
   }
   return named('porches', ...parts);
+}
+
+/* The front porch's lantern, by the door, and a rocking chair. */
+function frontPorch(lamps) {
+  const wx = X(105), lx = wx - 0.32, ly = FLOOR + 6.3, lz = Z(717);
+  const lantern = named('lamp-porch',
+    solid(new THREE.BoxGeometry(0.34, 0.08, 0.08), [wx - 0.17, ly + 0.3, lz]),        // bracket
+    solid(new THREE.BoxGeometry(0.52, 0.1, 0.52), [lx, ly + 0.4, lz]),                // cap
+    solid(new THREE.ConeGeometry(0.2, 0.18, 4), [lx, ly + 0.54, lz], [0, Math.PI / 4, 0]),
+    glow(new THREE.BoxGeometry(0.4, 0.64, 0.4), lx, ly, lz),                          // the glass, lit
+    solid(new THREE.BoxGeometry(0.46, 0.06, 0.46), [lx, ly - 0.35, lz]),              // base
+    bulb(lamps, 'lamp-porch-light', 105 - 0.45 * K, 717, 6.3, 34));
+  // its own frame mustn't shadow the lamp inside it
+  lantern.traverse(o => { if (o.isMesh) o.userData.noShadow = true; });
+  return named('front-porch', lantern, at(rockingChair(), 50, 764, -75, FLOOR));
+}
+
+// A wooden rocking chair, facing +z in its own space.
+function rockingChair() {
+  const W = 1.8, R = 3.2, arc = 0.9, side = W / 2 - 0.1;
+  const rocker = sx => {
+    const geo = new THREE.TorusGeometry(R, 0.06, 4, 14, arc);
+    geo.rotateZ(-Math.PI / 2 - arc / 2);     // middle of the curve at the bottom
+    geo.rotateY(Math.PI / 2);                // into the front-back plane
+    geo.translate(sx * side, R + 0.06, 0);
+    return solid(geo);
+  };
+  const back = new THREE.Group();            // leans back from the seat
+  back.add(
+    solid(new THREE.BoxGeometry(0.12, 2.3, 0.12), [-side, 1.15, 0]),
+    solid(new THREE.BoxGeometry(0.12, 2.3, 0.12), [side, 1.15, 0]),
+    solid(new THREE.BoxGeometry(W, 0.3, 0.1), [0, 2.2, 0]),
+    ...[-0.45, -0.15, 0.15, 0.45].map(x => solid(new THREE.BoxGeometry(0.06, 2, 0.06), [x, 1.05, 0])));
+  back.position.set(0, 1.55, -0.72);
+  back.rotation.x = -0.22;
+  const g = named('rocking-chair',
+    rocker(-1), rocker(1),
+    solid(new THREE.BoxGeometry(W, 0.12, 1.6), [0, 1.55, 0.05]),                       // seat
+    ...[-1, 1].flatMap(sx => [
+      solid(new THREE.BoxGeometry(0.12, 2.2, 0.12), [sx * side, 1.2, 0.65]),           // front post, up to the arm
+      solid(new THREE.BoxGeometry(0.12, 1.45, 0.12), [sx * side, 0.82, -0.7]),         // back leg
+      solid(new THREE.BoxGeometry(0.14, 0.08, 1.6), [sx * (W / 2 - 0.05), 2.32, -0.02])  // arm
+    ]),
+    back);
+  return g;
 }
 
 /* ─── the yard ──────────────────────────────── */
@@ -988,7 +1241,9 @@ function paint(scene) {
   set('bush', MAT.leaves);
   set('streetlight', MAT.pole);
   parts('mailbox', MAT.furniture, MAT.dark, MAT.frontDoor);  // wood post, black box, red flag
-  for (const n of ['lamp-foyer', 'lamp-living', 'lamp-master', 'lamp-master-2', 'lamp-sofa']) set(n, MAT.dark);   // shades keep glowing
+  set('door-closet', MAT.trim);                          // white accordion door
+  set('kitchen-sink', MAT.steel);
+  for (const n of ['lamp-foyer', 'lamp-living', 'lamp-master', 'lamp-master-2', 'lamp-sofa', 'lamp-porch']) set(n, MAT.dark);   // shades keep glowing
   scene.traverse(o => {
     if (!o.isMesh) return;
     const glows = o.material.isMeshBasicMaterial || o.userData.noShadow;
@@ -1019,6 +1274,7 @@ export function buildWorld() {
     bathroom(),
     laundry(),
     foyer(),
+    frontPorch(lamps),
     yardAt(mailbox(), -38, -4.5),
     yardAt(leafyTree(), -28, -22),
     yardAt(pineTree(), 30, 30),
