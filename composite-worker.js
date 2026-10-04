@@ -36,8 +36,29 @@ export function applyReceiverChannel(source,p={}){
  }
  return filterChannel(source,p.bandwidth??0);
 }
+// Preview refresh and NTSC frame clocks are independent. Repeated views of
+// one waveform window start with the same receiver state.
+export function createPreviewReceiver(){
+ const receiver=new CompositeReceiver();let lastFrame=null,frameStart=null;
+ const keys=['period','anchor','phase','initialized','slice','sliceValid','vertical'];
+ const snapshot=()=>Object.fromEntries(keys.map(key=>[key,receiver[key]]));
+ return (samples,parameters={})=>{
+  receiver.parameters=parameters;
+  const frame=parameters.frame??0;
+  if(frame===lastFrame)Object.assign(receiver,frameStart);
+  else{
+   if(lastFrame!==null&&frame>lastFrame+1){
+    const missed=frame-lastFrame-1;
+    receiver.phase=Math.atan2(Math.sin(receiver.phase+missed*Math.PI),Math.cos(receiver.phase+missed*Math.PI));
+    receiver.anchor+=missed*525*(receiver.period-receiver.width);
+   }
+   frameStart=snapshot();lastFrame=frame;
+  }
+  return receiver.recover(samples);
+ };
+}
 if(typeof self!=='undefined'&&typeof document==='undefined'){
- const receiver=new CompositeReceiver();
+ const recover=createPreviewReceiver();
  self.onmessage=({data})=>{
   const {id,kind}=data,start=performance.now();
   try{
@@ -45,11 +66,10 @@ if(typeof self!=='undefined'&&typeof document==='undefined'){
     const samples=sumSignalChunks(data.chunks,data.count);
     self.postMessage({id,samples:samples.buffer},[samples.buffer]);
    }else if(kind==='receive'){
-    const pixels=new Float32Array(data.pixels),width=910,height=813,samples=new Float32Array(width*height);
-    for(let row=0;row<height;row++)for(let x=0;x<width;x++)samples[row*width+x]=pixels[((height-1-row)*width+x)*4];
+    const pixels=new Float32Array(data.pixels),width=910,height=813,samples=data.reuse?new Float32Array(data.reuse):new Float32Array(width*height);
+    for(let row=0;row<height;row++)for(let x=0;x<width;x++)samples[row*width+x]=pixels[(height-1-row)*Math.ceil(width/4)*4+x];
     const processed=applyReceiverChannel(samples,data.parameters);
-    receiver.parameters=data.parameters??{};
-    const timing=receiver.recover(processed).slice();
+    const timing=recover(processed,data.parameters).slice();
     self.postMessage({id,pixels:data.pixels,samples:processed.buffer,timing:timing.buffer,milliseconds:performance.now()-start},[data.pixels,processed.buffer,timing.buffer]);
    }
   }catch(error){self.postMessage({id,error:error.message});}

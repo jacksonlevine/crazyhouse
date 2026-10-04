@@ -3,7 +3,7 @@
 <h1>Actual game GPU pipeline vs normal Composite Lab</h1><pre id="result">Running…</pre><canvas id="view"></canvas>
 <script type="module">
 import * as THREE from '../vendor/three-r186/three.module.js';
-import {createAnalogPass,GAME_SIGNAL} from '../analog.js?v=15';
+import {createAnalogPass,GAME_SIGNAL} from '../analog.js?v=18';
 import {SignalClip} from '../signal-clip.js?v=7';
 const result=document.getElementById('result'),root='./fixtures/runtime/';
 const read=async name=>{const r=await fetch(root+name);if(!r.ok)throw new Error(`${name}: ${r.status}`);return r.arrayBuffer();};

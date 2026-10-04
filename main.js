@@ -11,7 +11,7 @@ import { createGhoul } from './ghoul.js?v=12';
 import { createGhostPass, GHOST_LAYER } from './ghost.js?v=4';
 import { createTv } from './tv.js?v=8';
 import { openSignalURL } from './signal-clip.js?v=7';
-import { createAnalogPass } from './analog.js?v=14';
+import { createAnalogPass } from './analog.js?v=18';
 
 
 const $ = id => document.getElementById(id);
@@ -144,7 +144,7 @@ function setup() {
       isNight: () => night, camIndex: () => camIndex
     };
     window.crazyhouse = api;
-    import('./debug.js?v=11').then(m => m.createDebug(api));
+    import('./debug.js?v=12').then(m => m.createDebug(api));
   }
 
   renderer.setAnimationLoop(now => {
@@ -152,6 +152,10 @@ function setup() {
     // seconds since the last frame, capped so a hidden tab doesn't make him jump
     const dt = Math.min((now - lastFrame) / 1000 || 0, 0.1);
     lastFrame = now;
+    analog.stats.renderFrames=(analog.stats.renderFrames??0)+1;
+    if(analog.stats.renderStart===undefined)analog.stats.renderStart=now;
+    const renderElapsed=now-analog.stats.renderStart;
+    if(renderElapsed>=1000){analog.stats.renderFPS=analog.stats.renderFrames*1000/renderElapsed;analog.stats.renderFrames=0;analog.stats.renderStart=now;}
     ghoul.update(dt, camAt);
     emp.update(dt);
     tv.update(dt);

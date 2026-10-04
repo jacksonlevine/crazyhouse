@@ -261,7 +261,7 @@ export function createDebug(api) {
     }
     if (now - lastRead < 150) return;
     const stats=api.analog.stats;
-    if(stats)out('signal-performance').textContent=stats.error||`${stats.buffering?'Buffering · ':''}${stats.signalFPS.toFixed(1)} signal fps · GPU read ${stats.readMilliseconds.toFixed(1)} ms · receiver ${stats.receiverMilliseconds.toFixed(1)} ms · ${api.analog.clip?.underruns??0} buffer stalls`;
+    if(stats)out('signal-performance').textContent=stats.error||`${(stats.renderFPS??0).toFixed(1)} render fps · ${stats.buffering?'Buffering · ':''}${stats.signalFPS.toFixed(1)} decoded fps · GPU read ${stats.readMilliseconds.toFixed(1)} ms · receiver ${stats.receiverMilliseconds.toFixed(1)} ms · ${api.analog.clip?.underruns??0} buffer stalls`;
     lastRead = now;
     const p = camera.position;
     let text = `pos  ${r(p.x)}, ${r(p.y)}, ${r(p.z)}\nfov  ${Math.round(camera.fov)}°  ${debug.free ? '(free cam)' : '(cam ' + (api.camIndex() + 1) + ')'}\nghoul ${ghoul.state}`;

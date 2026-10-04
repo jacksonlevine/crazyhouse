@@ -210,9 +210,9 @@ verified against Lab's actual output, rather than a different filter model.
 
 The GPU encodes the mixed waveform. Readback uses an asynchronous pixel-pack
 buffer/fence; a dedicated worker processes the receiver while the main thread
-remains responsive. The decoded output is cached and displayed between NTSC
-frames. Complete signal frames are processed in order at about 29.97 Hz;
-there are no decorative scanlines or scripted picture warps. Tone mapping uses
+remains responsive. The source picture and decoded view update at monitor
+refresh, independently of the 29.97 Hz NTSC frame clock. Receiver state advances
+on that signal clock; there are no decorative scanlines or scripted picture warps. Tone mapping uses
 Three.js ACES to convert scene radiance into source video levels.
 
 At `?debug`, `crazyhouse.analog.controls` exposes `bandwidthMHz`, `noise`,
@@ -282,7 +282,7 @@ contain the vertical/interlaced timing of the normal Lab model.
 
 In Crazyhouse with `?debug`, open **signals…**, choose **load signal recording
 folder…**, and select the entire folder. Choose one track or mix all tracks, toggle
-playback, and adjust gain. The window reports measured signal fps, GPU readback,
+playback, and adjust gain. The window reports game render fps and decoded-view fps separately, GPU readback,
 receiver-worker time, and buffer stalls.
 
 A separate worker validates and mixes recorded voltages. Playback primes about
@@ -321,3 +321,17 @@ against normal Lab decoded pixels for clean and independently drifting mixed
 sources. Generate its ignored runtime fixtures by copying `source.rgba`,
 `game-{clean,mixed}-output-{0,1,2}.rgba`, and `interference-{0,1,2}.f32` from the
 native self-test directory into `tools/fixtures/runtime/`, then serve the page.
+
+The NTSC sample clock does not cap display refresh. The current game picture is
+encoded and decoded again on each available monitor refresh; repeated views of
+one NTSC frame restore that frame's initial receiver state rather than falsely
+advancing the analog clock. Two bounded asynchronous readbacks overlap GPU fence
+polling with the next refresh. Four voltage samples pack into each RGBA pixel,
+reducing readback bandwidth by four without reducing sample precision. Source
+and chroma FIR coefficients are precomputed; waveform interpolation uses hardware
+linear filtering except across packed scanline boundaries.
+
+`node tools/check-preview-refresh.mjs /tmp/composite-full-validation` verifies
+that repeated display refreshes preserve Lab's receiver state and subsequent
+frame results. `tools/composite-performance.html` measures render and decoded
+view rates, median and 95th-percentile frame intervals, and asynchronous timings.

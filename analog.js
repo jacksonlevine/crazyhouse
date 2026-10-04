@@ -1,9 +1,9 @@
 // Sampled color composite: 910 samples/line at 4x NTSC color carrier.
 // Each texture row is a complete scanline, including sync and blanking.
-import {createCompositeWorker} from './composite-worker-client.js?v=1';
+import {createCompositeWorker} from './composite-worker-client.js?v=3';
 import * as THREE from './vendor/three-r186/three.module.js';
 export const GAME_SIGNAL = Object.freeze({sampleRate:14318181.818181818, samplesPerLine:910, linesPerFrame:525, syncUS:4.7, burstUS:5.3, burstCycles:9, activeUS:9.4, activeDurationUS:52.655, baseDelaySamples:32});
-const W = 910, H = 480, GUARD=144, SIGNAL_H=525+2*GUARD;
+const W = 910, H = 480, GUARD=144, SIGNAL_H=525+2*GUARD,PACKED_W=Math.ceil(W/4);
 const VERT = `varying vec2 vUv; void main(){vUv=uv;gl_Position=vec4(position.xy,0.,1.);}`;
 export function gameSignalClock(seconds,epoch) {
   const period=GAME_SIGNAL.samplesPerLine*GAME_SIGNAL.linesPerFrame/GAME_SIGNAL.sampleRate;
@@ -15,19 +15,35 @@ export function createAnalogPass(renderer,{videoSource=null,onFrame=null}={}) {
   const source = new THREE.WebGLRenderTarget(720, H, {type:THREE.HalfFloatType, depthBuffer:false});
   source.texture.minFilter=source.texture.magFilter=THREE.NearestFilter;
   const filtered = new THREE.WebGLRenderTarget(720,H,{type:THREE.HalfFloatType,depthBuffer:false,minFilter:THREE.LinearFilter,magFilter:THREE.LinearFilter});
-  const signal = new THREE.WebGLRenderTarget(W, SIGNAL_H, {type: THREE.FloatType, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, depthBuffer:false});
+  const signal = new THREE.WebGLRenderTarget(PACKED_W, SIGNAL_H, {type: THREE.FloatType, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, depthBuffer:false});
   const receiverWorker=createCompositeWorker();
   const timingTexture=new THREE.DataTexture(new Float32Array(480*4),1,480,THREE.RGBAFormat,THREE.FloatType);
   timingTexture.minFilter=timingTexture.magFilter=THREE.NearestFilter;
   const receivedTexture=new THREE.DataTexture(new Float32Array(W*SIGNAL_H),W,SIGNAL_H,THREE.RedFormat,THREE.FloatType);
-  receivedTexture.minFilter=receivedTexture.magFilter=THREE.NearestFilter;
+  receivedTexture.minFilter=receivedTexture.magFilter=THREE.LinearFilter;
   const decoded=new THREE.WebGLRenderTarget(720,480,{depthBuffer:false});
-  let signalReadback=new Float32Array(W*SIGNAL_H*4);
+  const readbackPool=Array.from({length:2},()=>new Float32Array(PACKED_W*SIGNAL_H*4));
+  let receiverQueue=Promise.resolve();
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.Float32BufferAttribute([-1,-1,0,3,-1,0,-1,3,0],3));
   geometry.setAttribute('uv', new THREE.Float32BufferAttribute([0,0,2,0,0,2],2));
   const clipFilter=new Float32Array(17);clipFilter[8]=1;
-  const uniforms = { videoMode:{value:videoSource?1:0}, videoSource:{value:videoSource??picture.texture}, picture:{value:picture.texture}, source:{value:filtered.texture}, channelBandwidth:{value:0}, signal:{value:signal.texture}, injection:{value:picture.texture}, injectionGain:{value:0}, time:{value:0}, interference:{value:0}, noise:{value:0.004}, timing:{value:timingTexture}, humGain:{value:0}, testGain:{value:1}, exposure:{value:0.75}, monochrome:{value:0}, humPhase:{value:0}, frameParity:{value:0}, comb:{value:0}, colorKiller:{value:1}, receiverSetup:{value:7.5}, clipPrevious:{value:picture.texture}, clipHasPrevious:{value:0}, clipPreviousStart:{value:-1e20}, clipCurrent:{value:picture.texture}, clipNext:{value:picture.texture}, clipEnabled:{value:0}, clipHasNext:{value:0}, clipGain:{value:0}, clipOffset:{value:0}, clipRatio:{value:1}, clipNextStart:{value:1e20}, clipEnd:{value:1e20}, clipSamples:{value:1}, clipWidth:{value:1}, clipLines:{value:480}, clipFilter:{value:clipFilter} };
+  // Constant FIR coefficients belong on the CPU, rather than being recomputed
+  // with transcendental functions for every pixel and every tap.
+  const sinc=x=>Math.abs(x)<1e-6?1:Math.sin(Math.PI*x)/(Math.PI*x);
+  const sourceWeights=Array.from({length:49},(_,i)=>{
+    const t=i-24,w=.42+.5*Math.cos(Math.PI*t/25)+.08*Math.cos(2*Math.PI*t/25);
+    return new THREE.Vector3(...[4.2,1.3,1.3].map(mhz=>{const fc=mhz/(720/52.655);return 2*fc*sinc(2*fc*t)*w;}));
+  });
+  const sourceNorm=sourceWeights.reduce((a,v)=>a.add(v),new THREE.Vector3());
+  sourceWeights.forEach(v=>v.divide(sourceNorm));
+  const chromaCoefficients=Array.from({length:33},(_,i)=>{
+    const t=i-16,fc=1.3/(315/88*4),w=.42+.5*Math.cos(Math.PI*t/17)+.08*Math.cos(2*Math.PI*t/17);
+    return 2*fc*sinc(2*fc*t)*w;
+  });
+  const chromaNorm=chromaCoefficients.reduce((a,b)=>a+b,0);
+  const chromaWeights=chromaCoefficients.map((w,i)=>new THREE.Vector2(2*w/chromaNorm*Math.cos((i-16)*Math.PI/2),2*w/chromaNorm*Math.sin((i-16)*Math.PI/2)));
+  const uniforms = { sourceWeights:{value:sourceWeights},chromaWeights:{value:chromaWeights}, videoMode:{value:videoSource?1:0}, videoSource:{value:videoSource??picture.texture}, picture:{value:picture.texture}, source:{value:filtered.texture}, channelBandwidth:{value:0}, signal:{value:signal.texture}, injection:{value:picture.texture}, injectionGain:{value:0}, time:{value:0}, interference:{value:0}, noise:{value:0.004}, timing:{value:timingTexture}, humGain:{value:0}, testGain:{value:1}, exposure:{value:0.75}, monochrome:{value:0}, humPhase:{value:0}, frameParity:{value:0}, comb:{value:0}, colorKiller:{value:1}, receiverSetup:{value:7.5}, clipPrevious:{value:picture.texture}, clipHasPrevious:{value:0}, clipPreviousStart:{value:-1e20}, clipCurrent:{value:picture.texture}, clipNext:{value:picture.texture}, clipEnabled:{value:0}, clipHasNext:{value:0}, clipGain:{value:0}, clipOffset:{value:0}, clipRatio:{value:1}, clipNextStart:{value:1e20}, clipEnd:{value:1e20}, clipSamples:{value:1}, clipWidth:{value:1}, clipLines:{value:480}, clipFilter:{value:clipFilter} };
   const material = fragmentShader => new THREE.ShaderMaterial({uniforms, vertexShader:VERT, fragmentShader, depthTest:false, depthWrite:false, toneMapped:false});
   const prepare = material(`
     uniform sampler2D picture,videoSource;uniform float videoMode;
@@ -45,17 +61,14 @@ export function createAnalogPass(renderer,{videoSource=null,onFrame=null}={}) {
     }`);
   // The export engine uses this same 49-tap Blackman source filter at 720 pixels.
   const bandlimit = material(`
-    uniform sampler2D unfiltered; varying vec2 vUv;
-    float sinc(float x){return abs(x)<0.000001?1.:sin(3.14159265359*x)/(3.14159265359*x);}
+    uniform sampler2D unfiltered;uniform vec3 sourceWeights[49];varying vec2 vUv;
     void main(){
-      vec3 fc=vec3(4.2,1.3,1.3)/(720./52.655),total=vec3(0.),norm=vec3(0.);
-      float pixel=floor(vUv.x*720.);
-      for(int k=-24;k<=24;k++){
-        float t=float(k),w=.42+.5*cos(3.14159265359*t/25.)+.08*cos(2.*3.14159265359*t/25.);
-        vec3 z=2.*fc*t,h=2.*fc*vec3(sinc(z.x),sinc(z.y),sinc(z.z))*w;
-        total+=texture2D(unfiltered,vec2((clamp(pixel+t,0.,719.)+.5)/720.,vUv.y)).rgb*h;norm+=h;
+      vec3 total=vec3(0.);float pixel=floor(vUv.x*720.);
+      for(int k=0;k<49;k++){
+        float t=float(k-24);
+        total+=texture2D(unfiltered,vec2((clamp(pixel+t,0.,719.)+.5)/720.,vUv.y)).rgb*sourceWeights[k];
       }
-      gl_FragColor=vec4(total/norm,1.);
+      gl_FragColor=vec4(total,1.);
     }`);
   uniforms.unfiltered={value:source.texture};
   const encode = material(`
@@ -84,8 +97,7 @@ export function createAnalogPass(renderer,{videoSource=null,onFrame=null}={}) {
       return v;
     }
     float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
-    void main(){
-      float x=floor(vUv.x*910.),line=floor((1.-vUv.y)*813.)-144.;
+    float voltage(float x,float line){
       float tick=x+line*910.-32.+frameParity*525.*910.;
       float ft=mod(tick,525.*910.),parity=floor(ft/(262.5*910.));
       float localField=ft-parity*262.5*910.,lp=mod(ft,910.);
@@ -114,22 +126,27 @@ export function createAnalogPass(renderer,{videoSource=null,onFrame=null}={}) {
       float hum=sin(6.2831853*(sampleTime*60.+humPhase));
       s+=testGain*humGain*.25*hum;
       if(clipEnabled>0.5) s+=clipGain*clipVoltage(clipOffset+(x+line*910.)*clipRatio);
-      if(injectionGain!=0.) s+=texture2D(injection,vUv).r*injectionGain;
-      gl_FragColor=vec4(s,0.,0.,1.);
+      if(injectionGain!=0.) s+=texture2D(injection,vec2((x+.5)/910.,vUv.y)).r*injectionGain;
+      return s;
+    }
+    void main(){
+      float x=floor(vUv.x*228.)*4.,line=floor((1.-vUv.y)*813.)-144.;
+      gl_FragColor=vec4(voltage(x,line),voltage(x+1.,line),voltage(x+2.,line),voltage(x+3.,line));
     }`);
 
   uniforms.received={value:receivedTexture};
   const decode = material(`
-    uniform sampler2D received,timing; uniform float comb,colorKiller,receiverSetup; varying vec2 vUv;
+    uniform sampler2D received,timing; uniform float comb,colorKiller,receiverSetup;uniform vec2 chromaWeights[33]; varying vec2 vUv;
     float wave(float index){
       index=clamp(index,0.,910.*813.-1.);
       float base=floor(index),fraction=fract(index);
-      vec2 a=vec2((mod(base,910.)+.5)/910.,(floor(base/910.)+.5)/813.);
+      float x=mod(base,910.),row=floor(base/910.);
+      if(x<909.)return texture2D(received,vec2((x+fraction+.5)/910.,(row+.5)/813.)).r;
+      // Hardware filtering cannot cross a packed scanline boundary.
       float next=min(base+1.,910.*813.-1.);
-      vec2 b=vec2((mod(next,910.)+.5)/910.,(floor(next/910.)+.5)/813.);
-      return mix(texture2D(received,a).r,texture2D(received,b).r,fraction);
+      return mix(texture2D(received,vec2((x+.5)/910.,(row+.5)/813.)).r,
+        texture2D(received,vec2((mod(next,910.)+.5)/910.,(floor(next/910.)+.5)/813.)).r,fraction);
     }
-    float sinc(float x){return abs(x)<.000001?1.:sin(3.14159265359*x)/(3.14159265359*x);}
     void main(){
       float row=floor((1.-vUv.y)*480.);
       vec4 sync=texture2D(timing,vec2(.5,(row+.5)/480.));
@@ -139,17 +156,16 @@ export function createAnalogPass(renderer,{videoSource=null,onFrame=null}={}) {
       float centerB=144.*910.+previous.r+offset;
       float y=(wave(center-2.)+2.*wave(center)+wave(center+2.))*.25-sync.b;
       if(comb>.5&&row>=2.)y=(wave(center)-sync.b+wave(centerB)-previous.b)*.5;
-      vec2 uv=vec2(0.);float norm=0.;
-      for(int k=-16;k<=16;k++){
-        float t=float(k),fc=1.3/(315./88.*4.);
-        float win=.42+.5*cos(3.14159265359*t/17.)+.08*cos(2.*3.14159265359*t/17.);
-        float w=2.*fc*sinc(2.*fc*t)*win;
-        float angle=6.28318530718*mod(offset+t,4.)/4.+sync.g;
-        float c=wave(center+t)-sync.b;
+      vec2 baseUV=vec2(0.);
+      for(int k=0;k<33;k++){
+        float t=float(k-16),c=wave(center+t)-sync.b;
         if(comb>.5&&row>=2.)c=(c-(wave(centerB+t)-previous.b))*.5;
-        uv+=2.*c*vec2(cos(angle),sin(angle))*w;norm+=w;
+        baseUV+=c*chromaWeights[k];
       }
-      uv/=norm;if(colorKiller>.5)uv*=smoothstep(.012,.035,sync.a);
+      float angle=6.28318530718*mod(offset,4.)/4.+sync.g;
+      float co=cos(angle),si=sin(angle);
+      vec2 uv=vec2(co*baseUV.x-si*baseUV.y,si*baseUV.x+co*baseUV.y);
+      if(colorKiller>.5)uv*=smoothstep(.012,.035,sync.a);
       y=(y-receiverSetup/140.)/(5./7.-receiverSetup/140.);uv/=(5./7.-receiverSetup/140.);
       float r=y+uv.y/.877,b=y+uv.x/.493;
       gl_FragColor=vec4(clamp(vec3(r,(y-.299*r-.114*b)/.587,b),0.,1.),1.);
@@ -165,22 +181,21 @@ export function createAnalogPass(renderer,{videoSource=null,onFrame=null}={}) {
   let burstUntil=0, nextBurst=performance.now()/1000+12;
   // Alternate quiet gaps and live mains injection; both last 1–5 seconds.
   let humOn=false, nextHumChange=performance.now()/1000+1+Math.random()*4;
-  let signalEpoch=null,lastSignalFrame=-1,inFlight=false,stalledTime=null,stalledAt=0,lastClockTime=null;
+  let signalEpoch=null,inFlight=0,stalledTime=null,stalledAt=0,lastClockTime=null;
   const stats={frames:0,signalFPS:0,readMilliseconds:0,receiverMilliseconds:0,buffering:false,error:''};
   let statsStart=performance.now(),statsFrames=0;
   function show(){const target=renderer.getRenderTarget();quad.material=display;renderer.setRenderTarget(null);renderer.render(scene,camera);renderer.setRenderTarget(target);}
   function render(seconds){
     if(signalEpoch===null)signalEpoch=seconds;
-    if(inFlight||stats.error){show();return;}
+    if(inFlight>=2||stats.error){show();return;}
     if(stalledTime!==null&&clip){
       clip.update(stalledTime);
       if(clip.buffering){show();return;}
       const pause=seconds-stalledAt;signalEpoch+=pause;clip.started+=pause;stalledTime=null;
     }
     const clock=gameSignalClock(seconds,signalEpoch);
-    const signalFrame=lastSignalFrame<0?0:Math.min(clock.frame,lastSignalFrame+1);
+    const signalFrame=Math.max(0,clock.frame);
     const waveformSeconds=signalEpoch+signalFrame*W*525/GAME_SIGNAL.sampleRate;
-    if(signalFrame===lastSignalFrame){show();return;}
     if(controls.automatic && seconds>=nextBurst){burstUntil=seconds+0.65;nextBurst=seconds+18+Math.random()*25;}
     const burst=Math.max(0,Math.min(1,(burstUntil-seconds)/0.18));
     if (!controls.automaticHum) {
@@ -226,14 +241,18 @@ export function createAnalogPass(renderer,{videoSource=null,onFrame=null}={}) {
     quad.material=bandlimit;renderer.setRenderTarget(filtered);renderer.render(scene,camera);
     quad.material=encode;renderer.setRenderTarget(signal);renderer.render(scene,camera);
     renderer.setRenderTarget(target);
-    lastSignalFrame=signalFrame;lastClockTime=waveformSeconds;inFlight=true;
+    lastClockTime=waveformSeconds;inFlight++;
     const started=performance.now();
     const parameters={...(clip?.manifest.receiverParameters??{}),frame:signalFrame};
     if(controls.bandwidthMHz>0)parameters.bandwidth=controls.bandwidthMHz;
-    renderer.readRenderTargetPixelsAsync(signal,0,0,W,SIGNAL_H,signalReadback).then(async pixels=>{
+    const readback=renderer.readRenderTargetPixelsAsync(signal,0,0,PACKED_W,SIGNAL_H,readbackPool.pop());
+    // Two bounded readbacks overlap fence polling with the next screen refresh.
+    // Receiver work stays ordered even if GPU fences complete out of order.
+    receiverQueue=receiverQueue.then(async()=>{
+      const pixels=await readback;
       stats.readMilliseconds=performance.now()-started;
-      const result=await receiverWorker.call('receive',{pixels:pixels.buffer,parameters},[pixels.buffer]);
-      signalReadback=new Float32Array(result.pixels);
+      const result=await receiverWorker.call('receive',{pixels:pixels.buffer,parameters,reuse:receivedTexture.image.data.buffer},[pixels.buffer,receivedTexture.image.data.buffer]);
+      readbackPool.push(new Float32Array(result.pixels));
       receivedTexture.image.data=new Float32Array(result.samples);receivedTexture.needsUpdate=true;
       timingTexture.image.data=new Float32Array(result.timing);timingTexture.needsUpdate=true;
       uniforms.comb.value=parameters.comb?1:0;uniforms.colorKiller.value=parameters.colorKiller===false?0:1;uniforms.receiverSetup.value=parameters.setupIRE??7.5;
@@ -241,7 +260,7 @@ export function createAnalogPass(renderer,{videoSource=null,onFrame=null}={}) {
       stats.receiverMilliseconds=result.milliseconds;stats.frames++;statsFrames++;
       onFrame?.({frame:signalFrame,target:decoded,stats});
       const elapsed=performance.now()-statsStart;if(elapsed>=1000){stats.signalFPS=statsFrames*1000/elapsed;statsFrames=0;statsStart=performance.now();}
-    }).catch(error=>{stats.error=error.message;console.error('Composite receiver:',error);}).finally(()=>{inFlight=false;});
+    }).catch(error=>{stats.error=error.message;console.error('Composite receiver:',error);}).finally(()=>{inFlight--;});
     show();
   }
   function setClip(next){
