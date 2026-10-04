@@ -106,6 +106,7 @@ lined up to it.
   see it, the room is drawn a second time from the mirrored view. About
   1.5 ms a frame, only while it's on screen. ghoul1 has no reflection
   (he's on a layer it doesn't draw), like a vampire.
+
 **Things that open, for anomalies.** Each has `setOpen(t)`, 0 shut to
 1 open (anything between works), and `userData.open` says where it is:
 
@@ -126,6 +127,22 @@ scene.getObjectByName('fridge-door').userData.setOpen(1)
 Moving one tells `main.js` where (`scene.userData.moved`), so lamps
 nearby redraw their shadows. Careful: wide open, the fridge door
 reaches into ghoul1's path round the island, so he'd walk through it.
+
+**The 90s.** The house is set in the 90s: an oatmeal and sage rug
+with one corner kicked up, in front of the sectional (cushions, rolled arms, throw pillows), a
+fire in the wood stove, teal and plum counter stools with chrome posts,
+an oak vanity with an oval sink and brass knobs, rain glass in a brass
+shower frame, a mauve bathmat, and flannel and denim hanging in the
+walk-in closet. The rug pattern, the flames and the shower droplets are
+tiny pictures drawn by the game when it starts, not image files.
+
+**The fire** (`fire()`) swaps between a few flame pictures at random and
+flickers a low orange light with them. The light is a spotlight with no
+shadows, aimed out into the room, because every shadowed light costs a
+texture slot in every material and graphics cards only have 16. The 13
+shadowed lights already use most of them, so **don't add another
+shadowed light** without taking one away (the shower glass is the first
+thing to break).
 
 **The front porch** has a lantern by the door and a rocking chair
 (`frontPorch()`). The kitchen has a real double sink with a faucet
@@ -154,7 +171,10 @@ walls, a red front door, and so on. They're all in `MAT` near the top of
   picture's brightness is `EXPOSURE` at the top of `main.js`. Surface
   greys are `MAT` near the top of `world.js`.
 - **Cost:** shadows are worked out once at the start, then only redrawn
-  for lamps near ghoul1, so it stays fast.
+  for lamps near ghoul1, so it stays fast. And once the house is built,
+  `bake()` welds each named thing's little parts into one mesh per
+  colour, which cut the draw count by about two thirds. Names stay, so
+  `scene.getObjectByName('sofa')` still works.
 
 ## Night vision
 

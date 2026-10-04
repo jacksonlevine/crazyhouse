@@ -4,7 +4,7 @@
    ============================================================ */
 
 import * as THREE from './vendor/three-r186/three.module.js';
-import { buildWorld, ROOMS, roomAt, GLASS_LAYER, captureReflections } from './world.js?v=13';
+import { buildWorld, ROOMS, roomAt, GLASS_LAYER, captureReflections } from './world.js?v=14';
 import { createEmp } from './emp.js?v=6';
 import { CAMS, camAt } from './cams.js?v=8';
 import { createGhoul } from './ghoul.js?v=12';
@@ -25,7 +25,7 @@ let state = 'title';
 // filled in by debug.js when ?debug is on
 const debug = { free: false, fov: null, tick: null, onCam: null };       // 'title' | 'playing'
 let camIndex = 0;
-let renderer, scene, camera, ghoul, ghost, lamps, emp, skyTick, ir;
+let renderer, scene, camera, ghoul, ghost, lamps, emp, ticks, ir;
 const EXPOSURE = 0.75;         // overall brightness of the picture
 const buffer = new THREE.Vector2();
 let shiftStart = 0;
@@ -85,8 +85,9 @@ function setup() {
   renderer.toneMappingExposure = EXPOSURE;
   scene = buildWorld();
   lamps = scene.userData.lamps;
-  const heavens = scene.getObjectByName('heavens');
-  skyTick = (heavens && heavens.userData.tick) || (() => {});
+  // things that move on their own every frame: the clouds, the fire
+  ticks = [];
+  scene.traverse(o => { if (o.userData.tick) ticks.push(o.userData.tick); });
   ghoul = createGhoul();
   // he lives on his own layer: the normal render skips him and the
   // ghost pass draws him, so he can blur and fade
@@ -143,7 +144,7 @@ function setup() {
     emp.update(dt);
     if (debug.tick) debug.tick(dt);
     ir.position.copy(camera.position);
-    skyTick(dt);
+    for (const tick of ticks) tick(dt);
     tickEmp();
     refreshShadows();
     tickClock();
