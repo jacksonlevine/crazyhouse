@@ -1,4 +1,4 @@
-import { openSignalFolder } from './signal-clip.js?v=1';
+import { openSignalFolder } from './signal-clip.js?v=4';
 
 /* ============================================================
    crazyhouse: the debug panel. Only loads with ?debug in the URL.

@@ -10,8 +10,8 @@ import { CAMS, camAt } from './cams.js?v=7';
 import { createGhoul } from './ghoul.js?v=12';
 import { createGhostPass, GHOST_LAYER } from './ghost.js?v=4';
 import { createTv } from './tv.js?v=8';
-import { openSignalURL } from './signal-clip.js?v=1';
-import { createAnalogPass } from './analog.js?v=9';
+import { openSignalURL } from './signal-clip.js?v=4';
+import { createAnalogPass } from './analog.js?v=12';
 
 
 const $ = id => document.getElementById(id);
@@ -144,7 +144,7 @@ function setup() {
       isNight: () => night, camIndex: () => camIndex
     };
     window.crazyhouse = api;
-    import('./debug.js?v=5').then(m => m.createDebug(api));
+    import('./debug.js?v=8').then(m => m.createDebug(api));
   }
 
   renderer.setAnimationLoop(now => {

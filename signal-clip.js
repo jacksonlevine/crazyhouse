@@ -4,12 +4,13 @@ export function validateSignalManifest(m) {
   if (m?.format !== 'composite-lab-signal' || m.version !== 1 || m.encoding !== 'float32-le') throw new Error('Unsupported signal recording format');
   if (!Number.isFinite(m.sampleRate) || m.sampleRate < 1e6 || m.sampleRate > 120e6 ||
       !Number.isInteger(m.samplesPerLine) || m.samplesPerLine < 100 || m.samplesPerLine > 8192 ||
-      m.linesPerFrame !== 525 || m.samplesPerFrame !== m.samplesPerLine * 525 ||
+      ![480,525].includes(m.linesPerFrame) || (m.linesPerFrame===480 && m.raster!=='game-progressive-480') || m.samplesPerFrame !== m.samplesPerLine * m.linesPerFrame ||
       !Number.isFinite(m.duration) || m.duration <= 0 || !Number.isFinite(m.voltageScale) || m.voltageScale <= 0 || m.voltageScale > 10 ||
       Math.abs(m.sampleRate / m.samplesPerLine - 15734.265734) > 1) throw new Error('Invalid signal timing or voltage metadata');
   if (!Array.isArray(m.tracks) || !m.tracks.length || m.tracks.length > 64 ||
       m.tracks.some(t => !/^[a-zA-Z0-9-]{1,80}$/.test(t.id)) || new Set(m.tracks.map(t=>t.id)).size !== m.tracks.length) throw new Error('Invalid signal tracks');
   if (!Array.isArray(m.frames) || !m.frames.length || m.frames.some((f,i)=>f.index !== i || !Number.isFinite(f.timestamp) || f.timestamp < 0 || f.timestamp >= m.duration || (i && f.timestamp <= m.frames[i-1].timestamp))) throw new Error('Invalid recording timeline');
+  if(m.raster==='game-progressive-480' && m.frames.some((f,i)=>Math.abs(f.timestamp-i*m.samplesPerFrame/m.sampleRate)>1e-7))throw new Error('Game recording must use a contiguous sample clock');
   return m;
 }
 
@@ -41,7 +42,7 @@ export class SignalClip {
         }
       }
       if(this.disposed || generation!==this.generation) return;
-      const texture=new THREE.DataTexture(sum,this.manifest.samplesPerLine,525,THREE.RedFormat,THREE.FloatType);
+      const texture=new THREE.DataTexture(sum,this.manifest.samplesPerLine,this.manifest.linesPerFrame,THREE.RedFormat,THREE.FloatType);
       texture.minFilter=texture.magFilter=THREE.NearestFilter; texture.generateMipmaps=false; texture.needsUpdate=true;
       this.cache.set(index,texture);
       while(this.cache.size>4){const oldest=this.cache.keys().next().value; this.cache.get(oldest).dispose(); this.cache.delete(oldest);}
@@ -59,20 +60,27 @@ export class SignalClip {
     this.active=null;
     if(!this.enabled || this.disposed || this.error)return;
     const elapsed=((seconds-this.started)%this.manifest.duration+this.manifest.duration)%this.manifest.duration;
+    const gameRaster=this.manifest.raster==='game-progressive-480';
+    const epsilon=gameRaster?1e-4/this.manifest.sampleRate:0;
     let lo=0,hi=this.manifest.frames.length;
-    while(lo<hi){const mid=(lo+hi)>>1;if(this.manifest.frames[mid].timestamp<=elapsed)lo=mid+1;else hi=mid;}
+    while(lo<hi){const mid=(lo+hi)>>1;if(this.manifest.frames[mid].timestamp<=elapsed+epsilon)lo=mid+1;else hi=mid;}
     const index=lo-1;if(index<0){void this.load(0);return;}
     // At most two outstanding reads, including after a seek/long hidden-tab gap.
     if(!this.cache.has(index) && this.pending.size<2)void this.load(index);
     if(!this.cache.has(index+1) && this.pending.size<2)void this.load(index+1);
+    if(index>0 && !this.cache.has(index-1) && this.pending.size<2)void this.load(index-1);
     const current=this.cache.get(index);if(!current)return;
     const next=this.cache.get(index+1);
+    const previous=this.cache.get(index-1);
     const frame=this.manifest.frames[index];
-    const offset=(elapsed-frame.timestamp)*this.manifest.sampleRate;
-    const nextStart=index+1<this.manifest.frames.length ? (this.manifest.frames[index+1].timestamp-frame.timestamp)*this.manifest.sampleRate : Infinity;
+    const previousStart=index>0?(this.manifest.frames[index-1].timestamp-frame.timestamp)*this.manifest.sampleRate:-Infinity;
+    let offset=(elapsed-frame.timestamp)*this.manifest.sampleRate;
+    if(gameRaster && Math.abs(offset-Math.round(offset))<1e-4)offset=Math.max(0,Math.round(offset));
+    let nextStart=index+1<this.manifest.frames.length ? (this.manifest.frames[index+1].timestamp-frame.timestamp)*this.manifest.sampleRate : Infinity;
+    if(gameRaster && Number.isFinite(nextStart) && Math.abs(nextStart-Math.round(nextStart))<1e-4)nextStart=Math.round(nextStart);
     const end=(this.manifest.duration-frame.timestamp)*this.manifest.sampleRate;
     if(offset>=this.manifest.samplesPerFrame && offset<nextStart)return; // Explicit capture gap: no invented samples.
-    this.active={current,next,offset,nextStart,end};
+    this.active={current,next,previous,previousStart,offset,nextStart,end};
   }
   dispose(){this.disposed=true;this.generation++;for(const texture of this.cache.values())texture.dispose();this.cache.clear();this.active=null;}
 }

@@ -193,20 +193,27 @@ The browser console also gets `crazyhouse.scene`, `.camera`, `.CAMS`,
 
 ## Live composite camera view
 
-The scene and ghost render at 768×480, then `analog.js` encodes color
-composite voltage at 910 samples per line (14.31818 MHz), including sync
-and blanking. A receiver pass detects each line's sync trailing edge with
-a voltage comparator and clamps the back-porch level. Decoding uses that
-recovered timing and a windowed-sinc low-pass filter with a 4.2 MHz cutoff.
-Chroma uses a 1 MHz demodulation filter; luma is limited to 2.5 MHz
-to separate it from the carrier. There are no decorative scanlines, vignette, or scripted picture warps.
+The scene and ghost render at 768×480, then encode the game-specific
+Composite Lab raster: 480 progressive lines, 910 samples/line, and exactly
+14.318181818 MS/s. Horizontal sync (4.7 µs), nine-cycle -U burst (5.3 µs),
+active video (9.4–62.055 µs), 7.5 IRE setup, U/V modulation, and voltage units
+match the Lab game exporter. Source filtering uses Lab's 720-pixel, 49-tap
+Blackman filters (4.2 MHz Y; 1.3 MHz U/V). A normal flat Lab connection's
+32-sample causal latency is included in the game's base source.
 
-This is still a partial receiver model: progressive active rows only,
-no vertical sync, interlace, or temporal PLL. Color uses quadrature
-modulation and burst-referenced demodulation. On lost
-horizontal sync it free-runs at nominal timing. It is not a full NTSC
-simulation. Tone mapping uses the same Three.js ACES implementation as bypass mode
-to convert scene radiance to source video levels.
+`composite-receiver.js` ports Lab's adaptive 50% sync slicer, horizontal timing
+tracker, burst-phase tracker, and back-porch clamp to the progressive raster.
+The shader uses Lab's notch luma decoder, 1.3 MHz quadrature chroma filter,
+and color killer. The default additional channel filter is off, as in Lab;
+`bandwidthMHz` enables Lab's causal exponential channel filter. The waveform
+is float32; horizontal tracking uses a GPU readback each signal frame.
+The 480-line clock runs at about 32.78 frames/s; display redraws reuse the last
+decoded signal between signal frames. The game source and recording advance on
+whole signal frames, so wall-clock draw jitter does not create fake clock drift.
+This adds a synchronization cost on the GPU, unlike the former independent
+scanline approximation. There is no vertical sync or interlace in this game
+format, and no cosmetic scanlines or scripted picture warps. Tone mapping
+uses Three.js ACES to convert scene radiance to video levels.
 
 At `?debug`, `crazyhouse.analog.controls` exposes `bandwidthMHz`, `noise`,
 `interference`, and `automatic`. Noise and automatic bursts default off.
@@ -219,7 +226,7 @@ Use `?debug&interference=0.7` to inspect steady signal interference.
 
 ### Mains injection key
 
-Hold W to inject 60 Hz mains voltage (±0.35 normalized composite voltage).
+Hold W to inject 60 Hz mains voltage (±0.25 V in Lab voltage units).
 Release to disconnect; hold Shift to double its amplitude. In debug free
 camera mode, W belongs to movement. `controls.testGain` scales the injected
 hum. There are no Q/E/R/T test generators.
@@ -234,7 +241,7 @@ B fires EMP (the button still works).
 In debug free-camera mode, W and Shift belong to movement. Night mode uses
 the IR lamp, exposure, and monochrome encoding, without CSS grain/vignette.
 
-Automatic hum uses 15% of the manual W amplitude (±0.0525 normalized
+Automatic hum uses 15% of the manual W amplitude (±0.0375 Lab
 voltage). `crazyhouse.analog.controls.automaticHumGain` adjusts this ratio;
 manual W remains at full amplitude.
 
@@ -256,7 +263,8 @@ The kitchen TV itself no longer adds decorative scanlines or picture warp.
 Open the updated native Composite Lab app at
 `/Users/jacksonlevine/Documents/Codex/2026-09-30/cou/outputs/CompositeLab`.
 In **Connections**, check **Record** beside one or more connections, enter
-the duration (default 30 seconds), then **Record selected…** and choose a
+the duration (default 30 seconds), leave **Game export (480 progressive lines)**
+enabled, then **Record selected…** and choose a
 folder. Recording runs in real time and stops automatically. **Stop recording**
 keeps a marked partial recording. Each selected connection is recorded after
 its port selection, EQ, delay, level and feedback, before the destination mixer.
@@ -264,31 +272,35 @@ To capture a finished mixer output, patch that mixer into another mixer and
 record that connection. Output/receiver master controls are downstream of the
 tap. Connection edits are locked while recording; live camera footage continues.
 
-In Crazyhouse's `?debug` panel choose **load signal recording folder…** and
+In Crazyhouse with `?debug`, open **signals…**, then choose **load signal recording folder…** and
 select the entire exported folder. Choose a connection or **Mix all recorded
 connections**, toggle playback, and adjust **signal gain**. Chunks load on demand;
 the cache holds at most four blocks. Missing/corrupt chunks stop playback with
-an error. A loop preserves the recorded wall-clock timeline; capture gaps inject
-zero voltage rather than fabricated frames. A gap may also occur while fetching
-a chunk that has not arrived yet. A low-pass resampler converts Lab's sample
-clock to the game's clock before summing voltage and applying the receiver.
-Lab's physical voltage scale and -U burst reference match the game's normalized
-voltage after multiplying by the manifest's `voltageScale` (1.4).
+an error. New game exports use a contiguous sample clock, independent of the
+normal Lab preview timer. Every 480-line block is computed with the patch's
+source settings, routes, EQ, delays, mixer settings and feedback, using a
+separate export engine. Recording starts after that engine is warmed up.
+The four-block writer applies backpressure during catch-up. Normal Lab simulation,
+output, virtual camera, and the optional original 525-line export are unchanged.
+Recorded voltages mix before sync recovery and decoding. New game exports use
+`voltageScale: 1`; legacy 525-line clips remain readable with their original scale.
+Native receiver/master processing is downstream of connection taps and is not
+exported, so non-default Lab receiver settings are not automatically applied.
 
 For a normal-game recording input, serve the folder beside the game and pass
-`?signal=signals/recordings/traffic-30s/manifest.json&signalGain=0.15`.
-This local worktree includes a real 30-second I-24 traffic-camera recording in
-`signals/recordings/traffic-30s` (898 blocks, 14.31818 MS/s, about 1.72 GB).
-Raw recordings are ignored by Git; code and the format documentation are tracked.
-The native app defaults to 28.63636 MS/s, approximately 3.44 GB per connection
-for 30 seconds. Export is float32 little-endian, preserving native samples.
+`?signal=signals/recordings/traffic-game-30s/manifest.json&signalGain=0.15`.
+Raw recordings are ignored by Git. Game export always uses four samples/carrier,
+approximately 1.72 GB per connection for 30 seconds, regardless of the normal
+Lab engine's sample rate. Export is float32 little-endian in Lab voltage units.
 
-The manifest records sample rate, voltage scale, native line/frame dimensions,
-wall-clock block timestamps, track labels and routes. Each track folder contains
-`000000.f32`, `000001.f32`, etc., each exactly `samplesPerFrame * 4` bytes.
-These are full 525-line interlaced source blocks. The game remains a progressive,
-partial receiver: imported vertical-sync pulses can corrupt voltage/timing, but
-it still does not recover vertical sync or implement interlaced display/PLL.
+The manifest records the raster (`game-progressive-480`), sample rate, voltage
+scale, dimensions, sample-clock timestamps, track labels and routes. Each track
+folder contains `000000.f32`, `000001.f32`, etc., each exactly
+`480 * samplesPerLine * 4` bytes. Loops and unavailable file chunks can still
+introduce discontinuities; recordings are finite waveform segments.
 
 Run `node tools/check-signal-clip.mjs` and `node tools/check-analog.mjs` for
-format/playback and filtering/color tests.
+format/playback and waveform tests. The analog test takes the native validation
+output directory as an optional argument. Run the native `--self-test --test-output
+/tmp/composite-game-validation` first, then `node tools/check-composite-receiver.mjs`
+for cross-implementation clean/mixed timing, burst phase, clamp, and decoder checks.

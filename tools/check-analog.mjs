@@ -1,41 +1,25 @@
 import assert from 'node:assert/strict';
-import {lowPassKernel} from '../analog.js';
-const fs=14.31818;
-function response(kernel,mhz){
-  return Math.hypot(...kernel.reduce((a,w,n)=>[a[0]+w*Math.cos(2*Math.PI*mhz/fs*(n-16)),a[1]+w*Math.sin(2*Math.PI*mhz/fs*(n-16))],[0,0]));
+// Validate the game encoder against samples produced by Composite Lab's Metal
+// game-export engine, including the route's causal base latency.
+import {readFileSync} from 'node:fs';
+import {GAME_SIGNAL,gameSignalClock} from '../analog.js';
+const directory=process.argv[2]||new URL('./fixtures/',import.meta.url).pathname;
+const nativeLine=JSON.parse(readFileSync(`${directory}/game-signal-line.json`));
+const us=GAME_SIGNAL.sampleRate/1e6;
+for(let x=0;x<910;x++){
+ const sx=(x-32+910)%910;
+ if(sx>=9.4*us&&sx<9.4*us+52.655*us)continue; // source picture tested by native image tests
+ const expected=sx<4.7*us?-2/7:sx>=5.3*us&&sx<5.3*us+36?-Math.cos((x-32)*Math.PI/2)/7:0;
+ assert(Math.abs(nativeLine[x]-expected)<1e-5,`Metal/game waveform disagreement at sample ${x}`);
 }
-for(const cutoff of [1,2.5,4.2]){
-  const k=lowPassKernel(cutoff);
-  assert(Math.abs(k.reduce((a,b)=>a+b,0)-1)<1e-6,'DC voltage must be preserved');
-  assert(response(k,0.06)>0.99,'mains hum must pass the analog bandwidth filter');
+assert(Math.abs(GAME_SIGNAL.sampleRate/910-15734.265734265734)<1e-8);
+console.log('Passed sample-by-sample Metal/game sync, burst, blanking, carrier phase, and base latency agreement.');
+
+// Uneven display redraws must never phase-shift an otherwise identical interferer.
+const period=910*480/GAME_SIGNAL.sampleRate;
+for(const elapsed of [0,.005,.016,.03,.031,.047,.06,.061,.117,1.234]) {
+ const clock=gameSignalClock(100+elapsed,100);
+ assert.equal(clock.frame,Math.floor(elapsed/period));
+ const recordedOffset=(clock.time-100)*GAME_SIGNAL.sampleRate;
+ assert(Math.abs(recordedOffset-clock.frame*910*480)<1e-6,'display draw jitter leaked into the signal clock');
 }
-assert(response(lowPassKernel(1),3.579545)<0.01,'chroma baseband filter rejects carrier');
-assert(response(lowPassKernel(2.5),3.579545)<0.01,'luma filter rejects color carrier');
-assert(response(lowPassKernel(4.2),6)>0 && response(lowPassKernel(4.2),6)<0.01,'channel rejects out-of-band voltage');
-const dot=(a,b)=>a.reduce((s,v,i)=>s+v*b[i],0);
-const phase=x=>(x%4)*Math.PI/2;
-const convolve=(a,k)=>a.map((_,x)=>k.reduce((v,w,i)=>v+w*a[Math.max(0,Math.min(a.length-1,x+i-16))],0));
-for(const rgb of [[0,0,0],[1,1,1],[1,0,0],[0,1,0],[0,0,1],[0.3,0.6,0.8]]){
-  const y=dot(rgb,[.299,.587,.114]),i=.493*(rgb[2]-y),q=.877*(rgb[0]-y);
-  const signal=Array.from({length:910},(_,x)=>x<67?-.4:x>=80&&x<112?-.2*Math.cos(phase(x)):x>=140&&x<892?.075+.925*(y+i*Math.cos(phase(x))+q*Math.sin(phase(x))):0);
-  const received=convolve(signal,lowPassKernel(4.2));
-  let run=0,edge=67,locked=false;
-  for(let x=0;x<140;x++){
-    if(received[x]<-.2)run++;
-    else{if(run>=30){edge=x;locked=true;break;}run=0;}
-  }
-  assert(locked,'clean source must recover sync');assert.equal(edge,67);
-  const pedestal=received.slice(edge+53,edge+69).reduce((a,b)=>a+b,0)/16;
-  let bc=0,bs=0;
-  for(let x=edge+21;x<edge+37;x++){bc+=received[x]*Math.cos(phase(x));bs+=received[x]*Math.sin(phase(x));}
-  const burstPhase=Math.atan2(Math.sin(Math.atan2(-bs,bc)-Math.PI),Math.cos(Math.atan2(-bs,bc)-Math.PI)),lk=lowPassKernel(2.5),ck=lowPassKernel(1);
-  let dy=0,di=0,dq=0;
-  for(let tap=0;tap<33;tap++){
-    const x=500+tap-16,v=(received[x]-pedestal-.075)/.925,p=phase(x)+burstPhase;
-    dy+=v*lk[tap];di+=v*2*Math.cos(p)*ck[tap];dq+=v*2*Math.sin(p)*ck[tap];
-  }
-  const r=dy+dq/.877,b=dy+di/.493;
-  const decoded=[r,(dy-.299*r-.114*b)/.587,b];
-  assert(Math.max(...decoded.map((v,n)=>Math.abs(v-rgb[n])))<0.025,`color round-trip error: ${rgb} -> ${decoded}`);
-}
-console.log('Passed FIR DC/passband/rejection checks, clean sync recovery, and six color round trips (error <2.5%).');

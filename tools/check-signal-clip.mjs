@@ -20,3 +20,16 @@ let resolve;
 const pending=new SignalClip({...manifest,tracks:[manifest.tracks[0]]},()=>new Promise(r=>resolve=r));
 const task=pending.load(0);pending.dispose();resolve(new Float32Array(manifest.samplesPerFrame).buffer);await task;assert.equal(pending.cache.size,0);
 console.log('Passed signal metadata validation, voltage summation, selection, capture gaps, malformed chunks, and asynchronous disposal.');
+
+const gameManifest={...manifest,raster:'game-progressive-480',linesPerFrame:480,samplesPerFrame:910*480,voltageScale:1,frames:[0,1,2].map(index=>({index,timestamp:index*910*480/manifest.sampleRate}))};
+assert.equal(validateSignalManifest(gameManifest).linesPerFrame,480);
+assert.throws(()=>validateSignalManifest({...gameManifest,raster:undefined}));
+const gameClip=new SignalClip(gameManifest,async()=>new Float32Array(gameManifest.samplesPerFrame).buffer);
+await Promise.all([gameClip.load(0),gameClip.load(1),gameClip.load(2)]);assert.equal(gameClip.cache.get(0).image.height,480);
+gameClip.update(1000);
+for(let frame=0;frame<3;frame++){
+ gameClip.update(1000+frame*gameManifest.samplesPerFrame/gameManifest.sampleRate);
+ assert(gameClip.active,'floating-point clock cancellation must not introduce a gap');
+ assert.equal(gameClip.active.offset,0,'sample-aligned source clocks must stay aligned');
+}
+gameClip.dispose();
