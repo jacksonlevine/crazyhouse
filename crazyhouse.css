@@ -324,3 +324,12 @@ canvas {
 .signal-param { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 6px 0; }
 .signal-param input[type="number"] { width: 76px; background: #111; color: white; border: 1px solid #777; padding: 3px; }
 .signal-settings textarea { width: 100%; min-height: 160px; background: #111; color: white; box-sizing: border-box; }
+
+/* Live statistics must never move the parameter inputs below them. */
+.signal-window [data-out="signal-performance"] {
+  height: 4.5em;
+  line-height: 1.5;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
