@@ -136,8 +136,6 @@ export const MAT = {
   cabShelf:  surface(0xcdb98f, 0.8),     // pale wood inside the cabinets
   cabInside: surface(0xd8c7a3, 0.8, THREE.BackSide),   // cabinet insides (drawn inside out)
   firebrick: surface(0x4a2a1e, 1, THREE.BackSide),     // inside the wood stove
-  log:       new THREE.MeshStandardMaterial({ color: 0x1c140f, roughness: 1, emissive: 0xff5a14, emissiveIntensity: 0.12 }),
-  ember:     new THREE.MeshStandardMaterial({ color: 0x1a0d08, roughness: 1, emissive: 0xff4a10, emissiveIntensity: 1.1 }),
   porcelainBoth: surface(0xf2f1ec, 0.65, THREE.DoubleSide),   // the toilet bowl, seen inside and out
   toilet:    surface(0xf2f1ec, 0.65),    // matte, so it doesn't shine
   bowl:      surface(0xf2f1ec, 0.25, THREE.BackSide),         // the bathroom sink, drawn inside out
@@ -1041,15 +1039,23 @@ const FIRE = 4;
 function fire() {
   const { x0, x1, zf, zb, y0, s, win: [wx0, wx1, wy0, wy1] } = STOVE;
   const cx = (x0 + x1) / 2, cz = (zf + zb) / 2, floor = y0 + s + 0.38, b = 0.12;    // on a grate, up where the window shows it
+  // logs and coals the Half-Life way: few sides, chunky pixel textures,
+  // lit by themselves (the glowing cracks are in the picture)
+  const tex = fireTextures();
   const log = (len, x, y, z, turn, r = 0.17) => {
-    const geo = new THREE.CylinderGeometry(r, r + 0.02, len, 8);
+    const geo = new THREE.CylinderGeometry(r, r + 0.02, len, 7);
     geo.rotateZ(Math.PI / 2);
-    return tint(solid(geo, [x, y, z], [0, turn, 0]), MAT.log);
+    const m = new THREE.Mesh(geo, [tex.bark, tex.ends, tex.ends]);
+    m.position.set(x, y, z);
+    m.rotation.y = turn;
+    return m;
   };
   const coal = (x, z, r) => {
     const geo = new THREE.DodecahedronGeometry(r, 0);
     geo.scale(1, 0.45, 1);
-    return tint(solid(geo, [x, floor + r * 0.3, z]), MAT.ember);
+    const m = new THREE.Mesh(geo, tex.coals);
+    m.position.set(x, floor + r * 0.3, z);
+    return m;
   };
   const glass = new THREE.Mesh(new THREE.PlaneGeometry(wx1 - wx0 - 2 * b, wy1 - wy0 - 2 * b),
     new THREE.MeshBasicMaterial({ color: 0x1a1410, transparent: true, opacity: 0.25, depthWrite: false }));
@@ -1081,10 +1087,54 @@ function fire() {
     const f = 1 + 0.08 * Math.sin(t * 2.1) + 0.06 * Math.sin(t * 5.3 + 1) + 0.04 * Math.sin(t * 9.7 + 2);
     room.intensity = FIRE * f;
     inside.intensity = 0.9 * f;
-    MAT.ember.emissiveIntensity = 1.1 * f;
-    MAT.log.emissiveIntensity = 0.12 * f;
+    tex.bark.color.setScalar(0.8 + 0.25 * f);
+    tex.coals.color.setScalar(0.75 + 0.35 * f);
   };
   return g;
+}
+
+// chunky little pictures for the fire: bark with glowing cracks, cut ends, hot coals
+function fireTextures() {
+  const mats = { bark: new THREE.MeshBasicMaterial({ color: 0x4a3020 }), ends: new THREE.MeshBasicMaterial({ color: 0x6b4a2a }),
+    coals: new THREE.MeshBasicMaterial({ color: 0xc8501c }) };
+  if (typeof document === 'undefined') return mats;
+  let seed = 23;
+  const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const pixels = (draw) => {
+    const t = screenCanvas(32, 32, draw);
+    t.magFilter = t.minFilter = THREE.NearestFilter;
+    t.generateMipmaps = false;
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    return t;
+  };
+  const dot = (g, c, x, y, w = 1, h = 1) => { g.fillStyle = c; g.fillRect(x, y, w, h); };
+  mats.bark.map = pixels(g => {
+    g.fillStyle = '#3a2a1c'; g.fillRect(0, 0, 32, 32);
+    for (let x = 0; x < 32; x++) for (let y = 0; y < 32; y++) {
+      const r = rand();
+      if (r < 0.25) dot(g, '#24180f', x, y); else if (r < 0.4) dot(g, '#4f3a24', x, y);
+    }
+    for (let k = 0; k < 7; k++) dot(g, '#1a110a', Math.floor(rand() * 32), 0, 1, 32);          // bark grooves
+    for (let k = 0; k < 5; k++) {                                                               // glowing cracks
+      const x = Math.floor(rand() * 30), y = Math.floor(rand() * 28);
+      dot(g, '#ff6a14', x, y, 1, 3 + Math.floor(rand() * 3)); dot(g, '#ffb347', x, y + 1, 1, 1);
+    }
+  });
+  mats.bark.map.repeat.set(2, 1);
+  mats.ends.map = pixels(g => {
+    g.fillStyle = '#1a110a'; g.fillRect(0, 0, 32, 32);
+    for (const [r, c] of [[14, '#4a321c'], [11, '#6b4a2a'], [8, '#7d5a34'], [5, '#6b4a2a'], [2, '#ff8a2a']]) {
+      g.fillStyle = c; g.beginPath(); g.arc(16, 16, r, 0, 7); g.fill();
+    }
+  });
+  mats.coals.map = pixels(g => {
+    for (let x = 0; x < 32; x += 2) for (let y = 0; y < 32; y += 2) {
+      const r = rand();
+      dot(g, r < 0.3 ? '#1a0a05' : r < 0.55 ? '#7a2408' : r < 0.85 ? '#ff5a14' : '#ffb347', x, y, 2, 2);
+    }
+  });
+  mats.bark.color.set(0xffffff); mats.ends.color.set(0xffffff); mats.coals.color.set(0xffffff);
+  return mats;
 }
 
 /* A little old-timey sconce on the pillar by the sofa: a brass backplate
@@ -1191,9 +1241,11 @@ function kitchen() {
       tint(slab([[1181, 364], [1237, 364], [1237, 660], [1181, 660]],
         [[[1189, 475], [1225, 475], [1225, 547], [1189, 547]]], FLOOR + 2.85, FLOOR + 3), MAT.counter)),
     sink(),
+    sinkLight(),
     cabinets('counter-south', { along: 'x', a0: 807, a1: 980, back: Z(715), front: Z(660), splits: [865, 922],
       stuff: counterStuff }, tint(block(807, 980, 658, 715, 3, 2.85), MAT.counter)),
     fridge(),
+    fridgeLight(),
     named('pantry-shelves', shelving(1190, 1237, 669, 780), shelving(1072, 1187, 748, 780))
   );
 }
@@ -1290,6 +1342,45 @@ function counterStuff(box, sections, { toe, s }) {
              tint(box(u0 + 0.3, u0 + 1.6, 0.4, 1.2, floor, floor + 0.5), MAT.denim));   // pans
   });
   return out;
+}
+
+/* A little schoolhouse pendant over the kitchen sink. Its light is a
+   spot tipped away from the window wall and fading out before the
+   floor, so it lights the sink without shining through the wall. */
+function sinkLight() {
+  const x = X(1200), z = Z(511), y = FLOOR + 6.8;
+  const shade = new THREE.CylinderGeometry(0.16, 0.3, 0.38, 14, 1, true);
+  const light = new THREE.SpotLight(LAMP_COLOR, 22, 6.5, 0.45, 0.6, 2);
+  light.name = 'lamp-sink-light';
+  light.position.set(x, y - 0.15, z);
+  light.target.position.set(x - 1.15, FLOOR + 3, z);
+  return named('lamp-sink',
+    lines([[[x, CEIL, z], [x, y + 0.2, z]]]),
+    tint(solid(shade, [x, y, z]), MAT.glow),
+    tint(solid(new THREE.CylinderGeometry(0.06, 0.06, 0.1, 8), [x, y + 0.22, z]), MAT.brass),
+    light, light.target);
+}
+
+/* The fridge's light: bright and white, and only on while a door is open
+   (it fades with the door). One spot, high in the freezer, aimed out and
+   down through both compartments into the kitchen. */
+function fridgeLight() {
+  const cx = (X(980) + X(1060)) / 2, zf = Z(655);
+  const light = new THREE.SpotLight(0xf2f6ff, 0, 10, 0.9, 0.4, 2);
+  light.name = 'fridge-light';
+  light.position.set(cx, FLOOR + 6.05, zf + 0.5);
+  light.target.position.set(cx, FLOOR + 0.6, zf - 3.6);
+  const g = named('fridge-glow', light, light.target);
+  let doors = null;
+  g.userData.tick = () => {
+    if (!doors) {
+      let root = g;
+      while (root.parent) root = root.parent;
+      doors = ['fridge-door', 'freezer-door'].map(n => root.getObjectByName(n)).filter(Boolean);
+    }
+    light.intensity = 16 * Math.max(0, ...doors.map(d => Math.min(1, d.userData.open * 3)));
+  };
+  return g;
 }
 
 /* A gas cooktop set into the island: black top, four burners under
@@ -1505,6 +1596,7 @@ function master() {
     bed(),
     named('nightstands', block(875, 925, 1022, 1068, 2.1), block(1075, 1125, 1022, 1068, 2.1)),
     bookshelf(),
+    standingLamp(),
     computerDesk(),
     named('round-table', round(1206, 846, 0.6, 1.9, 1.84, 14), round(1206, 846, 0.08, 1.84, 0.1, 8), round(1206, 846, 0.35, 0.1, 0, 12),
       tint(block(1196, 1214, 838, 852, 1.98, 1.9), MAT.flannel))          // a book on it
@@ -1582,6 +1674,23 @@ function plaidPattern() {
   return tex;
 }
 
+/* A 90s floor lamp in the corner between the bedroom door and the
+   bookshelf: a weighted base, a brass pole, a pleated fabric shade lit
+   from inside. Its light is a spot tipped out into the room, away from
+   the wall behind (no shadows: no texture slots left). */
+function standingLamp() {
+  const x = X(928), z = Z(744);                         // tucked against the bookshelf, out of the bedroom cam's face
+  const light = new THREE.SpotLight(LAMP_COLOR, 18, 10, 0.6, 0.7, 2);
+  light.name = 'lamp-standing-light';
+  light.position.set(x, FLOOR + 5.2, z);
+  light.target.position.set(x + 2.5, FLOOR, z + 4.5);
+  return named('lamp-standing',
+    tint(solid(new THREE.CylinderGeometry(0.42, 0.48, 0.08, 16), [x, FLOOR + 0.04, z]), MAT.dark),
+    tint(solid(new THREE.CylinderGeometry(0.035, 0.035, 5.0, 8), [x, FLOOR + 2.55, z]), MAT.brass),
+    tint(solid(new THREE.CylinderGeometry(0.5, 0.75, 0.95, 18, 1, true), [x, FLOOR + 5.35, z]), MAT.glow),
+    light, light.target);
+}
+
 /* The bookshelf facing the bed: four shelves of books (a jumble of
    heights and colours, some leaning, some stacked flat), a framed photo,
    and a plant on top. Books are welded together by colour, so it's cheap. */
@@ -1624,6 +1733,24 @@ function bookshelf() {
   parts.push(tint(round(1030, 745, 0.28, 5.55, 5.1, 10, 0.34), MAT.brick),
     tint(solid(new THREE.IcosahedronGeometry(0.45, 0), [X(1030), FLOOR + 5.85, Z(745)]), MAT.leaves));
   return named('bookshelf', ...parts);
+}
+
+// a 90s black gooseneck desk lamp at the back corner, bent over the mess
+function deskLamp(x0, x1, z0, zc, top) {
+  const bx = x1 - 0.35, bz = z0 + 0.35, hx = x0 + 0.95, hz = zc - 1.3, hy = top + 1.55;
+  const neck = new THREE.CatmullRomCurve3([[bx, top + 0.1, bz], [bx, top + 1.2, bz], [bx - 0.4, top + 1.85, bz + 0.25],
+    [hx + 0.35, hy + 0.35, hz - 0.1], [hx, hy + 0.12, hz]].map(p => new THREE.Vector3(...p)));
+  const head = new THREE.CylinderGeometry(0.1, 0.24, 0.32, 14, 1, true);
+  const light = new THREE.SpotLight(LAMP_COLOR, 9, 4.5, 0.75, 0.55, 2);        // fades out before it could reach the yard
+  light.name = 'lamp-desk-light';
+  light.position.set(hx, hy, hz);
+  light.target.position.set(x0 + 0.6, top, zc - 1.0);
+  return named('lamp-desk',
+    tint(solid(new THREE.CylinderGeometry(0.22, 0.26, 0.08, 14), [bx, top + 0.04, bz]), MAT.dark),
+    tint(solid(new THREE.TubeGeometry(neck, 20, 0.03, 6, false)), MAT.dark),
+    tint(solid(head, [hx, hy, hz]), MAT.dark),
+    glow(new THREE.CircleGeometry(0.22, 14).rotateX(Math.PI / 2), hx, hy - 0.15, hz),
+    light, light.target);
 }
 
 // soda can materials, made once (the pictures need a browser)
@@ -1714,11 +1841,17 @@ function computerDesk() {
     box(0.75, 0.01, 0.65, x0 + 0.45, top + 0.005, zc + 1.75, MAT.denim),               // mousepad
     box(0.32, 0.1, 0.2, x0 + 0.42, top + 0.06, zc + 1.72, beige, [0, 0.2, 0]),         // mouse
     cyl(0.28, 0.06, tray[0], top + 0.03, tray[1], surface(0x3a4a48, 0.3), null, 14),     // the ashtray
-    ...Array.from({ length: 7 }, () => butt(tray[0] + (rand() - 0.5) * 0.3, top + 0.05, tray[1] + (rand() - 0.5) * 0.3, rand() * 6)),
+    ...Array.from({ length: 14 }, (_, k) => butt(tray[0] + (rand() - 0.5) * 0.34, top + 0.05 + (k > 8 ? 0.04 : 0), tray[1] + (rand() - 0.5) * 0.34, rand() * 6)),   // overflowing
     butt(x0 + 0.9, top, zc - 0.2, 1.1), butt(x0 + 0.3, top, zc + 1.1, 2.6), butt(x0 + 0.6, top, z0 + 0.3, 0.4),
+    butt(x0 + 0.75, top, zc - 1.15, 2.2), butt(x0 + 0.2, top, zc - 1.9, 0.7), butt(x0 + 1.25, top, zc + 1.6, 1.9),
+    butt(x0 - 0.9, FLOOR, zc - 0.3, 0.3), butt(x0 - 0.15, FLOOR, zc + 1.9, 1.4), butt(x0 + 0.2, FLOOR, z0 - 0.3, 2.8),
     butt(x0 - 0.6, FLOOR, zc + 0.4, 2), butt(x0 - 0.3, FLOOR, zc - 1.0, 0.9),            // on the floor
     soda(x0 + 0.8, zc - 0.6), soda(x0 + 1.1, z0 + 0.35), soda(x0 + 0.5, zc + 0.15, true), soda(x1 - 0.35, z1 - 0.4, false, true),
-    (() => { const c = can(true); c.position.set(x0 - 0.5, FLOOR + 0.11, zc + 1.2); c.rotation.set(Math.PI / 2, 0, 2.1); return c; })(),   // one rolled under the chair
+    soda(x0 + 1.3, zc + 1.45), soda(x0 + 0.3, zc - 2.2, false, true), soda(x0 + 1.5, zc - 1.95, true), soda(x1 - 0.3, zc - 0.15),
+    ...[[x0 - 0.5, zc + 1.2, 2.1], [x0 - 1.0, zc - 0.7, 0.6]].map(([cx2, cz2, turn]) => {        // rolled onto the floor
+      const c = can(true); c.position.set(cx2, FLOOR + 0.11, cz2); c.rotation.set(Math.PI / 2, 0, turn); return c;
+    }),
+    deskLamp(x0, x1, z0, zc, top),
     // a couple of floppy disks
     box(0.3, 0.01, 0.3, x0 + 0.95, top + 0.005, zc + 0.15, MAT.dark, [0, 0.4, 0]), box(0.3, 0.01, 0.3, x0 + 0.98, top + 0.016, zc + 0.2, MAT.denim, [0, 0.9, 0])
   );
@@ -1994,37 +2127,33 @@ function laundry() {
 // up on the laundry shelf: bottles of Tried and YEP, and a green laundry basket of folded clothes
 function laundryShelf() {
   const y = FLOOR + 5.4;
-  return [...detergent(X(624), y, Z(829), DETERGENTS.tried), ...detergent(X(651), y, Z(829), DETERGENTS.yep),
+  return [...detergent(X(634), y, Z(841), DETERGENTS.tried), ...detergent(X(661), y, Z(841), DETERGENTS.yep),
     ...laundryBasket(X(724), y, Z(842))];
 }
 
-/* A liquid detergent bottle, built from its front outline: a tall body,
-   a collar and a big ridged cap at the top left, the top sloping down to
-   the right into a handle loop with a hole right through it, and a label
-   on the front. look = { body, cap, label: (g) => draws the label }. */
-function detergent(x0, y0, zBack, look) {
-  const W = 0.56, H = 0.95, T = 0.34;
-  const sh = new THREE.Shape();
-  sh.moveTo(0.05, 0); sh.lineTo(W - 0.05, 0); sh.quadraticCurveTo(W, 0, W, 0.05);
-  sh.lineTo(W, 0.68); sh.quadraticCurveTo(W, 0.76, W - 0.07, 0.78);        // top of the handle
-  sh.lineTo(0.6 * W, H - 0.02);                                              // the shoulder, sloping up to the neck
-  sh.lineTo(0.08, H); sh.quadraticCurveTo(0, H, 0, H - 0.08);
-  sh.lineTo(0, 0.05); sh.quadraticCurveTo(0, 0, 0.05, 0);
-  const grip = new THREE.Path();                                             // the hole you put your hand through
-  const gx = 0.78 * W, r = 0.058;
-  grip.absarc(gx, 0.34, r, Math.PI, 0, false); grip.lineTo(gx + r, 0.62);
-  grip.absarc(gx, 0.62, r, 0, Math.PI, false); grip.lineTo(gx - r, 0.34);
-  sh.holes.push(grip);
-  const geo = new THREE.ExtrudeGeometry(sh, { depth: T, bevelEnabled: true, bevelThickness: 0.035, bevelSize: 0.03, bevelSegments: 3, curveSegments: 8 });
-  geo.translate(x0, y0 + 0.03, zBack + 0.035);
+/* A liquid detergent bottle: an oval body (round-shouldered, oval from
+   above), a collar and a big ridged cap on top, a thin handle looping out
+   from the upper right and back into the shoulder, and a label wrapped
+   round the front. Centred on (cx, cz), standing at y0.
+   look = { body, cap, label: (g) => draws the label }. */
+function detergent(cx, y0, cz, look) {
+  const H = 0.9, oval = 0.62;                                             // height to the neck; front-to-back squash
+  const profile = [[0.001, 0], [0.24, 0], [0.27, 0.025], [0.28, 0.07], [0.28, 0.6], [0.265, 0.68], [0.21, 0.77],
+    [0.14, 0.84], [0.12, 0.87], [0.12, H]].map(([r, h]) => new THREE.Vector2(r, h));
+  const body = new THREE.LatheGeometry(profile, 24).scale(1, 1, oval);
+  // the handle: a thin tube from the body's side, out, up and back into the shoulder
+  const loop = new THREE.CatmullRomCurve3([[0.2, 0.42], [0.33, 0.46], [0.4, 0.57], [0.38, 0.69], [0.28, 0.77], [0.15, 0.81]]
+    .map(([x, y]) => new THREE.Vector3(x, y, 0)));
+  const handle = new THREE.TubeGeometry(loop, 24, 0.036, 8, false).scale(1, 1, 1.5);
   const label = surface(0xffffff, 0.6);
   if (typeof document !== 'undefined') label.map = screenCanvas(64, 72, look.label); else label.color.set(0x16245e);
-  const capX = x0 + 0.34 * W, zMid = zBack + 0.035 + T / 2;
+  const wrap = new THREE.CylinderGeometry(0.283, 0.283, 0.46, 16, 1, true, -0.85, 1.7).scale(1, 1, oval);
   return [
-    tint(solid(geo), look.body),
-    tint(solid(new THREE.PlaneGeometry(0.4, 0.45), [x0 + 0.29 * W, y0 + 0.36, zBack + T + 0.075]), label),
-    tint(solid(new THREE.CylinderGeometry(0.15, 0.16, 0.07, 20), [capX, y0 + H + 0.06, zMid]), look.body),      // collar
-    tint(solid(new THREE.CylinderGeometry(0.135, 0.135, 0.2, 12), [capX, y0 + H + 0.19, zMid]), look.cap)        // ridged cap
+    tint(solid(body, [cx, y0, cz]), look.body),
+    tint(solid(handle, [cx, y0, cz]), look.body),
+    tint(solid(wrap, [cx, y0 + 0.33, cz]), label),
+    tint(solid(new THREE.CylinderGeometry(0.135, 0.14, 0.06, 20), [cx, y0 + H + 0.03, cz]), look.body),   // collar
+    tint(solid(new THREE.CylinderGeometry(0.125, 0.125, 0.17, 12), [cx, y0 + H + 0.145, cz]), look.cap)     // ridged cap
   ];
 }
 
@@ -2319,37 +2448,132 @@ function rockingChair() {
 
 /* ─── the yard ──────────────────────────────── */
 
+/* The front walk's line: from the porch steps, winding down to the road. */
+const WALK = new THREE.CatmullRomCurve3([[-27.8, 1.0], [-36, 4.5], [-48, -1], [-60, 5], [-74, -2], [-88, 4], [-100, 0.5], [-105.4, 0]]
+  .map(([x, z]) => new THREE.Vector3(x, 0, z)));
+const WALK_PTS = WALK.getSpacedPoints(80);
+const ROAD = [-130, -106];                              // the road's x range, in feet
+
+// how far (x, z) is from the walk's centre line
+function walkDistance(x, z) {
+  let best = Infinity;
+  for (let i = 1; i < WALK_PTS.length; i++) {
+    const a = WALK_PTS[i - 1], b = WALK_PTS[i], dx = b.x - a.x, dz = b.z - a.z;
+    const t = THREE.MathUtils.clamp(((x - a.x) * dx + (z - a.z) * dz) / (dx * dx + dz * dz), 0, 1);
+    best = Math.min(best, Math.hypot(x - a.x - t * dx, z - a.z - t * dz));
+  }
+  return best;
+}
+
+/* The lie of the land, in feet: flat round the house, falling away
+   gently toward the road out front (so the walk goes up to the house),
+   rolling further off, and low hills on the horizon. The walk and the
+   road are smoothed flat into it. */
+function groundHeight(x, z) {
+  const ss = THREE.MathUtils.smoothstep;
+  const out = Math.hypot(Math.max(0, -32 - x, x - 26), Math.max(0, -24 - z, z - 22));   // outside the house's flat patch
+  const fall = -0.075 * THREE.MathUtils.clamp(-40 - x, 0, 64);
+  const keep = ss(out, 2, 30) * ss(walkDistance(x, z), 5, 16) * ss(Math.abs(x - (ROAD[0] + ROAD[1]) / 2), 15, 28);
+  const roll = 3.5 * Math.sin(x * 0.045 + 1.3) * Math.cos(z * 0.04 - 0.7) + 1.8 * Math.sin(x * 0.11 + z * 0.08);
+  const a = Math.atan2(z, x), hills = ss(Math.hypot(x, z), 140, 270) * (30 + 14 * Math.sin(a * 3 + 0.8) + 8 * Math.sin(a * 7));
+  return fall + keep * (roll + hills);
+}
+
 function ground() {
-  // the lawn, wide enough to fade into the night at the edges
-  const R = 150;
-  const plane = new THREE.Mesh(new THREE.BoxGeometry(R * 2, 0.2, R * 2), MAT.ground);
-  plane.position.y = -0.1;
-  return named('ground', plane);
+  // the land: a big sheet shaped by groundHeight(); no ink edges
+  const geo = new THREE.PlaneGeometry(640, 640, 160, 160).rotateX(-Math.PI / 2);
+  const pos = geo.attributes.position;
+  for (let i = 0; i < pos.count; i++) pos.setY(i, groundHeight(pos.getX(i), pos.getZ(i)));
+  geo.computeVertexNormals();
+  return named('ground', new THREE.Mesh(geo, MAT.ground));
 }
 
 /* The road out front, running past the house: asphalt, concrete curbs,
    a dashed yellow line down the middle. ROAD is its x range, in feet. */
-const ROAD = [-64, -40];
 function road() {
-  const [x0, x1] = ROAD, cx = (x0 + x1) / 2, len = 300;
+  const [x0, x1] = ROAD, cx = (x0 + x1) / 2, len = 620, y = groundHeight(cx, 0);
   const parts = [
-    tint(solid(new THREE.BoxGeometry(x1 - x0, 0.06, len), [cx, 0.03, 0]), surface(0x2b2c2f, 1)),
-    tint(solid(new THREE.BoxGeometry(0.6, 0.4, len), [x0 - 0.3, 0.2, 0]), MAT.concrete),
-    tint(solid(new THREE.BoxGeometry(0.6, 0.4, len), [x1 + 0.3, 0.2, 0]), MAT.concrete)
+    tint(solid(new THREE.BoxGeometry(x1 - x0, 0.3, len), [cx, y - 0.1, 0]), surface(0x2b2c2f, 1)),
+    tint(solid(new THREE.BoxGeometry(0.6, 0.6, len), [x0 - 0.3, y + 0.1, 0]), MAT.concrete),
+    tint(solid(new THREE.BoxGeometry(0.6, 0.6, len), [x1 + 0.3, y + 0.1, 0]), MAT.concrete)
   ];
   const yellow = surface(0xc9a227, 0.8);
-  for (let z = -145; z <= 145; z += 20) parts.push(tint(solid(new THREE.BoxGeometry(0.35, 0.01, 9), [cx, 0.065, z]), yellow));
+  for (let z = -300; z <= 300; z += 20) parts.push(tint(solid(new THREE.BoxGeometry(0.35, 0.01, 9), [cx, y + 0.055, z]), yellow));
   return named('road', ...parts);
 }
 
 function path() {
-  // paving slabs from the front steps out to the street
-  const z = Z(647.5), hw = 2, y = 0.02, x0 = X(-3 * K), x1 = ROAD[1] + 0.6;    // lined up with the front door, out to the curb
-  const pairs = [[[x0, y, z - hw], [x1, y, z - hw]], [[x0, y, z + hw], [x1, y, z + hw]]];
-  for (let x = x0; x >= x1; x -= 4) pairs.push([[x, y, z - hw], [x, y, z + hw]]);
-  const walk = new THREE.Mesh(new THREE.BoxGeometry(x0 - x1, 0.04, hw * 2), MAT.concrete);
-  walk.position.set((x0 + x1) / 2, 0.005, z);
-  return named('path', walk, lines(pairs));
+  // the front walk: a concrete ribbon following WALK over the ground, with joints every few feet
+  const n = 160, hw = 2, pts = WALK.getSpacedPoints(n), pos = [], edge = [], joints = [];
+  const at = (p, side, t) => {
+    const nx = -t.z, nz = t.x, l = Math.hypot(nx, nz), x = p.x + side * hw * nx / l, z = p.z + side * hw * nz / l;
+    return [x, groundHeight(x, z) + 0.05, z];
+  };
+  const rows = pts.map((p, i) => {
+    const t = WALK.getTangentAt(i / n);
+    return [at(p, 1, t), at(p, -1, t)];
+  });
+  for (let i = 1; i <= n; i++) {
+    const [a, b] = rows[i - 1], [c, d] = rows[i];
+    pos.push(...a, ...b, ...c, ...b, ...d, ...c);
+    edge.push([a, c], [b, d]);
+    if (i % 3 === 0) joints.push([c, d]);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.computeVertexNormals();
+  const walk = new THREE.Mesh(geo, MAT.concrete);
+  walk.material.side = THREE.DoubleSide;
+  return named('path', walk, lines([...edge, ...joints]));
+}
+
+/* Little 90s pagoda path lights lining the walk: a stake, three tiers of
+   bronze shades with a glow between them, and a soft pool of light on the
+   ground. The pools are drawn, not lit, so a whole row costs nearly
+   nothing. */
+function pathLamps() {
+  const bronze = surface(0x4a3a28, 0.6), parts = [], pools = [];
+  const len = WALK.getLength();
+  let side = 1;
+  for (let d = 7; d < len - 4; d += 8.5, side = -side) {
+    const u = d / len, p = WALK.getPointAt(u), t = WALK.getTangentAt(u);
+    const l = Math.hypot(t.x, t.z), x = p.x + side * 3.3 * -t.z / l, z = p.z + side * 3.3 * t.x / l, y = groundHeight(x, z);
+    parts.push(tint(solid(new THREE.CylinderGeometry(0.05, 0.06, 1.2, 6), [x, y + 0.6, z]), bronze));
+    [[0.42, 1.25], [0.36, 1.45], [0.3, 1.65]].forEach(([r, h]) => parts.push(tint(solid(new THREE.ConeGeometry(r, 0.14, 10), [x, y + h, z]), bronze)));
+    parts.push(tint(solid(new THREE.ConeGeometry(0.12, 0.2, 10), [x, y + 1.82, z]), bronze),
+      glow(new THREE.CylinderGeometry(0.17, 0.2, 0.1, 10), x, y + 1.33, z), glow(new THREE.CylinderGeometry(0.14, 0.17, 0.1, 10), x, y + 1.53, z));
+    // the pool of light, laid over the ground's shape
+    const disc = new THREE.CircleGeometry(3.2, 20).rotateX(-Math.PI / 2), dp = disc.attributes.position;
+    for (let i = 0; i < dp.count; i++) dp.setXYZ(i, x + dp.getX(i), groundHeight(x + dp.getX(i), z + dp.getZ(i)) + 0.09, z + dp.getZ(i));
+    pools.push(disc);
+  }
+  const poolMat = new THREE.MeshBasicMaterial({ color: 0xffc27a, transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending });
+  if (typeof document !== 'undefined') poolMat.map = softDisc(0);
+  pools.forEach(geo => { const m = new THREE.Mesh(geo, poolMat); m.userData.keep = m.userData.noShadow = true; parts.push(m); });
+  return named('path-lamps', ...parts);
+}
+
+/* An old-style lamp post by the tree at the head of the walk: a tall dark
+   post and a tapered four-sided lantern of glowing glass under a little
+   roof. It's the light that throws a glow (and shadows) across the front
+   of the house. */
+function lampPost(lamps, x, z) {
+  const y = groundHeight(x, z), H = 9.5, iron = surface(0x1c2a30, 0.6);
+  const lantern = new THREE.CylinderGeometry(0.5, 0.32, 0.95, 4, 1).rotateY(Math.PI / 4);
+  const roof = new THREE.ConeGeometry(0.62, 0.45, 4).rotateY(Math.PI / 4);
+  const light = shadowed(new THREE.PointLight(0xffd59a, 320, 0, 2), 512, 70);
+  light.name = 'lamp-post-light';
+  light.position.set(x, y + H + 0.5, z);
+  light.shadow.intensity = 0.85;
+  lamps.push(light);
+  return named('lamp-post',
+    tint(solid(new THREE.CylinderGeometry(0.22, 0.32, 0.8, 8), [x, y + 0.4, z]), iron),
+    tint(solid(new THREE.CylinderGeometry(0.1, 0.12, H, 8), [x, y + H / 2, z]), iron),
+    tint(solid(new THREE.CylinderGeometry(0.24, 0.2, 0.3, 4).rotateY(Math.PI / 4), [x, y + H + 0.1, z]), iron),
+    glow(lantern, x, y + H + 0.6, z),
+    tint(solid(roof, [x, y + H + 1.3, z]), iron),
+    tint(solid(new THREE.CylinderGeometry(0.06, 0.1, 0.25, 6), [x, y + H + 1.6, z]), iron),
+    light);
 }
 
 function mailbox() {
@@ -2359,19 +2583,13 @@ function mailbox() {
     solid(new THREE.BoxGeometry(0.33, 1, 0.1), [-0.4, 4.6, 0.66]));    // flag
 }
 
-function leafyTree() {
-  const canopy = new THREE.IcosahedronGeometry(5.6, 0);
-  canopy.scale(1, 1.15, 1);
-  return named('tree',
-    solid(new THREE.CylinderGeometry(0.5, 0.8, 7.5, 6), [0, 3.75, 0]),
-    solid(canopy, [0, 11.5, 0]));
-}
 
-function pineTree() {
+function pineTree(scale = 1, seed = 1) {
+  // a trunk and five stacked tiers of boughs, each a little turned
+  const tiers = [[4.8, 5.5, 5.2], [4.0, 5.0, 8.0], [3.2, 4.5, 10.6], [2.4, 4.0, 13.0], [1.5, 3.4, 15.2]];
   return named('pine',
-    solid(new THREE.CylinderGeometry(0.4, 0.6, 4, 6), [0, 2, 0]),
-    solid(new THREE.ConeGeometry(5, 10.5, 7), [0, 8.5, 0]),
-    solid(new THREE.ConeGeometry(3.6, 8, 7), [0, 13.5, 0], [0, 0.4, 0]));
+    solid(new THREE.CylinderGeometry(0.35 * scale, 0.55 * scale, 6 * scale, 8), [0, 3 * scale, 0]),
+    ...tiers.map(([r, h, y], i) => solid(new THREE.ConeGeometry(r * scale, h * scale, 12), [0, y * scale, 0], [0, (seed * 1.7 + i) * 0.45, 0])));
 }
 
 function bush() {
@@ -2379,8 +2597,32 @@ function bush() {
 }
 
 function yardAt(obj, x, z) {
-  obj.position.set(x, 0, z);
+  obj.position.set(x, groundHeight(x, z), z);
   return obj;
+}
+
+/* Pines scattered over the hills, welded into a few draws. None between
+   the front yard cam and the house, none on the walk or the road. */
+function forest() {
+  const parts = [];
+  let seed = 77;
+  const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  for (let k = 0; k < 400 && parts.length < 90; k++) {
+    const a = rand() * Math.PI * 2, r = 60 + rand() * 170, x = Math.cos(a) * r, z = Math.sin(a) * r;
+    const cam = new THREE.Vector2(x + 78, z - 50), look = new THREE.Vector2(73, -49).normalize();
+    if (cam.length() < 95 && cam.clone().normalize().dot(look) > 0.85) continue;     // would hide the house from the front cam
+    if (walkDistance(x, z) < 12 || Math.abs(x - (ROAD[0] + ROAD[1]) / 2) < 20) continue;
+    const s = 0.7 + rand() * 0.7, y = groundHeight(x, z);
+    const t = new THREE.Mesh(new THREE.CylinderGeometry(0.35 * s, 0.55 * s, 6 * s, 6), MAT.bark);
+    t.position.set(x, y + 3 * s, z);
+    parts.push(t);
+    [[4.8, 5.5, 5.2], [3.6, 5.0, 8.4], [2.4, 4.4, 11.4], [1.4, 3.4, 14]].forEach(([tr, th, ty]) => {
+      const c = new THREE.Mesh(new THREE.ConeGeometry(tr * s, th * s, 8), MAT.pine);
+      c.position.set(x, y + ty * s, z);
+      parts.push(c);
+    });
+  }
+  return named('forest', ...parts);
 }
 
 /* ─── lights ────────────────────────────────── */
@@ -2392,7 +2634,7 @@ function yardAt(obj, x, z) {
    them to taste. Lamps are warm, the streetlight a little orange, the
    moon a little blue. */
 
-const STREET = [-38.5, -9];    // on the grass by the curb, beside the mailbox
+const STREET = [-104.5, -14];  // on the grass by the curb, beside the mailbox
 const LAMP_COLOR = 0xffdcae;                    // warm bulbs (0xffffff for plain white)                       // where the streetlight stands, in feet
 
 function shadowed(light, size = 512, far = 40) {
@@ -2403,6 +2645,7 @@ function shadowed(light, size = 512, far = 40) {
   light.shadow.bias = -0.0005;
   light.shadow.normalBias = 0.04;
   light.shadow.radius = 3;                      // soft edges, like real lamp shadows
+  light.shadow.intensity = 0.62;                // not pitch black: light bouncing round a room fills shadows in
   light.shadow.autoUpdate = false;              // drawn once, then on demand
   light.shadow.needsUpdate = true;
   return light;
@@ -2481,7 +2724,23 @@ function pullBulb(lamps, name, cx, cy, intensity) {
   return g;
 }
 
-/* A round flush ceiling light (the pantry, over the toilet): a milk glass
+/* The pantry's round ceiling light: a milk glass dome with a real bulb
+   in it, so the whole little room fills with light and shadows. */
+function pantryLight(lamps) {
+  const x = X(1155), z = Z(724);
+  const dome = new THREE.SphereGeometry(0.42, 16, 4, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2);
+  dome.scale(1, 0.45, 1);
+  const light = bulb(lamps, 'lamp-pantry-light', 1155, 724, CEIL - FLOOR - 0.35, 30);
+  light.shadow.mapSize.set(256, 256);
+  light.shadow.camera.far = 14;
+  light.distance = 14;
+  return named('lamp-pantry',
+    tint(solid(new THREE.CylinderGeometry(0.5, 0.5, 0.05, 16), [x, CEIL - 0.025, z]), MAT.trim),
+    solid(dome, [x, CEIL - 0.05, z], null, MAT.glow),
+    light);
+}
+
+/* A round flush ceiling light (over the toilet): a milk glass
    dome on a white base. Its light is a narrow spot straight down with
    soft edges that fades out just past the floor, so it makes a pool of
    light without shining through walls (no texture slots left for a
@@ -2513,16 +2772,23 @@ function roomLamps(lamps) {
     endTable('end-table', 345, 400, 248, 294, 1.9),
     tableLamp(lamps, 'lamp-sofa', 372, 271, 1.9, 22),
     pullBulb(lamps, 'lamp-laundry', 710, 898, 26),
-    ceilingLight('lamp-pantry', 1155, 724, 200),
+    pantryLight(lamps),
     ceilingLight('lamp-toilet', 365, 905),          // over the toilet
     // bathroom: a light bar above the mirror
     named('lamp-bathroom',
       glow(new THREE.BoxGeometry(2, 0.18, 0.2), X(535), FLOOR + 6.75, wallZ - 0.12),
       bulb(lamps, 'lamp-bathroom-light', 535, 1068, 6.55, 24, -0.7)),
     // patio: a lantern on the back wall, beside the patio doors
-    named('lamp-patio',
-      solid(new THREE.BoxGeometry(0.5, 0.75, 0.35), [X(1060), FLOOR + 7, patioZ - 0.2], null, MAT.glow),
-      bulb(lamps, 'lamp-patio-light', 1060, 345, 6.8, 48, -0.75))
+    // (its light is a spot aimed out over the patio, so it can't shine back into the kitchen)
+    (() => {
+      const light = new THREE.SpotLight(LAMP_COLOR, 60, 30, 0.75, 0.6, 2);
+      light.name = 'lamp-patio-light';
+      light.position.set(X(1060), FLOOR + 6.8, patioZ - 0.75);
+      light.target.position.set(X(1060), 0, patioZ - 9.5);
+      return named('lamp-patio',
+        solid(new THREE.BoxGeometry(0.5, 0.75, 0.35), [X(1060), FLOOR + 7, patioZ - 0.2], null, MAT.glow),
+        light, light.target);
+    })()
   );
 }
 
@@ -2549,15 +2815,13 @@ function halo(size) {
 
 // The big streetlight by the front walk: pole, arm, head, and a spotlight down on the yard.
 function streetlight(lamps) {
-  // the arm reaches out over the road like a real one. The cone is wide and
-  // tipped a little back toward the house, so the yard, the front of the
-  // house and the edge of the roof still catch it.
+  // down by the road, its arm out over it, lighting the road (no shadows:
+  // the lamp post by the house has the shadow slot now)
   const H = 26, reach = -5;
-  const light = shadowed(new THREE.SpotLight(0xffd9a0, 2400, 0, 1.1, 0.7, 2), 1024, 110);
+  const light = new THREE.SpotLight(0xffd9a0, 2400, 70, 1.0, 0.7, 2);
   light.name = 'streetlight-light';
   light.position.set(reach, H - 0.6, 0);
-  light.target.position.set(4.5, 0, 5);
-  lamps.push(light);
+  light.target.position.set(reach - 1, 0, 0);
   const glare = halo(12);
   glare.position.set(reach, H - 0.7, 0);
   return named('streetlight',
@@ -2578,6 +2842,7 @@ function sky() {
   cam.right = cam.top = 60;
   cam.near = 1;
   moon.shadow.normalBias = 0.08;
+  moon.shadow.intensity = 0.85;
   // faint fill, standing in for light bouncing around: dark corners
   // read as dim, not pitch black
   const fill = new THREE.HemisphereLight(0x8ea0c8, 0x2a2016, 0.08);
@@ -2712,7 +2977,6 @@ function paint(scene) {
   set('toilet', MAT.toilet);
   set('vanity', MAT.furniture);                          // oak cabinet (its top and sink keep their own)
   set('closet-shelves', MAT.trim);
-  parts('tree', MAT.bark, MAT.leaves);
   parts('pine', MAT.bark, MAT.pine);
   set('bush', MAT.leaves);
   set('streetlight', MAT.pole);
@@ -2810,7 +3074,7 @@ export function buildWorld({ weld = true } = {}) {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x000000);
   // the far yard fades into the night
-  scene.fog = new THREE.Fog(0x000000, 90, 240);
+  scene.fog = new THREE.Fog(0x000000, 110, 340);
   const lamps = [];
 
   scene.add(
@@ -2828,9 +3092,16 @@ export function buildWorld({ weld = true } = {}) {
     foyer(),
     frontPorch(lamps),
     road(),
-    yardAt(mailbox(), -38, -4.5),
-    yardAt(leafyTree(), -28, -22),
-    yardAt(pineTree(), 30, 30),
+    pathLamps(),
+    lampPost(lamps, -33.5, -6.5),
+    yardAt(mailbox(), -103.5, 6),
+    yardAt(pineTree(1.05, 1), -39, -13),
+    yardAt(pineTree(0.9, 2), -36, -24),
+    yardAt(pineTree(1.1, 3), 30, 30),
+    yardAt(pineTree(0.95, 4), 36, -30),
+    yardAt(pineTree(1.0, 5), 12, 33),
+    yardAt(pineTree(0.85, 6), 40, 8),
+    forest(),
     yardAt(bush(), -28, -12),
     yardAt(bush(), -28, 12),
     yardAt(streetlight(lamps), STREET[0], STREET[1]),
@@ -2838,6 +3109,9 @@ export function buildWorld({ weld = true } = {}) {
     sky()
   );
   paint(scene);
+  // ghoul1 never goes outside, so check-route.mjs needn't test him against the yard
+  for (const n of ['ground', 'forest', 'road', 'path', 'path-lamps', 'lamp-post', 'mailbox', 'streetlight', 'pine', 'bush', 'heavens'])
+    scene.traverse(o => { if (o.name === n) o.traverse(m => { m.userData.passable = true; }); });
   if (weld) bake(scene);
   scene.userData.lamps = lamps;
   return scene;

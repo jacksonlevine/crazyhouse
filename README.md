@@ -165,19 +165,25 @@ files.
 
 **The fire** (`woodStove()` and `fire()`): the stove is hollow, with
 firebrick inside, and two crossed logs (and one behind) sit on a grate
-over glowing coals, breathing slowly brighter and dimmer. A small light
+over glowing coals, breathing slowly brighter and dimmer. The logs and
+coals are done the Half-Life way: few sides, chunky pixel textures with
+the glowing cracks painted in (`fireTextures()`). A small light
 inside lights the firebrick and a soft spotlight warms the room.
 
 **Texture slots.** Every shadowed light costs a texture slot in every
 material, and graphics cards only have 16. The 13 shadowed lights use
 most of them, so **don't add another shadowed light** without taking one
 away (the shower glass is the first thing to break). The newer lights
-(the fire, the pillar sconce, the round ceiling lights in the pantry
-and over the toilet) have no shadows and are aimed or limited so they
-can't shine through walls.
+(the fire, the pillar sconce, the desk lamp, the standing lamp, the
+pendant over the kitchen sink, the fridge's light, the ceiling light
+over the toilet, the patio lantern, the streetlight) have no shadows and
+are aimed or limited so they can't shine through walls. The pantry and
+the lamp post by the house do have shadows.
 
 **Shadows are live, nothing is painted on.** Every shadow is a real
-shadow map from its light. To keep it cheap, a lamp only redraws its
+shadow map from its light, and lets a little light through
+(`shadow.intensity`), the way light bouncing round a real room fills
+shadows in, so they never go pitch black. To keep it cheap, a lamp only redraws its
 shadows when something near it moves (ghoul1 walking past, a door). The
 laundry's swaying bulb carries its light with it, so its shadows sway
 too; it redraws every other frame at half size and only reaches 16 feet
@@ -200,15 +206,22 @@ walls, a red front door, and so on. They're all in `MAT` near the top of
   kitchen island, a lamp on an end table by the sectional, both
   nightstand lamps in the master, a bare bulb on a cord with a pull
   string in the laundry that sways very gently, its light and shadows
-  swaying with it (`pullBulb()`), round ceiling lights in the pantry and
-  over the toilet (`ceilingLight()`), a light bar over the bathroom mirror, a lantern on the patio,
+  swaying with it (`pullBulb()`), round ceiling lights in the pantry
+  (`pantryLight()`) and over the toilet (`ceilingLight()`), a pendant
+  over the kitchen sink, a light in the fridge that comes on when a door
+  opens (`fridgeLight()`), a gooseneck lamp on the computer desk, a
+  floor lamp by the bookshelf, a light bar over the bathroom mirror, a lantern on the patio,
   a lantern on the front porch.
-- **Outside:** a road past the front of the house with curbs and a
-  dashed yellow line (`road()`), a tall streetlight at the curb whose
-  arm reaches out over the road, its wide cone tipped back enough to
-  catch the yard and the front of the house (`streetlight()`), soft moonlight, and a
-  faint fill that keeps dark corners dim rather than pitch black
-  (`sky()`).
+- **Outside:** the land rolls (`groundHeight()`): flat round the
+  house, falling gently toward the road so the front walk winds up to
+  the house, low hills on the horizon, pines near the house and a
+  forest over the hills. The walk (`WALK`) is lined with little 90s
+  pagoda path lights (`pathLamps()`; their pools of light are drawn,
+  not lit, so they cost almost nothing), an old-style lamp post by the
+  pine at the top lights the front of the house (`lampPost()`), and the
+  road is way down at the bottom with its streetlight and the mailbox.
+  Soft moonlight, and a faint fill that keeps dark corners dim rather
+  than pitch black (`sky()`).
 - **Sky:** stars, a moon high up where the moonlight comes from
   (`MOON_DIR`; bright enough to give the grass a soft glow) and a few
   slowly drifting clouds (`heavens()`). Kept cheap: about a dozen draws, no lights or shadows.
