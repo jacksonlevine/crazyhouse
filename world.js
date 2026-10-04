@@ -727,7 +727,10 @@ function roomLamps(lamps) {
     pendant(lamps, 'lamp-dining', 695, 522, 36),
     pendant(lamps, 'lamp-kitchen', 978, 517, 36),
     tableLamp(lamps, 'lamp-master', 900, 1045, 2.1, 16),
-    tableLamp(lamps, 'lamp-master-off', 1100, 1045, 2.1, 0),             // the other one's off
+    tableLamp(lamps, 'lamp-master-2', 1100, 1045, 2.1, 14),               // the other nightstand
+    // an end table at the north end of the sectional, so the couch gets light
+    named('end-table', block(345, 400, 248, 294, 1.9)),
+    tableLamp(lamps, 'lamp-sofa', 372, 271, 1.9, 22),
     bareBulb(lamps, 'lamp-laundry', 710, 915, 26),
     // bathroom: a light bar above the mirror
     named('lamp-bathroom',
@@ -926,8 +929,7 @@ function paint(scene) {
   set('bush', MAT.leaves);
   set('streetlight', MAT.pole);
   parts('mailbox', MAT.furniture, MAT.dark, MAT.frontDoor);  // wood post, black box, red flag
-  for (const n of ['lamp-foyer', 'lamp-living', 'lamp-master']) set(n, MAT.dark);   // shades keep glowing
-  parts('lamp-master-off', MAT.dark, MAT.soft);
+  for (const n of ['lamp-foyer', 'lamp-living', 'lamp-master', 'lamp-master-2', 'lamp-sofa']) set(n, MAT.dark);   // shades keep glowing
   scene.traverse(o => {
     if (!o.isMesh) return;
     const glows = o.material.isMeshBasicMaterial;

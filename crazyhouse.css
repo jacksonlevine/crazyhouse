@@ -41,10 +41,10 @@ canvas {
 }
 
 /* game layers stay hidden until START */
-.hud, .arrow, .emp, canvas { opacity: 0; pointer-events: none; }
+.hud, .arrow, .emp, .nv, canvas { opacity: 0; pointer-events: none; }
 .playing canvas, .playing .hud { opacity: 1; }
 .playing .arrow { opacity: 0.55; pointer-events: auto; }
-.playing .emp { opacity: 1; pointer-events: auto; }
+.playing .emp, .playing .nv { opacity: 1; pointer-events: auto; }
 
 /* ─── title screen ──────────────────────────── */
 .title {
@@ -240,3 +240,50 @@ canvas {
 @keyframes emp-flash {
   0% { opacity: 0.55; } 20% { opacity: 0; } 40% { opacity: 0.3; } 60% { opacity: 0; } 80% { opacity: 0.12; } 100% { opacity: 0; }
 }
+
+/* ─── night vision ──────────────────────────── */
+/* The camera's own infrared light does the real work (main.js); this
+   just makes it look like an IR feed: green, grainy, vignetted. */
+.night canvas {
+  filter: grayscale(1) sepia(1) hue-rotate(52deg) saturate(2.4) contrast(1.15) brightness(1.05);
+}
+.nv-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  display: none;
+  background:
+    radial-gradient(ellipse at center, transparent 45%, rgba(0, 0, 0, 0.75) 100%),
+    var(--grain) repeat;
+  background-size: 100% 100%, 160px 160px;
+  mix-blend-mode: normal;
+  animation: grain 0.4s steps(4) infinite;
+}
+.night .nv-layer { display: block; }
+@keyframes grain {
+  0%   { background-position: 0 0, 0 0; }
+  25%  { background-position: 0 0, -37px 21px; }
+  50%  { background-position: 0 0, 53px -44px; }
+  75%  { background-position: 0 0, -18px -63px; }
+  100% { background-position: 0 0, 0 0; }
+}
+
+.nv {
+  position: absolute;
+  right: calc(3.2cqw + max(13px, 1.9cqw) * 4.3);
+  bottom: 2.2cqw;
+  font: inherit;
+  font-size: max(13px, 1.9cqw);
+  letter-spacing: 0.18em;
+  text-indent: 0.18em;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  padding: 0.5cqw 1.2cqw 0.6cqw;
+  cursor: pointer;
+  touch-action: manipulation;
+  text-shadow: 0 0 0.4cqw #000;
+}
+.nv:hover { background: rgba(255, 255, 255, 0.15); }
+.nv.on { background: #fff; color: #000; text-shadow: none; }
+.night .hud-rec::after { content: ' · ir'; }

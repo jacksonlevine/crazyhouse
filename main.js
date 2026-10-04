@@ -4,10 +4,10 @@
    ============================================================ */
 
 import * as THREE from './vendor/three-r186/three.module.js';
-import { buildWorld, ROOMS, roomAt } from './world.js?v=9';
-import { createEmp } from './emp.js?v=4';
-import { CAMS, camAt } from './cams.js?v=5';
-import { createGhoul } from './ghoul.js?v=10';
+import { buildWorld, ROOMS, roomAt } from './world.js?v=10';
+import { createEmp } from './emp.js?v=5';
+import { CAMS, camAt } from './cams.js?v=6';
+import { createGhoul } from './ghoul.js?v=11';
 import { createGhostPass, GHOST_LAYER } from './ghost.js?v=2';
 
 
@@ -23,7 +23,7 @@ const dots    = $('dots');
 
 let state = 'title';       // 'title' | 'playing'
 let camIndex = 0;
-let renderer, scene, camera, ghoul, ghost, lamps, emp, skyTick;
+let renderer, scene, camera, ghoul, ghost, lamps, emp, skyTick, ir;
 const EXPOSURE = 0.75;         // overall brightness of the picture
 const buffer = new THREE.Vector2();
 let shiftStart = 0;
@@ -83,6 +83,10 @@ function setup() {
   ghoul.object.traverse(o => o.layers.set(GHOST_LAYER));
   scene.add(ghoul.object);
   emp = createEmp(scene);
+  // the camera's infrared light: off until night vision is on (always in
+  // the scene so switching it on doesn't make the browser stall)
+  ir = new THREE.PointLight(0xffffff, 0, 0, 2);
+  scene.add(ir);
   // ...so the lights have to reach that layer too, and their shadows include him
   scene.traverse(o => {
     if (!o.isLight) return;
@@ -108,7 +112,7 @@ function setup() {
 
   // add ?debug to the URL to poke at the scene from the browser console
   if (new URLSearchParams(location.search).has('debug')) {
-    window.crazyhouse = { THREE, scene, camera, renderer, CAMS, showCam, ghoul, lamps, fireEmp };
+    window.crazyhouse = { THREE, scene, camera, renderer, CAMS, showCam, ghoul, lamps, fireEmp, toggleNight };
   }
 
   renderer.setAnimationLoop(now => {
@@ -118,6 +122,7 @@ function setup() {
     lastFrame = now;
     ghoul.update(dt, camAt);
     emp.update(dt);
+    ir.position.copy(camera.position);
     skyTick(dt);
     tickEmp();
     refreshShadows();
@@ -195,6 +200,41 @@ function tickEmp() {
   empBt.classList.toggle('charging', left > 0);
 }
 
+/* ─── night vision ──────────────────────────── */
+
+/* Like a real security cam: switching to night vision turns on an
+   infrared light at the camera that floods the room it's watching,
+   and the picture gets brighter, green and grainy. */
+const IR_STRENGTH = 900;
+const NV_GAIN = 3;            // how much brighter the picture gets
+let night = false;
+const nvBt = $('nv');
+
+function toggleNight() {
+  if (state !== 'playing') return;
+  night = !night;
+  frame.classList.toggle('night', night);
+  nvBt.classList.toggle('on', night);
+  nvBt.setAttribute('aria-pressed', night);
+  ir.intensity = night ? IR_STRENGTH : 0;
+  renderer.toneMappingExposure = EXPOSURE * (night ? NV_GAIN : 1);
+}
+
+// a tile of random grain for the night-vision layer, made once
+(function makeGrain() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 160;
+  const x = c.getContext('2d');
+  const img = x.createImageData(160, 160);
+  for (let i = 0; i < img.data.length; i += 4) {
+    const v = Math.random() * 255;
+    img.data[i] = img.data[i + 1] = img.data[i + 2] = v;
+    img.data[i + 3] = 34;
+  }
+  x.putImageData(img, 0, 0);
+  frame.style.setProperty('--grain', `url(${c.toDataURL()})`);
+})();
+
 /* ─── start / quit ──────────────────────────── */
 
 function start() {
@@ -218,6 +258,7 @@ startBt.addEventListener('click', start);
 $('prev').addEventListener('click', prev);
 $('next').addEventListener('click', next);
 empBt.addEventListener('click', () => { fireEmp(); empBt.blur(); });
+nvBt.addEventListener('click', () => { toggleNight(); nvBt.blur(); });
 
 addEventListener('keydown', e => {
   if (e.repeat) return;
@@ -230,6 +271,8 @@ addEventListener('keydown', e => {
     e.preventDefault(); next();
   } else if (e.key === 'ArrowLeft' || e.code === 'Numpad4' || e.key === 'a' || e.key === 'A') {
     e.preventDefault(); prev();
+  } else if (e.key === 'n' || e.key === 'N') {
+    e.preventDefault(); toggleNight();
   } else if (e.key === 'e' || e.key === 'E') {
     e.preventDefault(); fireEmp();
   } else if (e.key === 'Escape') {

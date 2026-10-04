@@ -22,7 +22,7 @@ Then open http://localhost:8000. Edit a file, refresh the page.
 
 Left / right arrow keys, the number pad (4 / 6), A / D, or the on-screen
 arrows switch cams. **E** or the `emp` button fires the EMP at the room
-you're watching. Enter or Space starts. Esc goes back to the title.
+you're watching. **N** or the `nv` button toggles night vision. Enter or Space starts. Esc goes back to the title.
 
 ## The EMP
 
@@ -95,7 +95,8 @@ walls, a red front door, and so on. They're all in `MAT` near the top of
 
 - **Lamps** (`roomLamps()` in `world.js`): a floor lamp in the foyer, a
   table lamp in the living room, pendants over the dining table and the
-  kitchen island, a nightstand lamp in the master, a bare bulb in the
+  kitchen island, a lamp on an end table by the sectional, both
+  nightstand lamps in the master, a bare bulb in the
   laundry, a light bar over the bathroom mirror, a lantern on the patio.
 - **Outside:** a tall streetlight by the front walk that reaches up
   onto the roof (`streetlight()`), moonlight, and a faint fill that
@@ -108,6 +109,14 @@ walls, a red front door, and so on. They're all in `MAT` near the top of
   greys are `MAT` near the top of `world.js`.
 - **Cost:** shadows are worked out once at the start, then only redrawn
   for lamps near ghoul1, so it stays fast.
+
+## Night vision
+
+Like a real security cam: switching it on turns on an infrared light at
+the camera that floods the room it's watching, and the picture goes
+bright, green and grainy with a dark vignette. Lamps blow out and
+ghoul1's pupils glow. Strength is `IR_STRENGTH` and `NV_GAIN` in
+`main.js`; the green look is `.night` in `crazyhouse.css`.
 
 ## ghoul1
 
