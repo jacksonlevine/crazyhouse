@@ -121,6 +121,9 @@ scene.getObjectByName('fridge-door').userData.setOpen(1)
   shelves, door bins, food and a little light inside
 - `washer-lid` and `dryer-door`: an old school top-loading washer and a
   dryer with a square front door, both hollow with a drum inside
+- `cabinet-door-island-1` and so on: every kitchen cabinet door (under
+  the sink, the island, beside the fridge). The cabinets are hollow,
+  with shelves, pipes under the sink, pots, plates and cans
 - every swinging house door too (`door-front`, `door-master`,
   `door-pantry`), where 1 is 90°
 
@@ -128,21 +131,28 @@ Moving one tells `main.js` where (`scene.userData.moved`), so lamps
 nearby redraw their shadows. Careful: wide open, the fridge door
 reaches into ghoul1's path round the island, so he'd walk through it.
 
-**The 90s.** The house is set in the 90s: an oatmeal and sage rug
-with one corner kicked up, in front of the sectional (cushions, rolled arms, throw pillows), a
-fire in the wood stove, teal and plum counter stools with chrome posts,
-an oak vanity with an oval sink and brass knobs, rain glass in a brass
-shower frame, a mauve bathmat, and flannel and denim hanging in the
-walk-in closet. The rug pattern, the flames and the shower droplets are
-tiny pictures drawn by the game when it starts, not image files.
+**The 90s.** The house is set in the 90s: a 4' x 6' oatmeal and sage
+rug with fringed ends in front of the sectional (cushions, rolled arms,
+throw pillows), a fire in the wood stove, a gaudy little Tiffany glass
+sconce on the pillar by the sofa, teal and plum counter stools with
+chrome posts, almond countertops, an oak vanity with an oval sink and
+brass knobs, frosted glass in a brass shower frame, a mauve bathmat,
+flannel and denim in the walk-in closet, a full bookshelf facing the bed
+and a dusty rose chaise under the bedroom window. The rug pattern and
+the shower glass's grain are tiny pictures drawn by the game when it
+starts, not image files.
 
-**The fire** (`fire()`) swaps between a few flame pictures at random and
-flickers a low orange light with them. The light is a spotlight with no
-shadows, aimed out into the room, because every shadowed light costs a
-texture slot in every material and graphics cards only have 16. The 13
-shadowed lights already use most of them, so **don't add another
-shadowed light** without taking one away (the shower glass is the first
-thing to break).
+**The fire** (`woodStove()` and `fire()`): the stove is hollow, with
+firebrick inside, and two crossed logs (and one behind) sit on a grate
+over glowing coals, breathing slowly brighter and dimmer. A small light
+inside lights the firebrick and a soft spotlight warms the room.
+
+**Texture slots.** Every shadowed light costs a texture slot in every
+material, and graphics cards only have 16. The 13 shadowed lights use
+most of them, so **don't add another shadowed light** without taking one
+away (the shower glass is the first thing to break). The newer lights
+(the fire, the pillar sconce) have no shadows and are aimed or limited
+so they can't shine through walls.
 
 **The front porch** has a lantern by the door and a rocking chair
 (`frontPorch()`). The kitchen has a real double sink with a faucet
@@ -161,10 +171,13 @@ walls, a red front door, and so on. They're all in `MAT` near the top of
   nightstand lamps in the master, a bare bulb in the
   laundry, a light bar over the bathroom mirror, a lantern on the patio,
   a lantern on the front porch.
-- **Outside:** a tall streetlight by the front walk that reaches up
-  onto the roof (`streetlight()`), moonlight, and a faint fill that
-  keeps dark corners dim rather than pitch black (`sky()`).
-- **Sky:** stars, a moon and a few slowly drifting clouds
+- **Outside:** a road past the front of the house with curbs and a
+  dashed yellow line (`road()`), a tall streetlight at the curb that
+  reaches up onto the roof (`streetlight()`), soft moonlight, and a
+  faint fill that keeps dark corners dim rather than pitch black
+  (`sky()`).
+- **Sky:** stars, a big low moon rising behind the house (where the
+  front yard cam can see it, `MOON_AT`) and a few slowly drifting clouds
   (`heavens()`). Kept cheap: about a dozen draws, no lights or shadows.
 - **Brightness:** each lamp's number is its strength (in
   `floorLamp(lamps, 'lamp-foyer', 140, 775, 28)` it's the 28). The whole

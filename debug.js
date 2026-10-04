@@ -10,8 +10,8 @@
    - Copy cam: copies where you are as a line for cams.js.
    - ghoul1: show him / freeze him.
    - Open it all: opens (or shuts) every door that can move for
-     anomalies: both closets, the fridge, the freezer, the washer lid
-     and the dryer door.
+     anomalies: both closets, the fridge, the freezer, the washer lid,
+     the dryer door and the kitchen cabinets.
    ============================================================ */
 
 export function createDebug(api) {
@@ -156,6 +156,7 @@ export function createDebug(api) {
   /* ─── open it all ─── */
   const openers = ['door-closet', 'door-coat-closet', 'fridge-door', 'freezer-door', 'washer-lid', 'dryer-door']
     .map(n => scene.getObjectByName(n)).filter(Boolean);
+  scene.traverse(o => { if (o.name.startsWith('cabinet-door')) openers.push(o); });
   let openGoal = null;             // only set while the button is moving things
   btn('open').addEventListener('click', () => {
     openGoal = openers.some(o => o.userData.open > 0.5) ? 0 : 1;

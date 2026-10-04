@@ -4,7 +4,7 @@
    ============================================================ */
 
 import * as THREE from './vendor/three-r186/three.module.js';
-import { buildWorld, ROOMS, roomAt, GLASS_LAYER, captureReflections } from './world.js?v=14';
+import { buildWorld, ROOMS, roomAt, GLASS_LAYER, captureReflections } from './world.js?v=15';
 import { createEmp } from './emp.js?v=6';
 import { CAMS, camAt } from './cams.js?v=8';
 import { createGhoul } from './ghoul.js?v=12';
@@ -132,7 +132,7 @@ function setup() {
       isNight: () => night, camIndex: () => camIndex
     };
     window.crazyhouse = api;
-    import('./debug.js?v=3').then(m => m.createDebug(api));
+    import('./debug.js?v=4').then(m => m.createDebug(api));
   }
 
   renderer.setAnimationLoop(now => {

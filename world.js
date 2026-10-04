@@ -117,8 +117,8 @@ export const MAT = {
     m.metalness = 0.35;
     return m;
   })(),
-  basin:     (() => {                     // the inside of the kitchen sink
-    const m = surface(0xa7adb1, 0.3, THREE.BackSide);
+  basin:     (() => {                     // the kitchen sink bowls, seen from above and from under the sink
+    const m = surface(0xa7adb1, 0.3, THREE.DoubleSide);
     m.metalness = 0.35;
     return m;
   })(),
@@ -132,6 +132,13 @@ export const MAT = {
   mauve:     surface(0x9c6b7a, 1),       // fuzzy bathmat
   brass:     metal(0xb8963e, 0.35),      // shower frame, knobs
   chrome:    metal(0xd0d4d8, 0.25),      // taps, stools, closet rods
+  rose:      surface(0x8f5f63, 0.9),     // dusty rose chaise
+  counter:   surface(0xcfc6b2, 0.6),     // almond laminate countertops
+  cabShelf:  surface(0xcdb98f, 0.8),     // pale wood inside the cabinets
+  cabInside: surface(0xd8c7a3, 0.8, THREE.BackSide),   // cabinet insides (drawn inside out)
+  firebrick: surface(0x4a2a1e, 1, THREE.BackSide),     // inside the wood stove
+  log:       new THREE.MeshStandardMaterial({ color: 0x1c140f, roughness: 1, emissive: 0xff5a14, emissiveIntensity: 0.12 }),
+  ember:     new THREE.MeshStandardMaterial({ color: 0x1a0d08, roughness: 1, emissive: 0xff4a10, emissiveIntensity: 1.1 }),
   porcelainBoth: surface(0xf2f1ec, 0.25, THREE.DoubleSide),   // the toilet bowl, seen inside and out
   bowl:      surface(0xf2f1ec, 0.25, THREE.BackSide),         // the bathroom sink, drawn inside out
   glow:      new THREE.MeshBasicMaterial({ color: 0xfff0d4 })   // lampshades, bulbs: they ARE the light
@@ -578,6 +585,7 @@ function accordionDoor() {
     panels.push(panel);
   }
   const g = named('door-closet', ...panels);
+  g.userData.movesParts = true;
   return openable(g, t => {
     const th = SHUT + (OPEN - SHUT) * t, du = p * Math.cos(th), dz = p * Math.sin(th);
     panels.forEach((panel, i) => {
@@ -605,7 +613,9 @@ function coatClosetDoors() {
   const front = panel(208, 284, 562.4, 565, 278);         // room-side track, slides over
   const track = tint(block(141, 284, 559, 565, DOOR_H, DOOR_H - 0.08), MAT.track);
   const slide = X(141) - X(208);
-  return openable(named('door-coat-closet', back, front, track), t => { front.position.x = slide * t; });
+  const g = named('door-coat-closet', back, front, track);
+  g.userData.movesParts = true;
+  return openable(g, t => { front.position.x = slide * t; });
 }
 
 /* Sliding glass doors onto the patio: two big glass panels in metal
@@ -749,15 +759,10 @@ function livingRoom() {
       at(chair(), 746, 492, -90), at(chair(), 746, 555, -90),
       at(chair(), 695, 443, 0), at(chair(), 695, 602, 180)
     ),
-    named('wood-stove',
-      block(588, 706, 722, 806, 0.12),           // hearth
-      block(603, 690, 740, 796, 2.3, 0.35),      // firebox
-      block(606, 614, 790, 796, 0.35), block(679, 687, 790, 796, 0.35),
-      block(606, 614, 740, 746, 0.35), block(679, 687, 740, 746, 0.35),
-      round(646, 780, 0.28, 8, 2.3, 6)           // stovepipe to the ceiling
-    ),
+    woodStove(),
     fire(),
-    named('post', block(511, 522, 568, 579, 8))
+    named('post', block(511, 522, 568, 579, 8)),
+    pillarLamp()
   );
 }
 
@@ -793,53 +798,36 @@ function sofa() {
     pillow(382, 508, MAT.mustard, [0.25, 0.5, 0]));
 }
 
-/* A casual 90s rug in front of the sofa: oatmeal with a sage border
-   and a thin rust stripe, a little woven speckle, and one corner kicked
-   up so you see its backing. The pattern is one small picture drawn
-   when the game starts, no image files. */
+/* A casual 90s rug in front of the sofa, 4' x 6': oatmeal with a sage
+   border, a thin rust stripe and a little woven speckle, and fringe on
+   the two short ends. The pattern is one small picture drawn when the
+   game starts, no image files. */
 function rug() {
-  const x0 = X(418), z0 = Z(330), W = X(555) - x0, D = Z(468) - z0;
-  const t = 0.015, c = 0.9;                                  // thickness, size of the turned-up corner
-  const top = surface(0xffffff, 1), backing = surface(0x8a8172, 1);
+  const x0 = X(440), z0 = Z(305), W = X(550) - x0, D = Z(470) - z0;
+  const top = surface(0xffffff, 1);
   if (typeof document !== 'undefined') top.map = rugPattern();
-  // a flat sheet from (u, v) points across and down the rug, facing up or down,
-  // with the pattern mapped by where each point sits on the whole rug
-  const sheet = (pts, y, up, mat, ox = 0, oz = 0) => {
-    const geo = new THREE.ShapeGeometry(new THREE.Shape(pts.map(([u, v]) => new THREE.Vector2(u, up ? -v : v))));
-    const pos = geo.attributes.position, uv = geo.attributes.uv;
-    for (let i = 0; i < pos.count; i++) {
-      const u = pos.getX(i), v = up ? -pos.getY(i) : pos.getY(i);
-      pos.setXYZ(i, u - ox, y, v - oz);
-      uv.setXY(i, u / W, 1 - v / D);
-    }
-    geo.computeVertexNormals();
-    return solid(geo, [0, 0, 0], null, mat);
-  };
-  // the rug, less the corner, then the corner on a hinge along the fold
-  const rest = sheet([[0, 0], [W - c, 0], [W, c], [W, D], [0, D]], t, true, top);
-  rest.position.set(x0, FLOOR, z0);
-  const tri = [[W - c, 0], [W, 0], [W, c]];
-  const corner = new THREE.Group();
-  corner.add(sheet(tri, t, true, top, W - c, 0), sheet(tri, 0.002, false, backing, W - c, 0));
-  corner.position.set(x0 + W - c, FLOOR, z0);
-  corner.quaternion.setFromAxisAngle(new THREE.Vector3(1, 0, 1).normalize(), 0.8);
-  return named('rug', rest, corner);
+  const r = solid(new THREE.PlaneGeometry(W, D).rotateX(-Math.PI / 2), [x0 + W / 2, FLOOR + 0.015, z0 + D / 2], null, top);
+  const fringe = [];
+  for (let x = x0 + 0.08; x < x0 + W - 0.05; x += 0.09) {
+    fringe.push([[x, FLOOR + 0.01, z0], [x, FLOOR + 0.01, z0 - 0.28]], [[x, FLOOR + 0.01, z0 + D], [x, FLOOR + 0.01, z0 + D + 0.28]]);
+  }
+  return named('rug', tint(r, top), lines(fringe, new THREE.LineBasicMaterial({ color: 0xb8a984 })));
 }
 
 function rugPattern() {
   const c = document.createElement('canvas');
-  c.width = c.height = 256;
+  c.width = 160; c.height = 240;                         // the rug's shape, 4 by 6
   const g = c.getContext('2d');
-  const band = (inset, fill) => { g.fillStyle = fill; g.fillRect(inset, inset, 256 - inset * 2, 256 - inset * 2); };
+  const band = (inset, fill) => { g.fillStyle = fill; g.fillRect(inset, inset, 160 - inset * 2, 240 - inset * 2); };
   band(0, '#5f6f55');                      // sage border
-  band(22, '#c9b791');                     // oatmeal
-  band(30, '#8a4034');                     // rust stripe
-  band(33, '#c9b791');
+  band(15, '#c9b791');                     // oatmeal
+  band(21, '#8a4034');                     // rust stripe
+  band(23, '#c9b791');
   let seed = 3;
   const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-  for (let i = 0; i < 2500; i++) {         // woven speckle
+  for (let i = 0; i < 2200; i++) {         // woven speckle
     g.fillStyle = rand() < 0.5 ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.07)';
-    g.fillRect(rand() * 256, rand() * 256, 2, 1);
+    g.fillRect(rand() * 160, rand() * 240, 2, 1);
   }
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
@@ -847,75 +835,126 @@ function rugPattern() {
   return tex;
 }
 
-/* A fire in the wood stove, seen through its glass door. The flames are
-   a few tiny pictures, drawn when the game starts and swapped at random,
-   and a low orange light flickers with them. The light is a spotlight
-   with no shadows, aimed out into the room: shadows would cost a texture
-   slot in every material, and the card only has 16 (the 13 shadowed
-   lights use most of them). Aimed away from the wall behind the stove,
-   it can't leak into the bathroom or laundry. FIRE is how bright. */
-const FIRE = 7;
+/* The wood stove: a hollow iron box on legs, firebrick inside, a
+   window in its door, on a brick hearth. */
+const STOVE = { x0: X(603), x1: X(690), zf: Z(740), zb: Z(796), y0: FLOOR + 0.35, y1: FLOOR + 2.3, s: 0.1,
+  win: [X(618), X(675), FLOOR + 0.75, FLOOR + 1.95] };
+function woodStove() {
+  const { x0, x1, zf, zb, y0, y1, s, win } = STOVE;
+  const cx = (x0 + x1) / 2, cz = (zf + zb) / 2, w = x1 - x0, h = y1 - y0;
+  const box = (bw, bh, bd, x, y, z) => solid(new THREE.BoxGeometry(bw, bh, bd), [x, y, z]);
+  const face = new THREE.Shape();
+  face.moveTo(x0, y0); face.lineTo(x1, y0); face.lineTo(x1, y1); face.lineTo(x0, y1);
+  const hole = new THREE.Path();
+  hole.moveTo(win[0], win[2]); hole.lineTo(win[1], win[2]); hole.lineTo(win[1], win[3]); hole.lineTo(win[0], win[3]);
+  face.holes.push(hole);
+  return named('wood-stove',
+    block(588, 706, 722, 806, 0.12),                                         // brick hearth (first: painted brick)
+    solid(new THREE.ExtrudeGeometry(face, { depth: s, bevelEnabled: false }).translate(0, 0, zf)),   // front, with the window
+    box(s, h, zb - zf - s, x0 + s / 2, y0 + h / 2, (zf + s + zb) / 2),
+    box(s, h, zb - zf - s, x1 - s / 2, y0 + h / 2, (zf + s + zb) / 2),
+    box(w - 2 * s, h, s, cx, y0 + h / 2, zb - s / 2),
+    box(w - 2 * s, s, zb - zf - 2 * s, cx, y0 + s / 2, (zf + s + zb - s) / 2),
+    box(w, s, zb - zf, cx, y1 + s / 2, cz),                                  // top
+    tint(box(w - 2 * s - 0.02, h - s - 0.02, zb - zf - 2 * s - 0.02, cx, y0 + s + (h - s) / 2, cz), MAT.firebrick),
+    block(606, 614, 790, 796, 0.35), block(679, 687, 790, 796, 0.35),         // legs
+    block(606, 614, 740, 746, 0.35), block(679, 687, 740, 746, 0.35),
+    round(646, 780, 0.28, 8, 2.4, 6));                                      // stovepipe to the ceiling
+}
+
+/* The fire: crossed logs on a bed of coals inside the stove, glowing
+   softly and breathing a little brighter and dimmer. A small light
+   inside lights the firebrick, and a soft orange spotlight with no
+   shadows, aimed out through the window, warms the room. (Shadows cost a
+   texture slot in every material and the card only has 16; the 13
+   shadowed lights use most of them. Aimed away from the wall behind the
+   stove, it can't leak into the bathroom.) FIRE is how bright. */
+const FIRE = 4;
 function fire() {
-  const x0 = X(618), x1 = X(675), y0 = FLOOR + 0.75, y1 = FLOOR + 1.95, z = Z(740), b = 0.12;
-  const frames = flameFrames(4);
-  const flames = new THREE.Mesh(new THREE.PlaneGeometry(x1 - x0 - 2 * b, y1 - y0 - 2 * b),
-    new THREE.MeshBasicMaterial({ color: 0xffffff, map: frames[0] || null }));
-  if (!frames.length) flames.material.color.set(0x8a3a10);
-  flames.position.set((x0 + x1) / 2, (y0 + y1) / 2, z - 0.03);
-  flames.rotation.y = Math.PI;                                                   // faces the room
-  const light = new THREE.SpotLight(0xff8c3a, FIRE, 18, 1.05, 0.7, 2);
-  light.name = 'fire-light';
-  light.position.set((x0 + x1) / 2, FLOOR + 1.3, z - 0.4);
-  light.target.position.set((x0 + x1) / 2, FLOOR + 0.5, z - 8);
+  const { x0, x1, zf, zb, y0, s, win: [wx0, wx1, wy0, wy1] } = STOVE;
+  const cx = (x0 + x1) / 2, cz = (zf + zb) / 2, floor = y0 + s + 0.38, b = 0.12;    // on a grate, up where the window shows it
+  const log = (len, x, y, z, turn, r = 0.17) => {
+    const geo = new THREE.CylinderGeometry(r, r + 0.02, len, 8);
+    geo.rotateZ(Math.PI / 2);
+    return tint(solid(geo, [x, y, z], [0, turn, 0]), MAT.log);
+  };
+  const coal = (x, z, r) => {
+    const geo = new THREE.DodecahedronGeometry(r, 0);
+    geo.scale(1, 0.45, 1);
+    return tint(solid(geo, [x, floor + r * 0.3, z]), MAT.ember);
+  };
+  const glass = new THREE.Mesh(new THREE.PlaneGeometry(wx1 - wx0 - 2 * b, wy1 - wy0 - 2 * b),
+    new THREE.MeshBasicMaterial({ color: 0x1a1410, transparent: true, opacity: 0.25, depthWrite: false }));
+  glass.position.set((wx0 + wx1) / 2, (wy0 + wy1) / 2, zf - 0.04);
+  glass.layers.set(GLASS_LAYER);
+  glass.userData.keep = glass.userData.noShadow = true;
+  const inside = new THREE.PointLight(0xff6a20, 0.9, 2.0, 2);              // lights the firebrick, nothing else
+  inside.position.set(cx, floor + 0.9, cz);
+  const room = new THREE.SpotLight(0xff8c3a, FIRE, 16, 1.05, 0.8, 2);
+  room.name = 'fire-light';
+  room.position.set(cx, FLOOR + 1.3, zf - 0.4);
+  room.target.position.set(cx, FLOOR + 0.5, zf - 8);
   const g = named('fire',
-    paneFrame((u, y, w) => [u, y, z - w], x0, x1, y0, y1, 0.04, { border: b, depth: 0.08, mat: MAT.dark }),
-    tint(solid(new THREE.BoxGeometry(0.08, 0.35, 0.1), [x1 - 0.2, (y0 + y1) / 2, z - 0.12]), MAT.dark),     // door handle
-    flames, light, light.target);
-  let t = 0, swap = 0, i = 0;
+    paneFrame((u, y, w) => [u, y, zf - w], wx0, wx1, wy0, wy1, 0.04, { border: b, depth: 0.08, mat: MAT.dark }),
+    tint(solid(new THREE.BoxGeometry(0.08, 0.35, 0.1), [wx1 - 0.2, (wy0 + wy1) / 2, zf - 0.12]), MAT.dark),   // door handle
+    glass,
+    // the grate: four iron bars on two feet
+    ...[-0.45, -0.15, 0.15, 0.45].map(z => tint(solid(new THREE.BoxGeometry(2.2, 0.05, 0.05), [cx, floor - 0.03, cz + z]), MAT.dark)),
+    ...[-0.9, 0.9].map(x => tint(solid(new THREE.BoxGeometry(0.06, 0.38, 1.0), [cx + x, floor - 0.22, cz]), MAT.dark)),
+    ...[[-0.8, -0.3, 0.16], [-0.3, 0.25, 0.2], [0.35, -0.2, 0.18], [0.85, 0.3, 0.15], [0.1, 0.45, 0.14], [-0.6, 0.4, 0.13], [0.6, -0.45, 0.14]]
+      .map(([x, z, r]) => coal(cx + x, cz + z, r)),
+    log(1.9, cx, floor + 0.22, cz, 0.45),                                   // two logs crossed,
+    log(1.9, cx, floor + 0.5, cz, -0.45),                                   // one on the other
+    log(1.4, cx, floor + 0.36, cz + 0.55, 0.05, 0.14),                      // and one at the back
+    inside, room, room.target);
+  let t = 0;
   g.userData.tick = dt => {
     t += dt;
-    const f = 1 + 0.14 * Math.sin(t * 7.3) + 0.09 * Math.sin(t * 13.1 + 1) + 0.06 * Math.sin(t * 23.7 + 2);
-    light.intensity = FIRE * f;
-    flames.material.color.setScalar(1.35 * f);
-    if (frames.length && t > swap) {
-      swap = t + 0.07 + Math.random() * 0.12;
-      i = (i + 1 + Math.floor(Math.random() * (frames.length - 1))) % frames.length;
-      flames.material.map = frames[i];
-    }
+    const f = 1 + 0.08 * Math.sin(t * 2.1) + 0.06 * Math.sin(t * 5.3 + 1) + 0.04 * Math.sin(t * 9.7 + 2);
+    room.intensity = FIRE * f;
+    inside.intensity = 0.9 * f;
+    MAT.ember.emissiveIntensity = 1.1 * f;
+    MAT.log.emissiveIntensity = 0.12 * f;
   };
   return g;
 }
 
-// tiny pictures of logs, embers and flames (skipped outside a browser)
-function flameFrames(n) {
-  if (typeof document === 'undefined') return [];
-  let seed = 11;
-  const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-  return Array.from({ length: n }, () => {
-    const c = document.createElement('canvas');
-    c.width = 64; c.height = 40;
-    const g = c.getContext('2d');
-    g.fillStyle = '#120806'; g.fillRect(0, 0, 64, 40);
-    const ember = g.createLinearGradient(0, 40, 0, 26);
-    ember.addColorStop(0, '#ff5a14'); ember.addColorStop(1, 'rgba(120,20,0,0)');
-    g.fillStyle = ember; g.fillRect(0, 26, 64, 14);
-    g.fillStyle = '#2a160c';                                         // two logs
-    g.save(); g.translate(32, 34); g.rotate(-0.12); g.fillRect(-26, -3, 52, 6); g.rotate(0.3); g.fillRect(-22, -9, 44, 5); g.restore();
-    g.globalCompositeOperation = 'lighter';
-    for (let k = 0; k < 6; k++) {
-      const x = 8 + rand() * 48, w = 4 + rand() * 6, h = 10 + rand() * 20, sway = (rand() - 0.5) * 8;
-      const grad = g.createLinearGradient(0, 34, 0, 34 - h);
-      grad.addColorStop(0, 'rgba(255,220,120,0.95)'); grad.addColorStop(0.4, 'rgba(255,140,30,0.8)'); grad.addColorStop(1, 'rgba(200,40,0,0)');
-      g.fillStyle = grad;
-      g.beginPath(); g.moveTo(x - w, 34);
-      g.quadraticCurveTo(x - w * 0.6, 34 - h * 0.5, x + sway, 34 - h);
-      g.quadraticCurveTo(x + w * 0.6, 34 - h * 0.5, x + w, 34);
-      g.closePath(); g.fill();
-    }
-    const tex = new THREE.CanvasTexture(c);
-    tex.colorSpace = THREE.SRGBColorSpace;
-    return tex;
-  });
+/* A little old-timey sconce on the pillar by the sofa: a brass backplate
+   with curls, and a flared cup of Tiffany glass pointing up like a
+   gaudy torch, with a flame-shaped bulb in it. Its light has no shadows
+   (no texture slots left) and only reaches across the sofa. */
+function pillarLamp() {
+  const x = X(516.5), z = Z(568), y = FLOOR + 5.1;
+  const brass = (geo, p, rot) => tint(solid(geo, p, rot), MAT.brass);
+  const curl = (dx) => {
+    const c = new THREE.TorusGeometry(0.07, 0.014, 4, 12, Math.PI * 1.6);
+    c.rotateY(Math.PI / 2);
+    return brass(c, [x + dx, y - 0.12, z - 0.24]);
+  };
+  // the cup: 8 panes of coloured glass, each its own colour
+  const cup = new THREE.CylinderGeometry(0.24, 0.06, 0.32, 8, 1, true).toNonIndexed();
+  const colours = [0xd9a03a, 0x4f8a3c, 0xa8323a, 0x2f4f9a].map(c => new THREE.Color(c));
+  const col = [];
+  for (let i = 0; i < cup.attributes.position.count; i++) col.push(...colours[Math.floor(i / 6) % 4].toArray());
+  cup.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  const glassMat = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide, transparent: true, opacity: 0.88 });
+  const bulb = new THREE.SphereGeometry(0.05, 10, 8);
+  bulb.scale(1, 2.2, 1);
+  // its light: a wide soft spot down onto the sofa (a plain bulb this close
+  // to the pillar would just blow the pillar out)
+  const light = new THREE.SpotLight(LAMP_COLOR, 14, 14, 1.2, 0.9, 2);
+  light.name = 'lamp-pillar-light';
+  light.position.set(x, y + 0.3, z - 0.5);
+  light.target.position.set(X(440), FLOOR + 1.2, Z(440));
+  return named('lamp-pillar',
+    brass(new THREE.BoxGeometry(0.2, 0.45, 0.04), [x, y, z - 0.02]),                  // backplate
+    brass(new THREE.BoxGeometry(0.03, 0.03, 0.36), [x, y - 0.02, z - 0.2]),           // arm
+    curl(-0.05), curl(0.05),
+    brass(new THREE.ConeGeometry(0.035, 0.14, 8).rotateX(Math.PI), [x, y - 0.19, z - 0.4]),   // drop finial
+    brass(new THREE.CylinderGeometry(0.07, 0.05, 0.1, 8), [x, y + 0.03, z - 0.4]),    // collar
+    solid(cup, [x, y + 0.24, z - 0.4], null, glassMat),
+    glow(bulb, x, y + 0.24, z - 0.4),
+    light, light.target);
 }
 
 /* A 90s counter stool: chrome base, post and foot ring, a coloured
@@ -935,17 +974,115 @@ function stool(seatMat) {
 
 function kitchen() {
   return named('kitchen',
-    named('island', block(868, 1087, 470, 565, 3)),
+    cabinets('island', { along: 'x', a0: 868, a1: 1087, back: Z(470), front: Z(565), splits: [941, 1014],
+      stuff: islandStuff }, tint(block(866, 1089, 468, 567, 3, 2.85), MAT.counter)),
     cooktop(),
     named('stools', at(stool(MAT.teal), 902, 452), at(stool(MAT.plum), 947, 452), at(stool(MAT.teal), 993, 452), at(stool(MAT.plum), 1047, 452)),
-    // the east counter has a hole cut in it for the sink
-    named('counter-east', slab([[1183, 364], [1237, 364], [1237, 660], [1183, 660]],
-      [[[1189, 475], [1225, 475], [1225, 547], [1189, 547]]], FLOOR, FLOOR + 3)),
+    // the east counter's top has a hole cut in it for the sink
+    cabinets('counter-east', { along: 'z', a0: 364, a1: 660, back: X(1237), front: X(1183), splits: [438, 585],
+      open: [1], stuff: sinkStuff },
+      tint(slab([[1181, 364], [1237, 364], [1237, 660], [1181, 660]],
+        [[[1189, 475], [1225, 475], [1225, 547], [1189, 547]]], FLOOR + 2.85, FLOOR + 3), MAT.counter)),
     sink(),
-    named('counter-south', block(807, 980, 660, 715, 3)),
+    cabinets('counter-south', { along: 'x', a0: 807, a1: 980, back: Z(715), front: Z(660), splits: [865, 922],
+      stuff: counterStuff }, tint(block(807, 980, 658, 715, 3, 2.85), MAT.counter)),
     fridge(),
     named('pantry-shelves', shelving(1190, 1237, 669, 780), shelving(1072, 1187, 748, 780))
   );
+}
+
+/* Base cabinets along a run: a hollow box with a pale inside, a shelf
+   in each section (not where `open` says, like under the sink), and
+   doors that swing, one per section or a pair if it's wide. Each door is
+   named 'cabinet-door-<run>-<n>' and has setOpen(t) like the others.
+   The run goes along x or z between blueprint a0..a1, from the back
+   (feet) to the front (feet), split into sections at `splits` (px).
+   stuff(box, sections) adds whatever's kept inside. */
+function cabinets(name, { along, a0, a1, back, front, splits = [], open = [], stuff }, ...extra) {
+  const A = along === 'x' ? X : Z, A0 = A(a0), L = A(a1) - A0;
+  const n = Math.sign(front - back), D = Math.abs(front - back);
+  const s = 0.06, H = 2.85, toe = 0.35;
+  // a box in run space: u along the run, d from the back toward the front, y up from the floor
+  const box = (u0, u1, d0, d1, y0, y1) => {
+    const p = [A0 + u0, A0 + u1], q = [back + n * d0, back + n * d1].sort((a, b) => a - b);
+    const [xs, zs] = along === 'x' ? [p, q] : [q, p];
+    return solid(new THREE.BoxGeometry(xs[1] - xs[0], y1 - y0, zs[1] - zs[0]),
+      [(xs[0] + xs[1]) / 2, FLOOR + (y0 + y1) / 2, (zs[0] + zs[1]) / 2]);
+  };
+  const cuts = [0, ...splits.map(px => A(px) - A0), L];
+  const sections = cuts.slice(1).map((u, i) => [cuts[i], u]);
+  const parts = [
+    box(0, s, 0, D, 0, H), box(L - s, L, 0, D, 0, H),                       // ends
+    box(s, L - s, 0, s, toe, H),                                            // back
+    box(s, L - s, 0, D - 0.25, 0, toe),                                     // toe kick
+    box(s, L - s, D - s, D, H - 0.2, H),                                    // rail under the counter
+    tint(box(s, L - s, s, D, toe, toe + s), MAT.cabShelf),                  // floor
+    tint(box(s + 0.01, L - s - 0.01, s + 0.01, D - 0.01, toe + s + 0.01, H - 0.01), MAT.cabInside)
+  ];
+  for (const u of cuts.slice(1, -1)) parts.push(tint(box(u - s / 2, u + s / 2, s, D, toe + s, H - 0.2), MAT.cabShelf));
+  sections.forEach(([u0, u1], i) => {
+    if (!open.includes(i)) parts.push(tint(box(u0 + s / 2, u1 - s / 2, s, D - 0.1, 1.45, 1.5), MAT.cabShelf));
+  });
+  // doors
+  const axis = along === 'x' ? [1, 0] : [0, 1], out = along === 'x' ? [0, n] : [n, 0];
+  let k = 0;
+  const door = (hingeU, freeU) => {
+    const w = Math.abs(freeU - hingeU) - 0.02, dir = Math.sign(freeU - hingeU);
+    const t = [axis[0] * dir, axis[1] * dir];                              // hinge toward the free edge
+    const beta = Math.atan2(-t[1], t[0]);
+    const sgn = Math.round(out[0] * -t[1] + out[1] * t[0]) || 1;           // which local side faces out
+    const y0 = toe + 0.03, y1 = H - 0.22, h = y1 - y0;
+    const g = named(`cabinet-door-${name}-${++k}`,
+      solid(new THREE.BoxGeometry(w, h, 0.06), [w / 2, FLOOR + y0 + h / 2, sgn * 0.03]),
+      solid(new THREE.BoxGeometry(w - 0.3, h - 0.3, 0.025), [w / 2, FLOOR + y0 + h / 2, sgn * 0.072]),   // raised panel
+      tint(solid(new THREE.SphereGeometry(0.045, 8, 6), [w - 0.12, FLOOR + y1 - 0.25, sgn * 0.12]), MAT.brass));
+    const hx = A0 + hingeU, hd = back + n * D;
+    if (along === 'x') g.position.set(hx, 0, hd); else g.position.set(hd, 0, hx);
+    return openable(g, v => { g.rotation.y = beta - sgn * v * 1.75; });
+  };
+  for (const [u0, u1] of sections) {
+    if (u1 - u0 > 2.2) { const m = (u0 + u1) / 2; parts.push(door(u0 + 0.01, m), door(u1 - 0.01, m)); }
+    else parts.push(door(u0 + 0.01, u1 - 0.01));
+  }
+  if (stuff) parts.push(...stuff(box, sections, { s, toe, D }));
+  return named(name, ...parts, ...extra);
+}
+
+// under the sink: the drain pipes, a bucket and some cleaning bottles
+function sinkStuff(box, [, [u0, u1]], { toe, s }) {
+  const floor = toe + s;
+  return [
+    // a drain down from each bowl, joined, and back into the wall
+    tint(box(4.67, 4.77, 1.05, 1.15, 1.6, 2.25), MAT.soft), tint(box(5.97, 6.07, 1.05, 1.15, 1.6, 2.25), MAT.soft),
+    tint(box(4.67, 6.07, 1.05, 1.15, 1.55, 1.65), MAT.soft), tint(box(5.3, 5.4, 0.06, 1.05, 1.55, 1.65), MAT.soft),
+    tint(box(u0 + 0.4, u0 + 1.1, 0.9, 1.6, floor, floor + 0.85), MAT.flannel),   // bucket
+    tint(box(u1 - 0.9, u1 - 0.7, 1.2, 1.4, floor, floor + 0.65), MAT.teal),      // bottles
+    tint(box(u1 - 0.6, u1 - 0.4, 1.0, 1.2, floor, floor + 0.55), MAT.cream)
+  ];
+}
+
+// in the island: pots on the floor and bowls on the shelves
+function islandStuff(box, sections, { toe, s }) {
+  const floor = toe + s, out = [];
+  sections.forEach(([u0, u1], i) => {
+    if (i === 1) return;                                       // under the cooktop: gas pipes, nothing kept
+    out.push(tint(box(u0 + 0.3, u0 + 1.2, 0.6, 1.5, floor, floor + 0.6), MAT.steel),
+             tint(box(u0 + 1.4, u0 + 2.2, 0.8, 1.6, floor, floor + 0.45), MAT.dark),
+             tint(box(u0 + 0.4, u0 + 1.1, 0.8, 1.5, 1.5, 1.8), MAT.cream),
+             tint(box(u0 + 1.4, u0 + 2.0, 0.9, 1.5, 1.5, 1.7), MAT.mustard));
+  });
+  return out;
+}
+
+// next to the fridge: stacks of plates, glasses and cans
+function counterStuff(box, sections, { toe, s }) {
+  const floor = toe + s, out = [];
+  sections.forEach(([u0, u1]) => {
+    out.push(tint(box(u0 + 0.3, u0 + 1.1, 0.3, 1.1, 1.5, 1.85), MAT.soft),      // plates
+             tint(box(u0 + 1.3, u0 + 1.8, 0.4, 0.9, 1.5, 1.95), MAT.cabinet),   // glasses
+             tint(box(u0 + 0.3, u0 + 1.6, 0.4, 1.2, floor, floor + 0.5), MAT.denim));   // pans
+  });
+  return out;
 }
 
 /* A gas cooktop set into the island: black top, four burners under
@@ -1072,8 +1209,12 @@ function shelving(x0, x1, y0, y1, h = 6.5, boards = 5) {
    above it looks like an open basin. A steel rim hides the cut edge. */
 function sink() {
   const top = FLOOR + 3, deep = 0.75;
+  // an open-topped steel box: from above it's the bowl, from under the sink its outside
   const bowl = (y0, y1) => {
-    return tint(block(1191, 1223, y0, y1, 3, 3 - deep), MAT.basin);
+    const b = block(1191, 1223, y0, y1, 3, 3 - deep);
+    const geo = b.children[0].geometry, idx = geo.index.array;
+    geo.setIndex([...idx.slice(0, 12), ...idx.slice(18)]);       // drop the top face
+    return tint(b, MAT.basin);
   };
   const fx = X(1231), fz = Z(511), spout = 0.78;
   return named('kitchen-sink',
@@ -1090,9 +1231,6 @@ function sink() {
 }
 
 function master() {
-  const tub = (cx, cy) => named('tub-chair',
-    round(cx, cy, 1.0, 1.4, 0, 12, 1.05),
-    block(cx + 10, cx + 25, cy - 24, cy + 24, 2.6));
   const bedTop = FLOOR + 1.92;
   return named('master',
     named('bed',
@@ -1103,10 +1241,79 @@ function master() {
       lines([[[X(930), bedTop, Z(985)], [X(1065), bedTop, Z(985)]]])   // turned-down sheet
     ),
     named('nightstands', block(875, 925, 1022, 1068, 2.1), block(1075, 1125, 1022, 1068, 2.1)),
-    named('dresser', block(940, 1055, 728, 762, 3)),
-    tub(1195, 862), tub(1195, 1002),
-    named('round-table', round(1208, 932, 0.7, 1.9, 0, 12))
+    bookshelf(),
+    chaise(),
+    named('round-table', round(1206, 846, 0.6, 1.9, 1.84, 14), round(1206, 846, 0.08, 1.84, 0.1, 8), round(1206, 846, 0.35, 0.1, 0, 12),
+      tint(block(1196, 1214, 838, 852, 1.98, 1.9), MAT.flannel))          // a book on it
   );
+}
+
+/* The bookshelf facing the bed: four shelves of books (a jumble of
+   heights and colours, some leaning, some stacked flat), a framed photo,
+   and a plant on top. Books are welded together by colour, so it's cheap. */
+function bookshelf() {
+  const parts = [
+    block(940, 943, 728, 762, 5.0), block(1052, 1055, 728, 762, 5.0),       // sides
+    block(938, 1057, 727, 764, 5.1, 5.0),                                   // top
+    block(943, 1052, 728, 730, 5.0),                                        // back
+    block(943, 1052, 730, 762, 0.3)                                         // base
+  ];
+  const covers = [MAT.flannel, MAT.hunter, MAT.denim, MAT.plum, MAT.mustard, MAT.cream, MAT.brick, MAT.dark, MAT.teal];
+  let seed = 21;
+  const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const zb = Z(731), x1 = X(1051);
+  for (const [i, base] of [0.3, 1.45, 2.6, 3.75].entries()) {
+    if (i) parts.push(block(943, 1052, 730, 762, base, base - 0.06));       // the shelf board
+    let x = X(944);
+    while (x < x1 - 0.1) {
+      const r = rand();
+      if (r < 0.06 && x < x1 - 0.6) {                                       // a short stack lying flat
+        for (let k = 0; k < 3; k++) {
+          parts.push(tint(solid(new THREE.BoxGeometry(0.5 - k * 0.04, 0.09, 0.62), [x + 0.26, FLOOR + base + 0.045 + k * 0.09, zb + 0.4]),
+            covers[Math.floor(rand() * covers.length)]));
+        }
+        x += 0.6;
+      } else if (r < 0.1 && i === 2 && x < x1 - 0.5) {                      // a framed photo
+        parts.push(tint(solid(new THREE.BoxGeometry(0.4, 0.5, 0.04), [x + 0.22, FLOOR + base + 0.25, zb + 0.6], [-0.15, 0, 0]), MAT.brass));
+        x += 0.5;
+      } else {
+        const w = 0.08 + rand() * 0.13, h = 0.6 + rand() * 0.35, d = 0.55 + rand() * 0.2;
+        const lean = x > x1 - 0.35 && rand() < 0.6 ? 0.3 : 0;               // the last one leans over
+        parts.push(tint(solid(new THREE.BoxGeometry(w, h, d), [x + w / 2 + lean * 0.3, FLOOR + base + h / 2 - lean * 0.05, zb + d / 2 + 0.05], [0, 0, -lean]),
+          covers[Math.floor(rand() * covers.length)]));
+        x += w + 0.005;
+        if (lean) break;
+      }
+    }
+  }
+  // a plant on top
+  parts.push(tint(round(1030, 745, 0.28, 5.55, 5.1, 10, 0.34), MAT.brick),
+    tint(solid(new THREE.IcosahedronGeometry(0.45, 0), [X(1030), FLOOR + 5.85, Z(745)]), MAT.leaves));
+  return named('bookshelf', ...parts);
+}
+
+/* A chaise lounge under the bedroom window: one long dusty rose seat
+   with a sloped, rolled back at the head end, turned legs, a bolster,
+   and a throw folded over the foot. */
+function chaise() {
+  const x0 = X(1172), x1 = X(1232), z0 = Z(870), L = Z(1030) - z0, W = x1 - x0;
+  const side = new THREE.Shape();                    // the side profile: v from the head, y up
+  side.moveTo(0, 0.35); side.lineTo(L, 0.35); side.lineTo(L, 1.45);
+  side.lineTo(1.0, 1.45);
+  side.quadraticCurveTo(0.35, 1.5, 0.2, 2.5);        // up the back
+  side.quadraticCurveTo(0.12, 2.8, -0.12, 2.62);     // rolled over the top
+  side.lineTo(0, 0.35);
+  const body = remap(new THREE.ExtrudeGeometry(side, { depth: W, bevelEnabled: true, bevelThickness: 0.05, bevelSize: 0.05, bevelSegments: 2, curveSegments: 10 }),
+    (v, y, d) => [x0 + d, FLOOR + y, z0 + v]);
+  const leg = (x, z) => tint(solid(new THREE.CylinderGeometry(0.07, 0.04, 0.35, 8), [x, FLOOR + 0.175, z]), MAT.furniture);
+  const bolster = new THREE.CylinderGeometry(0.24, 0.24, W - 0.2, 14);
+  bolster.rotateZ(Math.PI / 2);
+  return named('chaise',
+    tint(solid(body), MAT.rose),
+    leg(x0 + 0.15, z0 + 0.15), leg(x1 - 0.15, z0 + 0.15), leg(x0 + 0.15, z0 + L - 0.15), leg(x1 - 0.15, z0 + L - 0.15),
+    tint(solid(bolster, [(x0 + x1) / 2, FLOOR + 1.72, z0 + 0.75]), MAT.cream),
+    tint(solid(new THREE.BoxGeometry(W + 0.06, 0.08, 0.9), [(x0 + x1) / 2, FLOOR + 1.53, z0 + L - 0.65]), MAT.plum),   // the throw,
+    tint(solid(new THREE.BoxGeometry(0.06, 0.65, 0.9), [x0 - 0.06, FLOOR + 1.2, z0 + L - 0.65]), MAT.plum));            // hanging off the side
 }
 
 function bathroom() {
@@ -1186,19 +1393,18 @@ function vanity() {
     chrome(new THREE.CylinderGeometry(0.06, 0.08, 0.14, 8), X(cx) + 0.4, top + 0.12, fz));  // cold
 }
 
-/* 90s obscure "rain" glass on the shower, in brass frames. The droplets
-   are one tiny picture, drawn when the game starts, used to bump the
-   surface (so the bathroom light catches each drop) and to make the
-   drops a bit more opaque than the glass around them. */
+/* Frosted glass on the shower, in brass frames. A tiny picture of fine
+   grain, drawn when the game starts, gives the surface a light texture
+   that catches the bathroom light. */
 function showerGlass() {
   const y0 = FLOOR + 0.35, y1 = FLOOR + 6.6, h = y1 - y0, TILE = 1.2;
   const mat = new THREE.MeshStandardMaterial({
-    color: 0xd3e0e4, roughness: 0.5, metalness: 0, transparent: true, opacity: 0.85,
+    color: 0xdde5e8, roughness: 0.7, metalness: 0, transparent: true, opacity: 0.72,
     depthWrite: false, side: THREE.DoubleSide
   });
   if (typeof document !== 'undefined') {
-    mat.alphaMap = mat.bumpMap = droplets();
-    mat.bumpScale = 3;
+    mat.bumpMap = grain();
+    mat.bumpScale = 0.4;
   }
   const pane = (len, x, z, turn) => {
     const geo = new THREE.PlaneGeometry(len, h);
@@ -1224,24 +1430,20 @@ function showerGlass() {
     bar(0.05, 0.8, 0.26, X(442), FLOOR + 3.6, n));                                         // door handle
 }
 
-// a tile of water drops, as heights: grey glass, brighter bumps (wraps round the edges)
-function droplets() {
+// a tile of fine grain, as heights (it wraps)
+function grain() {
   const c = document.createElement('canvas');
   c.width = c.height = 128;
   const g = c.getContext('2d');
-  g.fillStyle = 'rgb(110,110,110)';
-  g.fillRect(0, 0, 128, 128);
+  const img = g.createImageData(128, 128);
   let seed = 5;
   const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-  for (let i = 0; i < 90; i++) {
-    const x = rand() * 128, y = rand() * 128, r = 1.5 + rand() * rand() * 7;
-    for (const dx of [-128, 0, 128]) for (const dy of [-128, 0, 128]) {
-      const grad = g.createRadialGradient(x + dx - r * 0.3, y + dy - r * 0.3, 0, x + dx, y + dy, r);
-      grad.addColorStop(0, 'rgb(255,255,255)'); grad.addColorStop(0.7, 'rgb(200,200,200)'); grad.addColorStop(1, 'rgba(110,110,110,0)');
-      g.fillStyle = grad;
-      g.beginPath(); g.arc(x + dx, y + dy, r, 0, Math.PI * 2); g.fill();
-    }
+  for (let i = 0; i < img.data.length; i += 4) {
+    const v = 120 + rand() * 16;
+    img.data[i] = img.data[i + 1] = img.data[i + 2] = v;
+    img.data[i + 3] = 255;
   }
+  g.putImageData(img, 0, 0);
   const tex = new THREE.CanvasTexture(c);
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
   return tex;
@@ -1505,9 +1707,24 @@ function ground() {
   return named('ground', plane);
 }
 
+/* The road out front, running past the house: asphalt, concrete curbs,
+   a dashed yellow line down the middle. ROAD is its x range, in feet. */
+const ROAD = [-64, -40];
+function road() {
+  const [x0, x1] = ROAD, cx = (x0 + x1) / 2, len = 300;
+  const parts = [
+    tint(solid(new THREE.BoxGeometry(x1 - x0, 0.06, len), [cx, 0.03, 0]), surface(0x2b2c2f, 1)),
+    tint(solid(new THREE.BoxGeometry(0.6, 0.4, len), [x0 - 0.3, 0.2, 0]), MAT.concrete),
+    tint(solid(new THREE.BoxGeometry(0.6, 0.4, len), [x1 + 0.3, 0.2, 0]), MAT.concrete)
+  ];
+  const yellow = surface(0xc9a227, 0.8);
+  for (let z = -145; z <= 145; z += 20) parts.push(tint(solid(new THREE.BoxGeometry(0.35, 0.01, 9), [cx, 0.065, z]), yellow));
+  return named('road', ...parts);
+}
+
 function path() {
   // paving slabs from the front steps out to the street
-  const z = Z(647.5), hw = 2, y = 0.02, x0 = X(-3 * K), x1 = -72;      // lined up with the front door
+  const z = Z(647.5), hw = 2, y = 0.02, x0 = X(-3 * K), x1 = ROAD[1] + 0.6;    // lined up with the front door, out to the curb
   const pairs = [[[x0, y, z - hw], [x1, y, z - hw]], [[x0, y, z + hw], [x1, y, z + hw]]];
   for (let x = x0; x >= x1; x -= 4) pairs.push([[x, y, z - hw], [x, y, z + hw]]);
   const walk = new THREE.Mesh(new THREE.BoxGeometry(x0 - x1, 0.04, hw * 2), MAT.concrete);
@@ -1555,7 +1772,7 @@ function yardAt(obj, x, z) {
    them to taste. Lamps are warm, the streetlight a little orange, the
    moon a little blue. */
 
-const STREET = [-50, 10];
+const STREET = [-38.5, -9];    // on the grass by the curb, beside the mailbox
 const LAMP_COLOR = 0xffdcae;                    // warm bulbs (0xffffff for plain white)                       // where the streetlight stands, in feet
 
 function shadowed(light, size = 512, far = 40) {
@@ -1670,10 +1887,10 @@ function halo(size) {
 function streetlight(lamps) {
   // tall enough to throw light up onto the roof, aimed at the house
   const H = 26, reach = 5;
-  const light = shadowed(new THREE.SpotLight(0xffd9a0, 3600, 0, 0.95, 0.8, 2), 1024, 110);
+  const light = shadowed(new THREE.SpotLight(0xffd9a0, 2200, 0, 0.95, 0.8, 2), 1024, 110);
   light.name = 'streetlight-light';
   light.position.set(reach, H - 0.6, 0);
-  light.target.position.set(32, 6, -10);
+  light.target.position.set(20.5, 6, 9);        // same spot on the house as ever
   lamps.push(light);
   const glare = halo(12);
   glare.position.set(reach, H - 0.7, 0);
@@ -1687,7 +1904,7 @@ function streetlight(lamps) {
 
 // faint moonlight and a whisper of fill, so the dark isn't completely flat
 function sky() {
-  const moon = shadowed(new THREE.DirectionalLight(0xb8c8ff, 0.35), 2048, 240);
+  const moon = shadowed(new THREE.DirectionalLight(0xb8c8ff, 0.5), 2048, 240);
   moon.name = 'moon';
   moon.position.set(-70, 90, 50);
   const cam = moon.shadow.camera;
@@ -1698,7 +1915,7 @@ function sky() {
   // faint fill, standing in for light bouncing around: dark corners
   // read as dim, not pitch black
   const fill = new THREE.HemisphereLight(0x8ea0c8, 0x2a2016, 0.08);
-  return named('sky', moon, moon.target, fill, heavens(moon.position));
+  return named('sky', moon, moon.target, fill, heavens());
 }
 
 /* Stars, a moon and a few drifting clouds. Kept cheap: the stars are
@@ -1707,7 +1924,11 @@ function sky() {
    it. */
 const SKY_R = 420;
 
-function heavens(moonDir) {
+/* Where the moon hangs: low over the house's back corner, rising, so the
+   front yard cam (the only one that sees much sky) catches it top right. */
+const MOON_AT = new THREE.Vector3(286, 12, -59);
+
+function heavens() {
   const g = new THREE.Group();
   g.name = 'heavens';
 
@@ -1726,11 +1947,11 @@ function heavens(moonDir) {
 
   if (typeof document === 'undefined') return g;      // no canvas outside a browser
 
-  // the moon: a pale disc where the moonlight comes from
-  const m = moonDir.clone().normalize().multiplyScalar(SKY_R * 0.95);
-  const moon = new THREE.Sprite(new THREE.SpriteMaterial({ map: softDisc(0.94), color: 0xe8ecff, fog: false }));
+  // the moon: a pale disc with a soft glow round it
+  const m = MOON_AT;
+  const moon = new THREE.Sprite(new THREE.SpriteMaterial({ map: softDisc(0.94), color: 0xf0f2ff, fog: false }));
   moon.position.copy(m);
-  moon.scale.set(22, 22, 1);
+  moon.scale.set(20, 20, 1);
   const glowSprite = new THREE.Sprite(new THREE.SpriteMaterial({
     map: softDisc(0), color: 0x6f7fa8, fog: false, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0.5
   }));
@@ -1827,7 +2048,6 @@ function paint(scene) {
   for (const n of ['toilet', 'shower']) set(n, MAT.porcelain);
   set('vanity', MAT.furniture);                          // oak cabinet (its top and sink keep their own)
   set('closet-shelves', MAT.trim);
-  set('tub-chair', MAT.mustard);
   parts('tree', MAT.bark, MAT.leaves);
   parts('pine', MAT.bark, MAT.pine);
   set('bush', MAT.leaves);
@@ -1854,10 +2074,11 @@ function paint(scene) {
    anomaly code can still grab the 'sofa' or the 'bed' and move or hide
    it. Left as they are: named groups inside (they get their own turn),
    lights, window glass and the mirror, the sky, and anything that moves
-   by itself (doors that open, the fire). */
+   its own parts (the folding and sliding closet doors, the fire). A
+   door that swings as a whole is welded inside itself, and still swings. */
 function bake(scene) {
   const groups = [];
-  scene.traverse(o => { if (o.name && !o.isMesh && !o.isLight && !o.userData.tick && !o.userData.setOpen) groups.push(o); });
+  scene.traverse(o => { if (o.name && !o.isMesh && !o.isLight && !o.userData.tick && !o.userData.movesParts) groups.push(o); });
   const inv = new THREE.Matrix4(), rel = new THREE.Matrix4();
   for (const g of groups) {
     g.updateMatrixWorld(true);
@@ -1875,7 +2096,7 @@ function bake(scene) {
           buckets.get(key).geos.push((d.geometry.index ? d.geometry.toNonIndexed() : d.geometry.clone()).applyMatrix4(rel));
           parts++;
         } else if (!d.name && (d.type === 'Group' || d.type === 'Object3D') && d.children.length &&
-                   !d.userData.tick && !d.userData.setOpen) {
+                   !d.userData.tick && !d.userData.movesParts) {
           walk(d);                                          // a plain holder: look inside, then drop it
         } else {
           keep.push(d);                                     // leave as it is, where it is
@@ -1904,7 +2125,7 @@ function bake(scene) {
 
 // join several geometries (already in place) into one
 function weld(geos, mesh) {
-  const names = mesh ? ['position', 'normal', 'uv'].filter(n => geos.every(g => g.attributes[n])) : ['position'];
+  const names = mesh ? ['position', 'normal', 'uv', 'color'].filter(n => geos.every(g => g.attributes[n])) : ['position'];
   const out = new THREE.BufferGeometry();
   for (const n of names) {
     const size = geos[0].attributes[n].itemSize;
@@ -1941,6 +2162,7 @@ export function buildWorld({ weld = true } = {}) {
     laundry(),
     foyer(),
     frontPorch(lamps),
+    road(),
     yardAt(mailbox(), -38, -4.5),
     yardAt(leafyTree(), -28, -22),
     yardAt(pineTree(), 30, 30),
