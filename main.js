@@ -4,7 +4,8 @@
    ============================================================ */
 
 import * as THREE from './vendor/three-r186/three.module.js';
-import { buildWorld, ROOMS, roomAt, GLASS_LAYER, captureReflections } from './world.js?v=20';
+import { buildWorld, ROOMS, roomAt, GLASS_LAYER, CULL_LAYER, captureReflections } from './world.js?v=21';
+import { buildPVS } from './pvs.js?v=1';
 import { createEmp } from './emp.js?v=6';
 import { CAMS, camAt } from './cams.js?v=8';
 import { createGhoul } from './ghoul.js?v=12';
@@ -25,41 +26,63 @@ let state = 'title';
 // filled in by debug.js when ?debug is on
 const debug = { free: false, fov: null, tick: null, onCam: null };       // 'title' | 'playing'
 let camIndex = 0;
-let renderer, scene, camera, ghoul, ghost, lamps, emp, ticks, ir;
+let renderer, scene, camera, ghoul, ghost, lamps, emp, ticks, ir, pvs;
 const EXPOSURE = 0.75;         // overall brightness of the picture
+const RESOLUTION = 1;          // pixel ratio (window.devicePixelRatio for full retina sharpness, at 4x the cost)
 const buffer = new THREE.Vector2();
 let shiftStart = 0;
 let lastFrame = 0;
 
-/* Shadows are drawn once, then only redrawn for lamps near ghoul1, so
-   his shadow moves with him without redrawing every lamp every frame.
-   A lamp he just walked away from gets one more redraw to clear him. */
+/* Shadows are drawn once, then only redrawn when something moves. Each
+   redraw of a lamp's shadows draws the house around it six times, so:
+   - lamps only redraw for ghoul1 while he's actually here (he casts no
+     shadow while gone, see ghoul.js),
+   - lamps near him take turns: at most SHADOW_TURNS of them redraw per
+     frame, and only if he's moved since that lamp last drew him,
+   - a lamp he just walked away from gets one more redraw to clear him,
+   - when something else moves (a door, an anomaly), lamps near it redraw. */
 const NEAR_LAMP = 18;          // feet
-let nearLamps = new Set();
-const lampAt = new THREE.Vector3();
+const SHADOW_TURNS = 1;        // lamps redrawn per frame for ghoul1 (they take turns)
+let nearLamps = new Set(), turn = 0, wasHere = false;
+const drawnAt = new Map(), lampAt = new THREE.Vector3();
 function refreshShadows() {
+  const here = ghoul.presence > 0.5, pos = ghoul.object.position;     // he casts a shadow while mostly here (ghoul.js)
   const now = new Set();
-  for (const l of lamps) {
-    if (l.isPointLight && l.getWorldPosition(lampAt).distanceTo(ghoul.object.position) < NEAR_LAMP) now.add(l);
+  if (here || wasHere) {
+    for (const l of lamps) if (l.isPointLight && l.getWorldPosition(lampAt).distanceTo(pos) < NEAR_LAMP) now.add(l);
   }
-  // something in the house moved (the closet door, an anomaly): lamps near it redraw too
+  const redraw = new Set();
+  if (here) {
+    const list = [...now].filter(l => !drawnAt.has(l) || drawnAt.get(l).distanceTo(pos) > 0.08);
+    for (let k = 0; k < Math.min(SHADOW_TURNS, list.length); k++) redraw.add(list[(turn + k) % list.length]);
+    turn++;
+  } else if (wasHere) {
+    now.forEach(l => redraw.add(l));                      // he just left: clear his shadow everywhere once
+  }
+  for (const l of nearLamps) if (!now.has(l)) redraw.add(l);
   const moved = scene.userData.moved;
   if (moved) {
     for (const at of moved) for (const l of lamps) {
-      if (l.isPointLight && l.getWorldPosition(lampAt).distanceTo(at) < NEAR_LAMP) now.add(l);
+      if (l.isPointLight && l.getWorldPosition(lampAt).distanceTo(at) < NEAR_LAMP) redraw.add(l);
     }
     scene.userData.moved = null;
   }
-  for (const l of now) l.shadow.needsUpdate = true;
-  for (const l of nearLamps) if (!now.has(l)) l.shadow.needsUpdate = true;
+  for (const l of redraw) { l.shadow.needsUpdate = true; drawnAt.set(l, pos.clone()); }
   nearLamps = now;
+  wasHere = here;
+}
+
+// what the current cam can see this frame (things like the swaying bulb ask it)
+const frustum = new THREE.Frustum(), viewProj = new THREE.Matrix4(), around = new THREE.Sphere();
+function updateView() {
+  camera.updateMatrixWorld();
+  viewProj.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+  frustum.setFromProjectionMatrix(viewProj);
+  scene.userData.frustum = frustum;
 }
 
 // is ghoul1 anywhere in front of the current cam? (skips the ghost pass if not)
-const frustum = new THREE.Frustum(), viewProj = new THREE.Matrix4(), around = new THREE.Sphere();
 function ghoulInView() {
-  viewProj.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
-  frustum.setFromProjectionMatrix(viewProj);
   around.center.copy(ghoul.object.position);
   around.center.y += 3;
   around.radius = 4;
@@ -76,7 +99,9 @@ function setup() {
     frame.classList.add('no-gl');
     return false;
   }
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  // 1 pixel per screen pixel, even on retina screens: a quarter of the work
+  // at 2x, and security cam footage is meant to look a little soft
+  renderer.setPixelRatio(RESOLUTION);
   // real lighting: shadows from every lamp, and film-like tone mapping
   // so bright lamp light rolls off softly instead of clipping
   renderer.shadowMap.enabled = true;
@@ -84,6 +109,7 @@ function setup() {
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = EXPOSURE;
   scene = buildWorld();
+  const worldRoots = [...scene.children];      // the house and yard (ghoul1 and the EMP come later)
   lamps = scene.userData.lamps;
   // things that move on their own every frame: the clouds, the fire
   ticks = [];
@@ -104,13 +130,16 @@ function setup() {
   scene.traverse(o => {
     if (!o.isLight) return;
     o.layers.enable(GHOST_LAYER);
-    if (o.shadow) o.shadow.camera.layers.enable(GHOST_LAYER);
+    if (o.shadow) { o.shadow.camera.layers.enable(GHOST_LAYER); o.shadow.camera.layers.enable(CULL_LAYER); }
   });
   ghost = createGhostPass(renderer);
   // each window's reflection: one small snapshot apiece, taken now, never again
   captureReflections(renderer, scene);
   camera = new THREE.PerspectiveCamera(52, 16 / 9, 0.1, 600);
   camera.layers.enable(GLASS_LAYER);        // the main view draws window glass too
+  // per-cam culling: what each cam can see, worked out once (pvs.js)
+  pvs = buildPVS(renderer, scene, worldRoots, CAMS, CULL_LAYER);
+  scene.userData.pvs = pvs;
 
   const fit = () => {
     const w = canvas.clientWidth, h = canvas.clientHeight;
@@ -130,7 +159,7 @@ function setup() {
   // modes) and to poke at the scene from the browser console
   if (new URLSearchParams(location.search).has('debug')) {
     const api = {
-      THREE, scene, camera, renderer, CAMS, showCam, ghoul, lamps, fireEmp, toggleNight, frame, debug,
+      THREE, scene, camera, renderer, CAMS, showCam, ghoul, lamps, fireEmp, toggleNight, frame, debug, pvs,
       isNight: () => night, camIndex: () => camIndex
     };
     window.crazyhouse = api;
@@ -146,6 +175,9 @@ function setup() {
     emp.update(dt);
     if (debug.tick) debug.tick(dt);
     ir.position.copy(camera.position);
+    // free cam or a changed FOV can see anything, so cull nothing then
+    pvs.apply(debug.free || debug.fov ? null : camIndex);
+    updateView();
     for (const tick of ticks) tick(dt);
     tickEmp();
     refreshShadows();

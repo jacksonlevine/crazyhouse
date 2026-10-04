@@ -196,6 +196,40 @@ only welds furniture parts together so there are fewer things to draw.)
 pantry has a proper door and open shelves of cans and boxes
 (`shelving()`).
 
+**Outside, it's 90s Oregon craftsman**: olive lap siding, a stone skirt
+below the floor line, cream corner boards and wide capped window
+casings (`craftsman()`, set per outside wall in `walls()` with
+`out(face, from, to)`), cedar shingles and knee braces on the gables
+(`gableShingles()`, `kneeBraces()`), and tapered porch columns on stone
+piers (`column()`). A gravel driveway comes up from the road to a
+parking pad by the house (`DRIVE`, `PAD`, `driveway()`), with
+flagstones across to the front walk.
+
+**Performance.** What keeps it fast, roughly in order of how much it
+matters:
+
+- **Shadow redraws are rationed.** Redrawing one lamp's shadows means
+  drawing the house round it six times. Lamps redraw only when ghoul1
+  is actually here (not while he's gone) and has moved, and they take
+  turns, one per frame (`SHADOW_TURNS` in `main.js`). Before this, five
+  lamps redrew every frame whenever he was near, visible or not, which
+  cost about five times the whole rest of the frame.
+- **Per-cam culling** (`pvs.js`). The cams never move, so at the start
+  each one works out what it can actually see (drawing the house once
+  in ID colours, every door open) and from then on skips the rest; most
+  cams draw a quarter to a third of the house. Hidden things still cast
+  shadows. If an anomaly moves something somewhere new, call
+  `scene.userData.pvs.always(thing)` so no cam ever culls it.
+- **Resolution.** `RESOLUTION` in `main.js` is 1 pixel per screen
+  pixel, even on retina screens (2x would be four times the pixels).
+- **Welding** (`bake()`): each named thing's parts become one mesh per
+  colour.
+- **Light budget.** Every light costs every pixel, and every shadowed
+  light also costs a texture slot (see Texture slots). New lights are
+  usually spots aimed where they're needed, with a short reach.
+- The ground, forest, walk and driveway don't cast shadows, and the
+  swaying laundry bulb only redraws its shadows while a cam can see it.
+
 **Colours.** Everything is a flat colour, no texture images, so it costs
 nothing extra to draw: green lawn, concrete walk, wood floors, warm
 walls, a red front door, and so on. They're all in `MAT` near the top of

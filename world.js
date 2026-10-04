@@ -139,7 +139,8 @@ export const MAT = {
   porcelainBoth: surface(0xf2f1ec, 0.65, THREE.DoubleSide),   // the toilet bowl, seen inside and out
   toilet:    surface(0xf2f1ec, 0.65),    // matte, so it doesn't shine
   bowl:      surface(0xf2f1ec, 0.25, THREE.BackSide),         // the bathroom sink, drawn inside out
-  glow:      new THREE.MeshBasicMaterial({ color: 0xfff0d4 })   // lampshades, bulbs: they ARE the light
+  glow:      new THREE.MeshBasicMaterial({ color: 0xfff0d4 }),  // lampshades, bulbs: they ARE the light
+  shadeGlow: new THREE.MeshBasicMaterial({ color: 0xf2dfbf, side: THREE.DoubleSide })   // open shades, lit inside and out
 };
 
 // dark ink edges: they vanish into the dark, and outline whatever's lit
@@ -243,6 +244,8 @@ function slab(outline, holes, y0, y1) {
 /* ─── glass ─────────────────────────────────── */
 
 export const GLASS_LAYER = 2;
+// things the current cam can't see go here (pvs.js): lights still see them
+export const CULL_LAYER = 4;
 
 /* A frame for windows and mirrors, inside an opening. place(u, y, w)
    maps along-the-opening, height and depth to the world (same as
@@ -350,6 +353,7 @@ function mirror(u0, u1, y0, y1, z) {
   const view = new THREE.PerspectiveCamera();
   view.layers.set(0);
   view.layers.enable(GLASS_LAYER);
+  view.layers.enable(CULL_LAYER);                 // the mirror shows what's behind the cam, culled or not
   const at = new THREE.Vector3(), eye = new THREE.Vector3(), normal = new THREE.Vector3();
   const look = new THREE.Vector3(), aim = new THREE.Vector3(), turn = new THREE.Matrix4();
   const plane = new THREE.Plane(), clip = new THREE.Vector4(), q = new THREE.Vector4();
@@ -408,7 +412,7 @@ const door = (from, to, head = DOOR_H) => [from, to, 0, head];
    a = [start, end] of face a along the wall, b = the same for face
    b. They only differ at a mitred corner; leave b out otherwise.
    openings: win() / door() ranges along the wall, in pixels. */
-function wall(dir, c0, c1, a, b, openings = [], { bottom = FLOOR, top = CEIL } = {}) {
+function wall(dir, c0, c1, a, b, openings = [], { bottom = FLOOR, top = CEIL, outside = null } = {}) {
   b = b || a;
   const M = dir === 'h' ? X : Z;          // along the wall
   const N = dir === 'h' ? Z : X;          // across it
@@ -458,27 +462,95 @@ function wall(dir, c0, c1, a, b, openings = [], { bottom = FLOOR, top = CEIL } =
     const panes = Math.max(1, Math.ceil((o.u1 - o.u0) / 3.2));
     g.add(glazing(place, o.u0, o.u1, bottom + o.sill, bottom + o.head, t / 2, { panes }));
   }
+  // an outside face: dress it craftsman style
+  if (outside) {
+    const s0 = M(outside.from), s1 = M(outside.to), out = outside.face === 'a' ? -1 : 1, base = outside.face === 'a' ? 0 : t;
+    const at = (u, y, d) => place(u, y, base + out * d);                       // d: feet out from the face
+    g.add(...craftsman(dir, at, s0, s1, ops.filter(o => o.u1 > s0 && o.u0 < s1), bottom));
+  }
   return g;
+}
+
+/* Craftsman dressing for one outside wall face (90s Oregon): olive lap
+   siding with its board lines, a stone skirt below the floor, cream
+   corner boards, a belly band and a frieze board under the eaves, and
+   wide flat casings round the windows and doors with a capped head.
+   at(u, y, d) places a point on the face, d feet out from it. */
+const SIDING = surface(0x58614a, 0.85), STONE = surface(0x6e6a62, 1);
+const SIDING_LINE = new THREE.LineBasicMaterial({ color: 0x353c2c });
+function craftsman(dir, at, s0, s1, ops, bottom) {
+  const top = EAVE, parts = [];
+  const sheet = (shape, d, mat) => {
+    const geo = remap(new THREE.ShapeGeometry(shape), (u, y) => at(u, y, d));
+    const m = new THREE.Mesh(geo, mat);
+    m.userData.keep = true;
+    return m;
+  };
+  // the siding sheet: the face with the windows cut out and the doors notched in
+  const face = new THREE.Shape();
+  face.moveTo(s0, bottom);
+  for (const o of ops) if (o.sill <= 0) {
+    face.lineTo(o.u0, bottom); face.lineTo(o.u0, bottom + o.head); face.lineTo(o.u1, bottom + o.head); face.lineTo(o.u1, bottom);
+  }
+  face.lineTo(s1, bottom); face.lineTo(s1, top); face.lineTo(s0, top);
+  for (const o of ops) if (o.sill > 0) {
+    const h = new THREE.Path();
+    h.moveTo(o.u0, bottom + o.sill); h.lineTo(o.u1, bottom + o.sill); h.lineTo(o.u1, bottom + o.head); h.lineTo(o.u0, bottom + o.head);
+    face.holes.push(h);
+  }
+  SIDING.side = STONE.side = THREE.DoubleSide;
+  parts.push(sheet(face, 0.025, SIDING));
+  const skirt = new THREE.Shape();
+  skirt.moveTo(s0, 0); skirt.lineTo(s1, 0); skirt.lineTo(s1, bottom); skirt.lineTo(s0, bottom);
+  parts.push(sheet(skirt, 0.06, STONE));
+  // lap siding lines, stopping at window and door trim
+  const boards = [];
+  for (let y = bottom + 0.75; y < top - 0.6; y += 0.42) {
+    let u = s0 + 0.36;
+    const stops = ops.filter(o => y > bottom + Math.max(0, o.sill) - 0.2 && y < bottom + o.head + 0.55)
+      .map(o => [o.u0 - 0.32, o.u1 + 0.32]).sort((p, q) => p[0] - q[0]);
+    for (const [a, b] of stops) { if (a > u) boards.push([at(u, y, 0.035), at(a, y, 0.035)]); u = Math.max(u, b); }
+    if (u < s1 - 0.36) boards.push([at(u, y, 0.035), at(s1 - 0.36, y, 0.035)]);
+  }
+  parts.push(lines(boards, SIDING_LINE));
+  // trim boards
+  const trim = (u0, u1, y0, y1, depth) => {
+    const c = at((u0 + u1) / 2, (y0 + y1) / 2, depth / 2), w = u1 - u0, h = y1 - y0;
+    return tint(solid(dir === 'h' ? new THREE.BoxGeometry(w, h, depth) : new THREE.BoxGeometry(depth, h, w), c), MAT.trim);
+  };
+  parts.push(trim(s0, s0 + 0.36, bottom, top, 0.09), trim(s1 - 0.36, s1, bottom, top, 0.09),   // corner boards
+    trim(s0, s1, bottom, bottom + 0.35, 0.1),                                                   // belly band
+    trim(s0, s1, top - 0.55, top, 0.08));                                                       // frieze under the eaves
+  for (const o of ops) {
+    const y0 = bottom + Math.max(0, o.sill), y1 = bottom + o.head;
+    parts.push(trim(o.u0 - 0.3, o.u0, y0 - (o.sill > 0 ? 0.1 : 0), y1, 0.08), trim(o.u1, o.u1 + 0.3, y0 - (o.sill > 0 ? 0.1 : 0), y1, 0.08),
+      trim(o.u0 - 0.38, o.u1 + 0.38, y1, y1 + 0.45, 0.09),                                    // head casing
+      trim(o.u0 - 0.48, o.u1 + 0.48, y1 + 0.45, y1 + 0.53, 0.15));                            // its cap
+    if (o.sill > 0) parts.push(trim(o.u0 - 0.38, o.u1 + 0.38, y0 - 0.14, y0, 0.2));           // sill
+  }
+  return parts;
 }
 
 function walls() {
   const W = [];
   const add = (...args) => W.push(wall(...args));
+  // an outside face, for the craftsman dressing: which face (a or b) and its extent, in px
+  const out = (face, from, to) => ({ outside: { face, from, to } });
 
   // exterior
-  add('h', 154, 173, [295, 738], [315, 719], [win(348, 494, 2), win(539, 685, 2)]);            // living room, north
-  add('v', 295, 315, [154, 558], [173, 566], [win(211, 429, 2)]);                               // living room, west
-  add('v', 719, 738, [173, 364], [154, 345], [win(186, 332, 2)]);                               // living room, east (porch)
-  add('h', 345, 364, [738, 1256], [719, 1237], [door(774, 1024), win(1099, 1172, 3)]);          // kitchen, north: patio doors
-  add('v', 1237, 1256, [364, 1068], [345, 1087], [win(416, 607, 3.6), win(826, 1016, 2.5)]);    // east: sink + master windows
+  add('h', 154, 173, [295, 738], [315, 719], [win(348, 494, 2), win(539, 685, 2)], out('a', 295, 738));   // living room, north
+  add('v', 295, 315, [154, 558], [173, 566], [win(211, 429, 2)], out('a', 154, 482));          // living room, west
+  add('v', 719, 738, [173, 364], [154, 345], [win(186, 332, 2)], out('b', 154, 345));          // living room, east (porch)
+  add('h', 345, 364, [738, 1256], [719, 1237], [door(774, 1024), win(1099, 1172, 3)], out('a', 738, 1256));   // kitchen, north: patio doors
+  add('v', 1237, 1256, [364, 1068], [345, 1087], [win(416, 607, 3.6), win(826, 1016, 2.5)], out('b', 345, 1087));   // east: sink + master windows
   add('h', 1068, 1087, [315, 1237], [295, 1256],
-    [win(839, 912, 3), win(1087, 1159, 3)]);                                                    // south: master windows (a mirror over the bath sink)
-  add('v', 295, 315, [645, 1087], [645, 1068], [win(928, 969, 4.2)]);                           // west of the hall, storage, bath
+    [win(839, 912, 3), win(1087, 1159, 3)], out('b', 295, 1256));                              // south: master windows (a mirror over the bath sink)
+  add('v', 295, 315, [645, 1087], [645, 1068], [win(928, 969, 4.2)], out('a', 814, 1087));     // west of the hall, storage, bath
 
   // foyer
-  add('h', 482, 501, [105, 295], [124, 295]);                                                   // north
-  add('v', 105, 124, [482, 814], [501, 794], [door(600, 695)]);                                // west: front door, centred
-  add('h', 794, 814, [124, 295], [105, 295], [win(163, 263, 3)]);                               // south
+  add('h', 482, 501, [105, 295], [124, 295], [], out('a', 105, 295));                          // north
+  add('v', 105, 124, [482, 814], [501, 794], [door(600, 695)], out('a', 482, 814));           // west: front door, centred
+  add('h', 794, 814, [124, 295], [105, 295], [win(163, 263, 3)], out('b', 105, 295));        // south
   add('h', 558, 566, [124, 295], [124, 315], [door(141, 284)]);                                 // coat closet front
 
   // storage, bathroom, laundry (the hall where the stairs were is left open)
@@ -767,7 +839,45 @@ function shell() {
   const foyer = gableRoof({ z0: Z(482), z1: Z(814), x0: X(0) - 1, x1: X(295), over: 1 });
   parts.push(named('foyer-roof', foyer.roof, gable(Z(482), Z(814), X(0), X(11), foyer.ridge)));
 
+  // craftsman gables: cedar shingles over each gable end, and knee braces under the rake
+  parts.push(named('gable-dressing',
+    ...gableShingles(Z(154), Z(1087), X(295), -1, main.ridge), ...gableShingles(Z(154), Z(1087), X(1256), 1, main.ridge),
+    ...gableShingles(Z(482), Z(814), X(0), -1, foyer.ridge),
+    ...kneeBraces(Z(154), Z(1087), X(295), -1, main.ridge, 1.5), ...kneeBraces(Z(154), Z(1087), X(1256), 1, main.ridge, 1.5),
+    ...kneeBraces(Z(482), Z(814), X(0), -1, foyer.ridge, 1)));
   return named('shell', ...parts);
+}
+
+// cedar shingles on a gable end facing out along x (side -1 west, +1 east): a sheet and its courses
+const SHINGLE = surface(0x7a5636, 0.95), SHINGLE_LINE = new THREE.LineBasicMaterial({ color: 0x3e2a18 });
+function gableShingles(z0, z1, x, side, ridge) {
+  const zc = (z0 + z1) / 2, half = (z1 - z0) / 2, d = x + side * 0.03;
+  const tri = new THREE.Shape([new THREE.Vector2(z0, EAVE), new THREE.Vector2(z1, EAVE), new THREE.Vector2(zc, ridge)]);
+  SHINGLE.side = THREE.DoubleSide;
+  const sheet = new THREE.Mesh(remap(new THREE.ShapeGeometry(tri), (u, y) => [d, y, u]), SHINGLE);
+  sheet.userData.keep = true;
+  const courses = [];
+  for (let y = EAVE + 0.45; y < ridge - 0.3; y += 0.45) {
+    const w = half * (ridge - y) / (ridge - EAVE);
+    courses.push([[d + side * 0.01, y, zc - w], [d + side * 0.01, y, zc + w]]);
+    for (let z = zc - w + (Math.round(y * 2.2) % 2) * 0.35; z < zc + w; z += 0.7) {            // staggered joints
+      courses.push([[d + side * 0.01, y, z], [d + side * 0.01, Math.min(y + 0.45, ridge), z]]);
+    }
+  }
+  return [sheet, lines(courses, SHINGLE_LINE)];
+}
+
+// triangular craftsman knee braces under a gable's overhanging rake
+function kneeBraces(z0, z1, x, side, ridge, over) {
+  const zc = (z0 + z1) / 2, half = (z1 - z0) / 2, out = [];
+  for (const f of [-0.62, 0, 0.62]) {
+    const z = zc + f * half, roofY = ridge - Math.abs(z - zc) * 0.5 - 0.42;            // just under the roof there
+    const tri = new THREE.Shape([new THREE.Vector2(0, 0), new THREE.Vector2(over * 0.85, 0), new THREE.Vector2(0, -over * 0.85)]);
+    const geo = remap(new THREE.ExtrudeGeometry(tri, { depth: 0.22, bevelEnabled: false }),
+      (u, v, d) => [x + side * u, roofY + v, z + d - 0.11]);
+    out.push(tint(solid(geo), MAT.trim));
+  }
+  return out;
 }
 
 /* Gable roof with its ridge running along x, between z0 and z1,
@@ -1356,7 +1466,8 @@ function sinkLight() {
   light.target.position.set(x - 1.15, FLOOR + 3, z);
   return named('lamp-sink',
     lines([[[x, CEIL, z], [x, y + 0.2, z]]]),
-    tint(solid(shade, [x, y, z]), MAT.glow),
+    tint(solid(shade, [x, y, z]), MAT.shadeGlow),
+    glow(new THREE.SphereGeometry(0.08, 10, 8), x, y - 0.05, z),
     tint(solid(new THREE.CylinderGeometry(0.06, 0.06, 0.1, 8), [x, y + 0.22, z]), MAT.brass),
     light, light.target);
 }
@@ -1679,7 +1790,7 @@ function plaidPattern() {
    from inside. Its light is a spot tipped out into the room, away from
    the wall behind (no shadows: no texture slots left). */
 function standingLamp() {
-  const x = X(928), z = Z(744);                         // tucked against the bookshelf, out of the bedroom cam's face
+  const x = X(914), z = Z(744);                         // between the bookshelf and the door's swing
   const light = new THREE.SpotLight(LAMP_COLOR, 18, 10, 0.6, 0.7, 2);
   light.name = 'lamp-standing-light';
   light.position.set(x, FLOOR + 5.2, z);
@@ -1687,7 +1798,10 @@ function standingLamp() {
   return named('lamp-standing',
     tint(solid(new THREE.CylinderGeometry(0.42, 0.48, 0.08, 16), [x, FLOOR + 0.04, z]), MAT.dark),
     tint(solid(new THREE.CylinderGeometry(0.035, 0.035, 5.0, 8), [x, FLOOR + 2.55, z]), MAT.brass),
-    tint(solid(new THREE.CylinderGeometry(0.5, 0.75, 0.95, 18, 1, true), [x, FLOOR + 5.35, z]), MAT.glow),
+    tint(solid(new THREE.CylinderGeometry(0.5, 0.75, 0.95, 18, 1, true), [x, FLOOR + 5.35, z]), MAT.shadeGlow),
+    tint(solid(new THREE.CylinderGeometry(0.05, 0.05, 0.3, 8), [x, FLOOR + 5.1, z]), MAT.brass),           // socket
+    glow(new THREE.SphereGeometry(0.13, 12, 8).scale(1, 1.25, 1), x, FLOOR + 5.38, z),                     // the bulb
+    tint(solid(new THREE.TorusGeometry(0.5, 0.012, 4, 20).rotateX(Math.PI / 2), [x, FLOOR + 5.82, z]), MAT.brass),   // harp ring
     light, light.target);
 }
 
@@ -2375,13 +2489,28 @@ function foyer() {
 
 /* ─── porches ───────────────────────────────── */
 
+/* A craftsman porch column: square, tapering toward the top, with a cap
+   and a base; out front it stands on a stone pier. */
+function column(px, py, y0, y1, pier = false) {
+  const x = X(px), z = Z(py), h = y1 - y0, parts = [];
+  if (pier) parts.push(tint(solid(new THREE.BoxGeometry(1.25, y0, 1.25), [x, y0 / 2, z]), STONE),
+    tint(solid(new THREE.BoxGeometry(1.4, 0.12, 1.4), [x, y0 + 0.06, z]), STONE));
+  const taper = new THREE.CylinderGeometry(0.32 * Math.SQRT2, 0.5 * Math.SQRT2, h - 0.5, 4).rotateY(Math.PI / 4);
+  parts.push(tint(solid(taper, [x, y0 + 0.2 + (h - 0.5) / 2, z]), MAT.trim),
+    tint(solid(new THREE.BoxGeometry(1.1, 0.2, 1.1), [x, y0 + 0.1, z]), MAT.trim),                 // base
+    tint(solid(new THREE.BoxGeometry(0.8, 0.3, 0.8), [x, y1 - 0.15, z]), MAT.trim));               // cap
+  const g = new THREE.Group();
+  g.add(...parts);
+  return g;
+}
+
 function porches() {
   const parts = [];
   const beamLo = CEIL - 0.8;
 
   // back porch (top right of the plan)
   parts.push(block(738, 1256, 154, 345, FLOOR, FLOOR - 0.6, 0));                  // deck
-  parts.push(block(982, 993, 158, 169, beamLo, 0, 0), block(1241, 1253, 158, 169, beamLo, 0, 0));
+  parts.push(column(987.5, 163.5, 0, beamLo), column(1247, 163.5, 0, beamLo));
   parts.push(block(738, 1256, 154, 173, CEIL, beamLo, 0), block(1237, 1256, 173, 345, CEIL, beamLo, 0));
   parts.push(rail('h', 163, 738, 815), rail('h', 163, 905, 982), rail('h', 163, 993, 1241), rail('v', 1247, 169, 345));
   for (let i = 0; i < 3; i++) {                                                   // steps down to the yard
@@ -2393,7 +2522,7 @@ function porches() {
 
   // front porch (far left of the plan)
   parts.push(block(0, 105, 482, 814, FLOOR, FLOOR - 0.6, 0));
-  parts.push(block(0, 11, 485, 497, beamLo, 0, 0), block(0, 11, 799, 811, beamLo, 0, 0));
+  parts.push(column(5.5, 491, FLOOR + 1.6, beamLo, true), column(5.5, 805, FLOOR + 1.6, beamLo, true));
   parts.push(block(0, 11, 482, 814, CEIL, beamLo, 0));
   for (let i = 0; i < 3; i++) {
     parts.push(block(-(i + 1) * K, -i * K, 593, 703, FLOOR - 0.625 * (i + 1), 0, 0));
@@ -2449,16 +2578,22 @@ function rockingChair() {
 /* ─── the yard ──────────────────────────────── */
 
 /* The front walk's line: from the porch steps, winding down to the road. */
-const WALK = new THREE.CatmullRomCurve3([[-27.8, 1.0], [-36, 4.5], [-48, -1], [-60, 5], [-74, -2], [-88, 4], [-100, 0.5], [-105.4, 0]]
+const WALK = new THREE.CatmullRomCurve3([[-27.8, 1.0], [-35, 2.2], [-45, 6.5], [-57, 8.5], [-68, 5.0], [-78, -2.5], [-90, -6], [-100, -4.5], [-105.4, -3]]
   .map(([x, z]) => new THREE.Vector3(x, 0, z)));
 const WALK_PTS = WALK.getSpacedPoints(80);
+/* The gravel driveway: off the road, up along the north side to a
+   parking pad by the house (no car yet). */
+const DRIVE = new THREE.CatmullRomCurve3([[-105.4, -44], [-92, -47.5], [-77, -46], [-63, -41.5], [-51, -36], [-42, -33]]
+  .map(([x, z]) => new THREE.Vector3(x, 0, z)));
+const DRIVE_PTS = DRIVE.getSpacedPoints(50);
+const PAD = { x0: -50, x1: -32, z0: -41, z1: -26 };
 const ROAD = [-130, -106];                              // the road's x range, in feet
 
-// how far (x, z) is from the walk's centre line
-function walkDistance(x, z) {
+// how far (x, z) is from the walk's centre line (or another line of points)
+function walkDistance(x, z, pts = WALK_PTS) {
   let best = Infinity;
-  for (let i = 1; i < WALK_PTS.length; i++) {
-    const a = WALK_PTS[i - 1], b = WALK_PTS[i], dx = b.x - a.x, dz = b.z - a.z;
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1], b = pts[i], dx = b.x - a.x, dz = b.z - a.z;
     const t = THREE.MathUtils.clamp(((x - a.x) * dx + (z - a.z) * dz) / (dx * dx + dz * dz), 0, 1);
     best = Math.min(best, Math.hypot(x - a.x - t * dx, z - a.z - t * dz));
   }
@@ -2473,7 +2608,9 @@ function groundHeight(x, z) {
   const ss = THREE.MathUtils.smoothstep;
   const out = Math.hypot(Math.max(0, -32 - x, x - 26), Math.max(0, -24 - z, z - 22));   // outside the house's flat patch
   const fall = -0.075 * THREE.MathUtils.clamp(-40 - x, 0, 64);
-  const keep = ss(out, 2, 30) * ss(walkDistance(x, z), 5, 16) * ss(Math.abs(x - (ROAD[0] + ROAD[1]) / 2), 15, 28);
+  const pad = Math.hypot(Math.max(0, PAD.x0 - x, x - PAD.x1), Math.max(0, PAD.z0 - z, z - PAD.z1));
+  const keep = ss(out, 2, 30) * ss(walkDistance(x, z), 5, 16) * ss(Math.abs(x - (ROAD[0] + ROAD[1]) / 2), 15, 28)
+    * ss(walkDistance(x, z, DRIVE_PTS), 8, 20) * ss(pad, 3, 14);
   const roll = 3.5 * Math.sin(x * 0.045 + 1.3) * Math.cos(z * 0.04 - 0.7) + 1.8 * Math.sin(x * 0.11 + z * 0.08);
   const a = Math.atan2(z, x), hills = ss(Math.hypot(x, z), 140, 270) * (30 + 14 * Math.sin(a * 3 + 0.8) + 8 * Math.sin(a * 7));
   return fall + keep * (roll + hills);
@@ -2525,6 +2662,44 @@ function path() {
   const walk = new THREE.Mesh(geo, MAT.concrete);
   walk.material.side = THREE.DoubleSide;
   return named('path', walk, lines([...edge, ...joints]));
+}
+
+/* The gravel driveway up from the road, its parking pad by the house,
+   and a few flagstones from the pad across to the front walk. */
+function driveway() {
+  const gravel = surface(0x8a8273, 1), stone = surface(0x7d7a72, 0.9);
+  const n = 100, hw = 5, pts = DRIVE.getSpacedPoints(n), pos = [], edge = [];
+  const side = (p, s, t) => {
+    const l = Math.hypot(t.x, t.z), x = p.x + s * hw * -t.z / l, z = p.z + s * hw * t.x / l;
+    return [x, groundHeight(x, z) + 0.04, z];
+  };
+  const rows = pts.map((p, i) => { const t = DRIVE.getTangentAt(i / n); return [side(p, 1, t), side(p, -1, t)]; });
+  for (let i = 1; i <= n; i++) {
+    const [a, b] = rows[i - 1], [c, d] = rows[i];
+    pos.push(...a, ...b, ...c, ...b, ...d, ...c);
+    edge.push([a, c], [b, d]);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.computeVertexNormals();
+  const road = new THREE.Mesh(geo, gravel);
+  gravel.side = THREE.DoubleSide;
+  // the pad: a gravel patch, levelled
+  const padGeo = new THREE.PlaneGeometry(PAD.x1 - PAD.x0, PAD.z1 - PAD.z0, 6, 6).rotateX(-Math.PI / 2);
+  const pp = padGeo.attributes.position;
+  for (let i = 0; i < pp.count; i++) {
+    const x = pp.getX(i) + (PAD.x0 + PAD.x1) / 2, z = pp.getZ(i) + (PAD.z0 + PAD.z1) / 2;
+    pp.setXYZ(i, x, groundHeight(x, z) + 0.045, z);
+  }
+  padGeo.computeVertexNormals();
+  const parts = [road, new THREE.Mesh(padGeo, gravel), lines(edge, new THREE.LineBasicMaterial({ color: 0x5a5448 }))];
+  // flagstones from the pad's east edge to the walk
+  for (let k = 0; k <= 9; k++) {
+    const f = k / 9, x = -33 + f * 3.2 + Math.sin(k * 1.7) * 0.4, z = -25.5 + f * 24 + Math.cos(k * 2.3) * 0.3;
+    const st = new THREE.CylinderGeometry(0.9 + (k % 3) * 0.12, 0.95 + (k % 3) * 0.12, 0.08, 7);
+    parts.push(tint(solid(st, [x, groundHeight(x, z) + 0.04, z], [0, k * 0.9, 0]), stone));
+  }
+  return named('driveway', ...parts);
 }
 
 /* Little 90s pagoda path lights lining the walk: a stake, three tiers of
@@ -2611,7 +2786,7 @@ function forest() {
     const a = rand() * Math.PI * 2, r = 60 + rand() * 170, x = Math.cos(a) * r, z = Math.sin(a) * r;
     const cam = new THREE.Vector2(x + 78, z - 50), look = new THREE.Vector2(73, -49).normalize();
     if (cam.length() < 95 && cam.clone().normalize().dot(look) > 0.85) continue;     // would hide the house from the front cam
-    if (walkDistance(x, z) < 12 || Math.abs(x - (ROAD[0] + ROAD[1]) / 2) < 20) continue;
+    if (walkDistance(x, z) < 12 || walkDistance(x, z, DRIVE_PTS) < 14 || Math.abs(x - (ROAD[0] + ROAD[1]) / 2) < 20) continue;
     const s = 0.7 + rand() * 0.7, y = groundHeight(x, z);
     const t = new THREE.Mesh(new THREE.CylinderGeometry(0.35 * s, 0.55 * s, 6 * s, 6), MAT.bark);
     t.position.set(x, y + 3 * s, z);
@@ -2714,12 +2889,16 @@ function pullBulb(lamps, name, cx, cy, intensity) {
   light.shadow.mapSize.set(256, 256);
   swing.add(light);
   const g = named(name, swing);
-  let t = 0, n = 0;
+  let t = 0, n = 0, root = null;
+  const near = new THREE.Sphere(new THREE.Vector3(X(cx), FLOOR + 4, Z(cy)), 14);
   g.userData.tick = dt => {
     t += dt;
     swing.rotation.z = 0.035 * Math.sin(t * 1.1);
     swing.rotation.x = 0.02 * Math.sin(t * 0.73 + 1);
-    if (++n % 2 === 0) light.shadow.needsUpdate = true;
+    // only redraw its shadows while the cam can see round here
+    if (!root) { root = g; while (root.parent) root = root.parent; }
+    const view = root.userData.frustum;
+    if (++n % 2 === 0 && (!view || view.intersectsSphere(near))) light.shadow.needsUpdate = true;
   };
   return g;
 }
@@ -3092,11 +3271,12 @@ export function buildWorld({ weld = true } = {}) {
     foyer(),
     frontPorch(lamps),
     road(),
+    driveway(),
     pathLamps(),
     lampPost(lamps, -33.5, -6.5),
-    yardAt(mailbox(), -103.5, 6),
+    yardAt(mailbox(), -103.5, -37),               // at the end of the driveway
     yardAt(pineTree(1.05, 1), -39, -13),
-    yardAt(pineTree(0.9, 2), -36, -24),
+    yardAt(pineTree(0.9, 2), -24, -31),
     yardAt(pineTree(1.1, 3), 30, 30),
     yardAt(pineTree(0.95, 4), 36, -30),
     yardAt(pineTree(1.0, 5), 12, 33),
@@ -3110,8 +3290,10 @@ export function buildWorld({ weld = true } = {}) {
   );
   paint(scene);
   // ghoul1 never goes outside, so check-route.mjs needn't test him against the yard
-  for (const n of ['ground', 'forest', 'road', 'path', 'path-lamps', 'lamp-post', 'mailbox', 'streetlight', 'pine', 'bush', 'heavens'])
+  for (const n of ['ground', 'forest', 'road', 'path', 'path-lamps', 'lamp-post', 'mailbox', 'streetlight', 'pine', 'bush', 'heavens', 'driveway'])
     scene.traverse(o => { if (o.name === n) o.traverse(m => { m.userData.passable = true; }); });
+  for (const n of ['ground', 'forest', 'path', 'path-lamps', 'road', 'driveway'])
+    scene.traverse(o => { if (o.name === n) o.traverse(m => { if (m.isMesh) m.castShadow = false; }); });
   if (weld) bake(scene);
   scene.userData.lamps = lamps;
   return scene;
