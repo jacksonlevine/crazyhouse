@@ -10,7 +10,7 @@
    ============================================================ */
 
 import * as THREE from './vendor/three-r186/three.module.js';
-import { X, Z, FLOOR, MAT, EDGE } from './world.js?v=8';
+import { X, Z, FLOOR, MAT, EDGE } from './world.js?v=11';
 import * as CRT from './crt.js?v=2';
 
 const GRID = 8;                 // the atlas is GRID x GRID tiles
@@ -21,6 +21,7 @@ const GLOW = 60;                // light strength at full-white picture
 const SPOT = [930, 684];        // blueprint pixel: on the south counter, beside the fridge
 const COUNTER = FLOOR + 3;      // top of the counter, in feet
 
+const YAW = Math.PI / 4;        // front (-z) turns toward the living room (-x)
 const SIZE = 3;                 // the model is 0.6 wide; this makes it about 1.8'
 const SCREEN_Y = 0.31 * SIZE;   // height of the screen's middle above the counter
 
@@ -43,13 +44,10 @@ const screenMat = (map) => new THREE.ShaderMaterial({
     void main() {
       vec2 inset = vec2(0.5) / vec2(160.0, 90.0);
       vec2 uv = clamp(vUv, inset, 1.0 - inset);
-      uv.x += sin(uv.y * 31.0 + time * 1.7) * 0.0012;
       float g = dot(texture2D(map, (tile + uv) / ${GRID}.0).rgb, vec3(0.299, 0.587, 0.114));
-      float scan = 0.88 + 0.12 * sin(vUv.y * 720.0 + time * 2.0);
-      vec2 c = (vUv - 0.5) * 2.0;
-      float vig = 1.0 - 0.28 * dot(c * c, vec2(0.46, 0.6));
-      g = g * scan * vig * gain * (0.97 + 0.03 * sin(time * 53.0)) + 0.02;
+      g *= gain;
       gl_FragColor = vec4(vec3(g), 1.0);
+      #include <tonemapping_fragment>
       #include <colorspace_fragment>
     }`
 });
@@ -82,6 +80,7 @@ export function createTv(makeShadowed) {
   const tv = new THREE.Group();
   tv.position.set(x, COUNTER, z);
   tv.scale.setScalar(SIZE);
+  tv.rotation.y = YAW;
   tv.add(new THREE.Mesh(body, MAT.dark), new THREE.LineSegments(new THREE.EdgesGeometry(body, 20), EDGE));
   const screen = new THREE.Mesh(face, screenMat(map));
   tv.add(screen);
@@ -91,7 +90,7 @@ export function createTv(makeShadowed) {
   // the glow: a lamp just in front of the screen
   const light = makeShadowed(new THREE.PointLight(0xffffff, GLOW * 0.2, 0, 2));
   light.name = 'tv-light';
-  light.position.set(x, screenY, z - 0.75);
+  light.position.set(x - 0.75 * Math.sin(YAW), screenY, z - 0.75 * Math.cos(YAW));
   root.add(light);
 
   // the prebaked brightness table, read once from tv/glow.png

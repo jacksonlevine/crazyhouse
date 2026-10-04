@@ -205,7 +205,8 @@ This is still a partial receiver model: progressive active rows only,
 no vertical sync, interlace, or temporal PLL. Color uses quadrature
 modulation and burst-referenced demodulation. On lost
 horizontal sync it free-runs at nominal timing. It is not a full NTSC
-simulation. Tone mapping converts scene radiance to source video levels.
+simulation. Tone mapping uses the same Three.js ACES implementation as bypass mode
+to convert scene radiance to source video levels.
 
 At `?debug`, `crazyhouse.analog.controls` exposes `bandwidthMHz`, `noise`,
 `interference`, and `automatic`. Noise and automatic bursts default off.
@@ -246,3 +247,20 @@ Merged remote color, glass/windows, EMP, night vision, and debug features.
 E remains the interference key; B now fires EMP (the button still works).
 In debug free-camera mode, W and Shift belong to movement. Night mode uses
 the IR lamp, exposure, and monochrome encoding, without CSS grain/vignette.
+
+Automatic hum uses 15% of the manual W amplitude (±0.0525 normalized
+voltage). `crazyhouse.analog.controls.automaticHumGain` adjusts this ratio;
+manual W remains at full amplitude.
+
+The `?debug` panel has a **bypass composite** toggle. Bypass renders the
+scene and ghost directly at display resolution, skipping encoding, sync
+recovery, and decoding. The normal game always starts with composite on.
+The kitchen TV faces 45° toward the living room; its glow follows the angle.
+
+Source Y/I/Q is bandwidth-limited before modulation (2.5 MHz luma,
+1 MHz chroma). Receiver input bandwidth defaults to 4.2 MHz, before
+sync detection and demodulation. FIR weights are calculated once on the
+CPU and uploaded as shader uniforms. `node tools/check-analog.mjs` checks
+DC preservation, passbands, carrier rejection, clean sync recovery, and
+six uniform-color round trips (maximum channel error below 2.5%).
+The kitchen TV itself no longer adds decorative scanlines or picture warp.

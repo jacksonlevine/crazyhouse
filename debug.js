@@ -32,6 +32,7 @@ export function createDebug(api) {
       <button data-act="ghoul">show ghoul</button>
       <button data-act="freeze">freeze ghoul</button>
     </div>
+    <button data-act="composite" aria-pressed="false">bypass composite: off</button>
     <button data-act="copy">copy cam</button>
     <pre class="dbg-read" data-out="read"></pre>`;
   document.body.appendChild(panel);
@@ -39,11 +40,20 @@ export function createDebug(api) {
   const btn = act => $(`[data-act="${act}"]`);
   const out = name => $(`[data-out="${name}"]`);
 
+  btn('composite').addEventListener('click', () => {
+    api.setComposite(!debug.composite);
+    const bypass = !debug.composite;
+    btn('composite').textContent = 'bypass composite: ' + (bypass ? 'on' : 'off');
+    btn('composite').classList.toggle('on', bypass);
+    btn('composite').setAttribute('aria-pressed', String(bypass));
+  });
+
   /* ─── free cam ─── */
   let yaw = 0, pitch = 0, speed = 12;
   const keys = new Set();
 
   function setFree(on) {
+    api.analog.heldSignals.clear();
     debug.free = on;
     if (on) {
       // start from wherever the current cam is looking

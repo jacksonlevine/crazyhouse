@@ -9,8 +9,8 @@ import { createEmp } from './emp.js?v=6';
 import { CAMS, camAt } from './cams.js?v=7';
 import { createGhoul } from './ghoul.js?v=12';
 import { createGhostPass, GHOST_LAYER } from './ghost.js?v=4';
-import { createTv } from './tv.js?v=6';
-import { createAnalogPass } from './analog.js?v=5';
+import { createTv } from './tv.js?v=8';
+import { createAnalogPass } from './analog.js?v=7';
 
 
 const $ = id => document.getElementById(id);
@@ -25,7 +25,7 @@ const dots    = $('dots');
 
 let state = 'title';
 // filled in by debug.js when ?debug is on
-const debug = { free: false, fov: null, tick: null, onCam: null };       // 'title' | 'playing'
+const debug = { composite: true, free: false, fov: null, tick: null, onCam: null };       // 'title' | 'playing'
 let camIndex = 0;
 let renderer, scene, camera, ghoul, ghost, lamps, emp, skyTick, ir, tv, analog;
 const EXPOSURE = 0.75;         // overall brightness of the picture
@@ -112,7 +112,7 @@ function setup() {
     if (!w || !h) return;
     renderer.setSize(w, h, false);
     renderer.getDrawingBufferSize(buffer);
-    ghost.setSize(768, 480);
+    ghost.setSize(debug.composite ? 768 : buffer.x, debug.composite ? 480 : buffer.y);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
   };
@@ -126,10 +126,14 @@ function setup() {
   if (new URLSearchParams(location.search).has('debug')) {
     const api = {
       THREE, scene, camera, renderer, CAMS, showCam, ghoul, lamps, fireEmp, toggleNight, frame, debug, tv, analog,
+      setComposite: enabled => {
+        debug.composite = enabled;
+        ghost.setSize(enabled ? 768 : buffer.x, enabled ? 480 : buffer.y);
+      },
       isNight: () => night, camIndex: () => camIndex
     };
     window.crazyhouse = api;
-    import('./debug.js?v=1').then(m => m.createDebug(api));
+    import('./debug.js?v=3').then(m => m.createDebug(api));
   }
 
   renderer.setAnimationLoop(now => {
@@ -147,11 +151,13 @@ function setup() {
     tickEmp();
     refreshShadows();
     tickClock();
-    renderer.setRenderTarget(analog.picture);
+    const target = debug.composite ? analog.picture : null;
+    const height = debug.composite ? 480 : buffer.y;
+    renderer.setRenderTarget(target);
     renderer.render(scene, camera);
     // blur scales with the picture, so it looks the same at any size
-    if (ghoulInView()) ghost.render(scene, camera, ghoul.presence, ghoul.blur * 480 * 0.022, analog.picture);
-    analog.render(now / 1000);
+    if (ghoulInView()) ghost.render(scene, camera, ghoul.presence, ghoul.blur * height * 0.022, target);
+    if (debug.composite) analog.render(now / 1000);
   });
   return true;
 }
@@ -227,7 +233,7 @@ function tickEmp() {
 
 /* Like a real security cam: switching to night vision turns on an
    infrared light at the camera that floods the room it's watching,
-   and the picture gets brighter, green and grainy. */
+   and the picture gets brighter and monochrome. */
 const IR_STRENGTH = 900;
 const NV_GAIN = 3;            // how much brighter the picture gets
 let night = false;
