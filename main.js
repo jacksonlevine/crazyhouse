@@ -144,7 +144,7 @@ function setup() {
       isNight: () => night, camIndex: () => camIndex
     };
     window.crazyhouse = api;
-    import('./debug.js?v=4').then(m => m.createDebug(api));
+    import('./debug.js?v=5').then(m => m.createDebug(api));
   }
 
   renderer.setAnimationLoop(now => {

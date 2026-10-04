@@ -35,6 +35,23 @@ export function createDebug(api) {
       <button data-act="freeze">freeze ghoul</button>
     </div>
     <button data-act="composite" aria-pressed="false">bypass composite: off</button>
+    <button data-act="copy">copy cam</button>
+    <pre class="dbg-read" data-out="read"></pre>`;
+  document.body.appendChild(panel);
+  const signalLauncher = document.createElement('button');
+  signalLauncher.className = 'signal-launcher';
+  signalLauncher.textContent = 'signals…';
+  signalLauncher.setAttribute('aria-controls', 'signal-window');
+  signalLauncher.setAttribute('aria-expanded', 'false');
+  const signalWindow = document.createElement('dialog');
+  signalWindow.id = 'signal-window';
+  signalWindow.className = 'debug-panel signal-window';
+  signalWindow.setAttribute('aria-labelledby', 'signal-window-title');
+  signalWindow.innerHTML = `
+    <div class="signal-heading">
+      <div class="dbg-title" id="signal-window-title">signal recordings</div>
+      <button data-act="signal-close" aria-label="Close signal window">×</button>
+    </div>
     <button data-act="signal-load">load signal recording folder…</button>
     <input type="file" data-in="signal-files" webkitdirectory multiple hidden>
     <select data-in="signal-track" aria-label="Recorded signal track" hidden></select>
@@ -44,10 +61,24 @@ export function createDebug(api) {
     </div>
     <label>signal gain <input type="range" min="0" max="2" step="0.01" value="0.25" data-in="signal-gain"> <span data-out="signal-gain">0.25</span></label>
     <div class="dbg-help" data-out="signal-status">No recorded signal loaded.</div>
-    <button data-act="copy">copy cam</button>
-    <pre class="dbg-read" data-out="read"></pre>`;
-  document.body.appendChild(panel);
-  const $ = sel => panel.querySelector(sel);
+`;
+  document.body.append(signalLauncher, signalWindow);
+  signalLauncher.addEventListener('click', () => {
+    signalWindow.show();
+    signalLauncher.hidden = true;
+    signalLauncher.setAttribute('aria-expanded', 'true');
+  });
+  signalWindow.addEventListener('close', () => {
+    signalLauncher.hidden = false;
+    signalLauncher.setAttribute('aria-expanded', 'false');
+    signalLauncher.focus();
+  });
+  signalWindow.addEventListener('keydown', e => {
+    e.stopPropagation();
+    if (e.key === 'Escape') { e.preventDefault(); signalWindow.close(); }
+  });
+  signalWindow.querySelector('[data-act="signal-close"]').addEventListener('click', () => signalWindow.close());
+  const $ = sel => panel.querySelector(sel) || signalWindow.querySelector(sel);
   const btn = act => $(`[data-act="${act}"]`);
   const out = name => $(`[data-out="${name}"]`);
 
@@ -131,7 +162,7 @@ export function createDebug(api) {
     pitch = THREE.MathUtils.clamp(pitch - e.movementY * 0.0025, -1.5, 1.5);
   });
   addEventListener('keydown', e => {
-    if (e.target.closest && e.target.closest('input')) return;
+    if (e.target.closest && e.target.closest('input, textarea, select, [contenteditable=true]')) return;
     const k = e.key.toLowerCase();
     if (k === 'f' && !e.repeat) { setFree(!debug.free); return; }
     if (!debug.free) return;
