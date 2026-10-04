@@ -4,9 +4,9 @@
    ============================================================ */
 
 import * as THREE from './vendor/three-r186/three.module.js';
-import { buildWorld, ROOMS, roomAt, GLASS_LAYER, captureReflections } from './world.js?v=12';
+import { buildWorld, ROOMS, roomAt, GLASS_LAYER, captureReflections } from './world.js?v=13';
 import { createEmp } from './emp.js?v=6';
-import { CAMS, camAt } from './cams.js?v=7';
+import { CAMS, camAt } from './cams.js?v=8';
 import { createGhoul } from './ghoul.js?v=12';
 import { createGhostPass, GHOST_LAYER } from './ghost.js?v=3';
 
@@ -45,7 +45,9 @@ function refreshShadows() {
   // something in the house moved (the closet door, an anomaly): lamps near it redraw too
   const moved = scene.userData.moved;
   if (moved) {
-    for (const l of lamps) if (l.isPointLight && l.getWorldPosition(lampAt).distanceTo(moved) < NEAR_LAMP) now.add(l);
+    for (const at of moved) for (const l of lamps) {
+      if (l.isPointLight && l.getWorldPosition(lampAt).distanceTo(at) < NEAR_LAMP) now.add(l);
+    }
     scene.userData.moved = null;
   }
   for (const l of now) l.shadow.needsUpdate = true;
@@ -129,7 +131,7 @@ function setup() {
       isNight: () => night, camIndex: () => camIndex
     };
     window.crazyhouse = api;
-    import('./debug.js?v=2').then(m => m.createDebug(api));
+    import('./debug.js?v=3').then(m => m.createDebug(api));
   }
 
   renderer.setAnimationLoop(now => {

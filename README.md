@@ -106,15 +106,32 @@ lined up to it.
   see it, the room is drawn a second time from the mirrored view. About
   1.5 ms a frame, only while it's on screen. ghoul1 has no reflection
   (he's on a layer it doesn't draw), like a vampire.
-- **The storage closet** by the hall has an accordion door facing the
-  couch, ready for anomalies:
-  `scene.getObjectByName('door-closet').userData.setOpen(0.5)` (0 shut,
-  1 open). Anything that moves can set `scene.userData.moved` to where
-  it is, so nearby lamps redraw their shadows.
+**Things that open, for anomalies.** Each has `setOpen(t)`, 0 shut to
+1 open (anything between works), and `userData.open` says where it is:
+
+```js
+scene.getObjectByName('fridge-door').userData.setOpen(1)
+```
+
+- `door-closet`: the storage closet's 3-panel folding door, facing the couch
+- `door-coat-closet`: the foyer coat closet's sliding doors (the front
+  one slides over the back one, on its own track)
+- `fridge-door` and `freezer-door`: a top-freezer fridge, hollow, with
+  shelves, door bins, food and a little light inside
+- `washer-lid` and `dryer-door`: an old school top-loading washer and a
+  dryer with a square front door, both hollow with a drum inside
+- every swinging house door too (`door-front`, `door-master`,
+  `door-pantry`), where 1 is 90°
+
+Moving one tells `main.js` where (`scene.userData.moved`), so lamps
+nearby redraw their shadows. Careful: wide open, the fridge door
+reaches into ghoul1's path round the island, so he'd walk through it.
 
 **The front porch** has a lantern by the door and a rocking chair
 (`frontPorch()`). The kitchen has a real double sink with a faucet
-(`sink()`).
+(`sink()`) and a gas cooktop on the island (`cooktop()`), and the
+pantry has a proper door and open shelves of cans and boxes
+(`shelving()`).
 
 **Colours.** Everything is a flat colour, no texture images, so it costs
 nothing extra to draw: green lawn, concrete walk, wood floors, warm
@@ -185,7 +202,8 @@ in debug mode):
 - **Night vision** and **fully lit** (strong even light everywhere, no
   fog) buttons.
 - **Show ghoul** pins him visible, **freeze ghoul** stops him walking.
-- **Closet door** folds the accordion closet door open or shut.
+- **Open it all** opens (or shuts) everything in the list above that
+  anomalies can open.
 - **Copy cam** copies the current view as a line you can paste into
   `cams.js`, so a spot you find in free cam can become a real cam.
 - A readout of where the camera is, its FOV and ghoul1's state.

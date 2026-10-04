@@ -111,6 +111,12 @@ export const MAT = {
     color: 0x10161b, transparent: true, opacity: 0.32, depthWrite: false, side: THREE.DoubleSide,
     combine: THREE.MixOperation, reflectivity: 0.45
   }),
+  liner:     surface(0xf0efe9, 0.6, THREE.BackSide),   // inside the fridge (drawn inside out)
+  drum:      (() => {                     // washer tub, dryer drum
+    const m = surface(0x9aa0a4, 0.4, THREE.DoubleSide);
+    m.metalness = 0.35;
+    return m;
+  })(),
   basin:     (() => {                     // the inside of the kitchen sink
     const m = surface(0xa7adb1, 0.3, THREE.BackSide);
     m.metalness = 0.35;
@@ -132,6 +138,12 @@ export function solid(geo, [x, y, z] = [0, 0, 0], rot, mat = MAT.furniture) {
   g.position.set(x, y, z);
   if (rot) g.rotation.set(rot[0], rot[1], rot[2]);
   return g;
+}
+
+// Paint a part now and keep that colour (paint() skips it).
+function tint(obj, mat) {
+  obj.traverse(o => { if (o.isMesh && !o.material.isMeshBasicMaterial) { o.material = mat; o.userData.keep = true; } });
+  return obj;
 }
 
 function named(name, ...parts) {
@@ -468,7 +480,7 @@ function walls() {
   add('v', 807, 815, [715, 1068], [724, 1068], [door(732, 805), door(830, 979)]);               // master, west
   add('h', 715, 724, [807, 1063], [815, 1063]);                                                 // kitchen | master
   add('v', 1063, 1072, [661, 789], [669, 780]);                                                 // pantry, west
-  add('h', 661, 669, [1063, 1237], [1072, 1237], [door(1104, 1230)]);                           // pantry, north
+  add('h', 661, 669, [1063, 1237], [1072, 1237], [door(1078, 1162)]);                           // pantry, north: door, clear of the counter
   add('h', 780, 789, [1072, 1237], [1063, 1237]);                                               // pantry, south
 
   return named('walls', ...W);
@@ -477,16 +489,14 @@ function walls() {
 /* ─── doors ─────────────────────────────────── */
 
 /* A door leaf. Hinge at blueprint (hx, hy), latch edge at (ex, ey)
-   when shut. open = degrees, swinging toward the point (tx, ty).
-   lite = { panes, rows } puts a window in the top half. */
-function leaf(name, hx, hy, ex, ey, open = 0, tx = 0, ty = 0, lite = null) {
+   when shut. It swings toward the point (tx, ty), and starts open
+   `open` degrees. setOpen(1) is 90°. lite = { panes, rows } puts a
+   window in the top half. */
+function leaf(name, hx, hy, ex, ey, open = 0, tx = 680, ty = 620, lite = null) {
   const x0 = X(hx), z0 = Z(hy), dx = X(ex) - x0, dz = Z(ey) - z0;
   const w = Math.hypot(dx, dz), h = DOOR_H - 0.01;     // fills the opening, no double edge
-  let th = Math.atan2(dz, dx);
-  if (open) {
-    const toward = Math.atan2(Z(ty) - z0, X(tx) - x0);
-    th += Math.sign(Math.sin(toward - th)) * open * Math.PI / 180;
-  }
+  const th = Math.atan2(dz, dx);
+  const sign = Math.sign(Math.sin(Math.atan2(Z(ty) - z0, X(tx) - x0) - th)) || 1;
   let body = solid(new THREE.BoxGeometry(w, h, 0.15), [w / 2, FLOOR + h / 2, 0]);
   if (lite) {
     // the door with a hole cut in it, and a framed window in the hole
@@ -507,64 +517,88 @@ function leaf(name, hx, hy, ex, ey, open = 0, tx = 0, ty = 0, lite = null) {
     solid(new THREE.BoxGeometry(0.12, 0.12, 0.4), [w - 0.28, FLOOR + 3, 0])      // knob
   );
   g.position.set(x0, 0, z0);
-  g.rotation.y = -th;
+  openable(g, t => { g.rotation.y = -(th + sign * t * Math.PI / 2); });
+  g.userData.setOpen(open / 90);
+  return g;
+}
+
+/* Gives a moving part setOpen(t), 0 shut to 1 open (anything between
+   works), so anomalies can open things:
+     scene.getObjectByName('fridge-door').userData.setOpen(1)
+   userData.open says where it is now. move(t) does the moving. */
+function openable(g, move) {
+  const box = new THREE.Box3();
+  g.userData.setOpen = t => {
+    t = THREE.MathUtils.clamp(t, 0, 1);
+    move(t);
+    g.userData.open = t;
+    // tell main.js what moved, so lamps near it redraw their shadows
+    let root = g;
+    while (root.parent) root = root.parent;
+    if (root !== g) (root.userData.moved ||= []).push(box.setFromObject(g).getCenter(new THREE.Vector3()));
+  };
+  g.userData.setOpen(0);
   return g;
 }
 
 function doors() {
   return named('doors',
     // flush with the outside face, so from the yard it reads as one door
-    leaf('door-front', 107, 600, 107, 695, 0, 0, 0, { panes: 2, rows: 2 }),
+    leaf('door-front', 107, 600, 107, 695, 0, 680, 620, { panes: 2, rows: 2 }),
     slidingDoor(),
     leaf('door-master', 811, 733, 811, 804, 75, 900, 733),
-    // coat closet bifolds, shut
-    block(141, 212, 559, 565, DOOR_H - 0.1),
-    block(213, 284, 559, 565, DOOR_H - 0.1),
-    lines([[[X(176), FLOOR, Z(562)], [X(176), FLOOR + DOOR_H - 0.1, Z(562)]],
-           [[X(248), FLOOR, Z(562)], [X(248), FLOOR + DOOR_H - 0.1, Z(562)]]]),
-    // pantry slider, half open, on the kitchen side
-    named('door-pantry', block(1104, 1170, 652, 658, DOOR_H - 0.1)),
+    coatClosetDoors(),
+    // pantry door, standing partly open into the pantry
+    leaf('door-pantry', 1080, 665, 1160, 665, 55, 1120, 720),
     accordionDoor()
   );
 }
 
-/* The storage closet's accordion door, facing the couch: six narrow
-   panels folding in a zigzag along a track. Shut, it's a shallow
-   zigzag across the doorway; open, it bunches up at the west end.
-   For anomalies:
-     scene.getObjectByName('door-closet').userData.setOpen(0.5)
-   0 is shut, 1 is open, anything between works. userData.open says
-   where it is now. */
+/* The storage closet's folding door, facing the couch: three panels
+   hinged together on a track. Shut, it's nearly flat across the
+   doorway; open, it folds out toward the couch at the west end.
+     scene.getObjectByName('door-closet').userData.setOpen(0.5) */
 function accordionDoor() {
-  const x0 = X(325), x1 = X(409), z = Z(735.5), N = 6;
-  const SHUT = 12 * Math.PI / 180, OPEN = 80 * Math.PI / 180;
+  const x0 = X(325), x1 = X(409), z = Z(735.5), N = 3;
+  const SHUT = 6 * Math.PI / 180, OPEN = 78 * Math.PI / 180;
   const p = (x1 - x0) / (N * Math.cos(SHUT)), h = DOOR_H - 0.12;
   const panels = [];
   for (let i = 0; i < N; i++) {
-    const geo = new THREE.BoxGeometry(p, h, 0.06);
+    const geo = new THREE.BoxGeometry(p, h, 0.08);
     geo.translate(p / 2, h / 2, 0);                       // hinged on its left edge
     const panel = solid(geo, [0, FLOOR + 0.06, 0]);
-    if (i === N - 1) panel.add(solid(new THREE.BoxGeometry(0.05, 0.45, 0.14), [p - 0.12, 3.1, 0]));   // pull
+    if (i === N - 1) panel.add(tint(solid(new THREE.BoxGeometry(0.05, 0.45, 0.16), [p - 0.14, 3.1, 0]), MAT.dark));   // pull
     panels.push(panel);
   }
   const g = named('door-closet', ...panels);
-  g.userData.setOpen = t => {
-    t = THREE.MathUtils.clamp(t, 0, 1);
+  return openable(g, t => {
     const th = SHUT + (OPEN - SHUT) * t, du = p * Math.cos(th), dz = p * Math.sin(th);
     panels.forEach((panel, i) => {
-      const out = i % 2 === 0;                            // zig, then zag
+      const out = i % 2 === 0;                            // out toward the couch, then back
       panel.position.x = x0 + i * du;
-      panel.position.z = z + (out ? -dz : dz) / 2;
-      panel.rotation.y = out ? -th : th;
+      panel.position.z = out ? z : z - dz;
+      panel.rotation.y = out ? th : -th;
     });
-    g.userData.open = t;
-    // tell main.js something moved, so nearby lamps redraw their shadows
-    let root = g;
-    while (root.parent) root = root.parent;
-    if (root !== g) root.userData.moved = new THREE.Vector3((x0 + x1) / 2, FLOOR + 3, z);
+  });
+}
+
+/* The coat closet's sliding doors: two panels on two tracks, like real
+   bypass closet doors. The room-side one slides over the other.
+     scene.getObjectByName('door-coat-closet').userData.setOpen(1) */
+function coatClosetDoors() {
+  const h = DOOR_H - 0.12, y = FLOOR + 0.04;
+  const panel = (px0, px1, py0, py1, pullAt) => {
+    const g = new THREE.Group();
+    g.add(solid(new THREE.BoxGeometry(X(px1) - X(px0), h, Z(py1) - Z(py0)),
+      [(X(px0) + X(px1)) / 2, y + h / 2, (Z(py0) + Z(py1)) / 2]));
+    g.add(tint(solid(new THREE.BoxGeometry(0.06, 0.5, 0.03), [X(pullAt), y + 3.2, Z(py1) + 0.015]), MAT.dark));   // finger pull
+    return g;
   };
-  g.userData.setOpen(0);
-  return g;
+  const back = panel(141, 217, 559, 561.6, 147);          // closet-side track
+  const front = panel(208, 284, 562.4, 565, 278);         // room-side track, slides over
+  const track = tint(block(141, 284, 559, 565, DOOR_H, DOOR_H - 0.08), MAT.track);
+  const slide = X(141) - X(208);
+  return openable(named('door-coat-closet', back, front, track), t => { front.position.x = slide * t; });
 }
 
 /* Sliding glass doors onto the patio: two big glass panels in metal
@@ -726,19 +760,137 @@ function livingRoom() {
 
 function kitchen() {
   const stool = () => solid(new THREE.CylinderGeometry(0.62, 0.5, 2.4, 8), [0, 1.2, 0]);
-  const top = FLOOR + 3.01;
-  const cooktop = rectOn((u, v) => [u, top, v], X(945), X(1015), Z(508), Z(560));
   return named('kitchen',
-    named('island', block(868, 1087, 470, 565, 3), lines(cooktop)),
+    named('island', block(868, 1087, 470, 565, 3)),
+    cooktop(),
     named('stools', at(stool(), 902, 452), at(stool(), 947, 452), at(stool(), 993, 452), at(stool(), 1047, 452)),
     // the east counter has a hole cut in it for the sink
     named('counter-east', slab([[1183, 364], [1237, 364], [1237, 660], [1183, 660]],
       [[[1189, 475], [1225, 475], [1225, 547], [1189, 547]]], FLOOR, FLOOR + 3)),
     sink(),
     named('counter-south', block(807, 980, 660, 715, 3)),
-    named('fridge', block(980, 1060, 655, 715, 6.3)),
-    named('pantry-shelves', block(1190, 1237, 669, 780, 6.5), block(1072, 1190, 748, 780, 6.5))
+    fridge(),
+    named('pantry-shelves', shelving(1190, 1237, 669, 780), shelving(1072, 1187, 748, 780))
   );
+}
+
+/* A gas cooktop set into the island: black top, four burners under
+   iron grates, knobs along the cook's side. */
+function cooktop() {
+  const top = FLOOR + 3, x0 = X(945), x1 = X(1015), z0 = Z(508), z1 = Z(560);
+  const cx = (x0 + x1) / 2, w = x1 - x0;
+  const rows = [z0 + 0.5, z0 + 1.2], cols = [x0 + w * 0.27, x1 - w * 0.27];
+  const bar = (len, alongX, x, z) =>
+    solid(new THREE.BoxGeometry(alongX ? len : 0.05, 0.05, alongX ? 0.05 : len), [x, top + 0.14, z]);
+  const parts = [solid(new THREE.BoxGeometry(w, 0.05, z1 - z0), [cx, top + 0.025, (z0 + z1) / 2])];
+  for (const z of rows) for (const x of cols) {
+    parts.push(
+      tint(solid(new THREE.CylinderGeometry(0.2, 0.23, 0.06, 12), [x, top + 0.08, z]), MAT.steel),   // burner
+      solid(new THREE.CylinderGeometry(0.09, 0.09, 0.03, 10), [x, top + 0.125, z]),                  // its cap
+      bar(0.6, true, x, z), bar(0.6, false, x, z));                                                   // grate over it
+  }
+  const g0 = z0 + 0.12, g1 = z0 + 1.58, gm = (g0 + g1) / 2;
+  parts.push(bar(w - 0.2, true, cx, g0), bar(w - 0.2, true, cx, g1), bar(w - 0.2, true, cx, (rows[0] + rows[1]) / 2),
+    bar(g1 - g0, false, x0 + 0.1, gm), bar(g1 - g0, false, x1 - 0.1, gm), bar(g1 - g0, false, cx, gm));
+  for (let i = 0; i < 4; i++) {
+    parts.push(tint(solid(new THREE.CylinderGeometry(0.07, 0.08, 0.08, 8), [x0 + w * (0.2 + i * 0.2), top + 0.09, z1 - 0.15]), MAT.steel));
+  }
+  return named('cooktop', ...parts);
+}
+
+/* A top-freezer fridge against the kitchen | master wall, facing the
+   kitchen. It's hollow, with shelves, door bins, food and a little
+   light inside, and both doors open, for anomalies:
+     scene.getObjectByName('fridge-door').userData.setOpen(1)
+     scene.getObjectByName('freezer-door').userData.setOpen(1)
+   (Wide open, the fridge door reaches ghoul1's path round the island.) */
+function fridge() {
+  const x0 = X(980), x1 = X(1060), zf = Z(655), zb = Z(715);
+  const W = x1 - x0, T = 0.18, cx = (x0 + x1) / 2;
+  const front = zf + T, D = zb - front, zc = front + D / 2;
+  const H = 6.3, SPLIT = 4.5, s = 0.08;
+  const lo = 0.3, hi = SPLIT - 0.07, flo = SPLIT + 0.07, fhi = H - s;      // inside floors and ceilings
+  const inW = W - 2 * s, inD = D - s, back = zb - s;
+  const box = (w, h, d, x, y, z) => solid(new THREE.BoxGeometry(w, h, d), [x, FLOOR + y, z]);
+  const cyl = (r, h, x, y, z) => solid(new THREE.CylinderGeometry(r, r, h, 8), [x, FLOOR + y + h / 2, z]);
+  const shelf = y => tint(box(inW - 0.06, 0.04, inD - 0.35, cx, y, back - (inD - 0.35) / 2), MAT.soft);
+  const food = z => [                                          // [shape, colour], sitting on whatever's below
+    [cyl(0.14, 0.6, cx - 0.15, 1.54, z), MAT.mustard],         // juice
+    [box(0.35, 0.75, 0.35, cx - 0.65, 1.54 + 0.375, z), MAT.soft],    // milk
+    [box(0.6, 0.25, 0.4, cx + 0.6, 1.54 + 0.125, z), MAT.cabinet],   // leftovers
+    [cyl(0.1, 0.45, cx - 0.7, 2.59, z), MAT.frontDoor],         // ketchup
+    [cyl(0.15, 0.3, cx - 0.3, 2.59, z), MAT.brick],             // jar
+    [box(0.7, 0.3, 0.5, cx + 0.5, 2.59 + 0.15, z), MAT.sofa],
+    [box(0.9, 0.2, 0.35, cx - 0.2, 3.54 + 0.1, z), MAT.soft],   // eggs
+    [cyl(0.12, 0.7, cx + 0.7, 3.54, z), MAT.cabinet],           // bottle
+    [box(0.8, 0.35, 0.6, cx - 0.5, flo + 0.175, z), MAT.soft],  // freezer: ice cream, peas, a pizza
+    [box(0.6, 0.2, 0.5, cx + 0.45, flo + 0.1, z), MAT.mustard],
+    [box(0.9, 0.12, 0.6, cx, flo + 0.79 + 0.06, z), MAT.sofa]
+  ].map(([part, mat]) => tint(part, mat));
+
+  const door = (name, y0, y1, grip, bins) => {
+    const h = y1 - y0;
+    const g = named(name,
+      solid(new THREE.BoxGeometry(W, h, T), [-W / 2, FLOOR + y0 + h / 2, T / 2]),
+      tint(solid(new THREE.BoxGeometry(W - 0.3, h - 0.3, 0.03), [-W / 2, FLOOR + y0 + h / 2, T + 0.015]), MAT.soft),
+      // handle on standoffs, on the side away from the hinge
+      solid(new THREE.BoxGeometry(0.07, grip[1] - grip[0], 0.07), [-W + 0.2, FLOOR + (grip[0] + grip[1]) / 2, -0.15]),
+      solid(new THREE.BoxGeometry(0.05, 0.05, 0.12), [-W + 0.2, FLOOR + grip[0] + 0.06, -0.07]),
+      solid(new THREE.BoxGeometry(0.05, 0.05, 0.12), [-W + 0.2, FLOOR + grip[1] - 0.06, -0.07]),
+      ...bins.flatMap(yb => [
+        tint(solid(new THREE.BoxGeometry(W - 0.6, 0.22, 0.03), [-W / 2, FLOOR + yb + 0.11, T + 0.26]), MAT.soft),
+        tint(solid(new THREE.BoxGeometry(W - 0.6, 0.03, 0.24), [-W / 2, FLOOR + yb + 0.015, T + 0.15]), MAT.soft),
+        tint(solid(new THREE.CylinderGeometry(0.08, 0.08, 0.4, 8), [-W / 2 - 0.3, FLOOR + yb + 0.23, T + 0.15]), MAT.cabinet),
+        tint(solid(new THREE.CylinderGeometry(0.08, 0.08, 0.32, 8), [-W / 2 + 0.25, FLOOR + yb + 0.19, T + 0.15]), MAT.frontDoor)
+      ]));
+    g.position.set(x1, 0, zf);                                  // hinged at its front corner by the pantry wall
+    return openable(g, t => { g.rotation.y = -t * 100 * Math.PI / 180; });
+  };
+
+  return named('fridge',
+    box(s, H, D, x0 + s / 2, H / 2, zc), box(s, H, D, x1 - s / 2, H / 2, zc),           // sides
+    box(W, s, D, cx, H - s / 2, zc), box(W, lo, D, cx, lo / 2, zc),                    // top, base
+    box(W, H, s, cx, H / 2, zb - s / 2), box(W, flo - hi, D, cx, SPLIT, zc),           // back, between the two
+    // white insides, drawn inside out so they only show from in front
+    tint(box(inW - 0.04, hi - lo - 0.04, inD - 0.04, cx, (lo + hi) / 2, front + inD / 2), MAT.liner),
+    tint(box(inW - 0.04, fhi - flo - 0.04, inD - 0.04, cx, (flo + fhi) / 2, front + inD / 2), MAT.liner),
+    shelf(1.5), shelf(2.55), shelf(3.5), shelf(flo + 0.75),
+    tint(box(inW - 0.1, 0.9, inD - 0.4, cx, lo + 0.47, back - (inD - 0.4) / 2), MAT.soft),   // crisper
+    glow(new THREE.BoxGeometry(0.5, 0.05, 0.2), cx, FLOOR + hi - 0.05, back - 0.4),         // the light
+    ...food(back - 0.6),
+    door('fridge-door', 0.03, SPLIT - 0.03, [2.6, 4.1], [0.9, 2.1, 3.3]),
+    door('freezer-door', SPLIT + 0.03, H - 0.02, [SPLIT + 0.2, SPLIT + 0.95], [5.0]));
+}
+
+// Open shelves against a wall: an upright at each end, boards up to h,
+// and a few cans and boxes on each board.
+function shelving(x0, x1, y0, y1, h = 6.5, boards = 5) {
+  const alongX = X(x1) - X(x0) > Z(y1) - Z(y0);
+  const parts = alongX
+    ? [block(x0, x0 + 3, y0, y1, h), block(x1 - 3, x1, y0, y1, h)]
+    : [block(x0, x1, y0, y0 + 3, h), block(x0, x1, y1 - 3, y1, h)];
+  let seed = x0 * 7 + y0 * 13;
+  const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const colours = [MAT.mustard, MAT.frontDoor, MAT.cabinet, MAT.soft, MAT.sofa, MAT.brick];
+  const mid = alongX ? (Z(y0) + Z(y1)) / 2 : (X(x0) + X(x1)) / 2;
+  for (let i = 0; i < boards; i++) {
+    const hb = 0.35 + i * (h - 0.41) / (boards - 1);
+    parts.push(alongX ? block(x0 + 3, x1 - 3, y0, y1, hb + 0.06, hb) : block(x0, x1, y0 + 3, y1 - 3, hb + 0.06, hb));
+    if (i === boards - 1) continue;                       // nothing on the top board
+    const n = 2 + Math.floor(rand() * 3);
+    for (let k = 0; k < n; k++) {
+      const f = (k + 0.5 + (rand() - 0.5) * 0.5) / n;
+      const along = alongX ? X(x0 + 3) + f * (X(x1 - 3) - X(x0 + 3)) : Z(y0 + 3) + f * (Z(y1 - 3) - Z(y0 + 3));
+      const tall = 0.4 + rand() * 0.6, can = rand() < 0.5;
+      const ht = can ? tall * 0.7 : tall;
+      const y = FLOOR + hb + 0.06 + ht / 2;
+      const thing = can
+        ? solid(new THREE.CylinderGeometry(0.17, 0.17, ht, 8), alongX ? [along, y, mid] : [mid, y, along])
+        : solid(new THREE.BoxGeometry(0.55, ht, 0.2), alongX ? [along, y, mid] : [mid, y, along], alongX ? null : [0, Math.PI / 2, 0]);
+      parts.push(tint(thing, colours[Math.floor(rand() * colours.length)]));
+    }
+  }
+  return named('shelving', ...parts);
 }
 
 /* A double stainless sink under the east window, with a faucet. Each
@@ -747,9 +899,7 @@ function kitchen() {
 function sink() {
   const top = FLOOR + 3, deep = 0.75;
   const bowl = (y0, y1) => {
-    const b = block(1191, 1223, y0, y1, 3, 3 - deep);
-    b.traverse(o => { if (o.isMesh) { o.material = MAT.basin; o.userData.keep = true; } });
-    return b;
+    return tint(block(1191, 1223, y0, y1, 3, 3 - deep), MAT.basin);
   };
   const fx = X(1231), fz = Z(511), spout = 0.78;
   return named('kitchen-sink',
@@ -811,21 +961,99 @@ function vanityMirror() {
 }
 
 function laundry() {
-  // round window on the front of each machine
-  const porthole = cx => {
-    const ring = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.CircleGeometry(0.62, 18)), EDGE);
-    ring.position.set(X(cx), FLOOR + 1.5, Z(905) + 0.01);
-    return ring;
-  };
   return named('laundry',
-    named('washer', block(620, 680, 848, 905, 3), porthole(650)),
-    named('dryer', block(686, 746, 848, 905, 3), porthole(716)),
+    washer(620, 680),
+    dryer(686, 746),
     named('shelf', block(614, 807, 825, 845, 5.4, 5.2)),
     // walk-in closet shelves + hanging rods
     named('closet-shelves', block(614, 642, 985, 1068, 6.1, 5.9), block(780, 807, 985, 1068, 6.1, 5.9),
       lines([[[X(630), FLOOR + 5.5, Z(985)], [X(630), FLOOR + 5.5, Z(1068)]],
              [[X(792), FLOOR + 5.5, Z(985)], [X(792), FLOOR + 5.5, Z(1068)]]]))
   );
+}
+
+/* Old school machines, backed up near the wall: a top-loading washer
+   whose lid lifts, and a dryer with a square door on the front. Both
+   are hollow with a drum inside, for anomalies:
+     scene.getObjectByName('washer-lid').userData.setOpen(1)
+     scene.getObjectByName('dryer-door').userData.setOpen(1) */
+const MACHINE = { back: 829, front: 886, h: 3, s: 0.08 };
+
+// the box both machines are built in: sides, back, base, and the
+// control panel along the back with two knobs
+function machine(px0, px1) {
+  const { h, s } = MACHINE, zb = Z(MACHINE.back), zf = Z(MACHINE.front);
+  const x0 = X(px0), x1 = X(px1), W = x1 - x0, D = zf - zb, cx = (x0 + x1) / 2, zc = (zb + zf) / 2;
+  const box = (w, ht, d, x, y, z) => solid(new THREE.BoxGeometry(w, ht, d), [x, FLOOR + y, z]);
+  const knob = x => tint(solid(new THREE.CylinderGeometry(0.11, 0.11, 0.08, 10), [x, FLOOR + h + 0.25, zb + 0.34], [Math.PI / 2, 0, 0]), MAT.dark);
+  // (parts just meet, never overlap face to face, so nothing flickers)
+  const lo = h - s, sz = zb + (D - s) / 2;
+  const parts = [
+    box(s, lo, D - s, x0 + s / 2, lo / 2, sz), box(s, lo, D - s, x1 - s / 2, lo / 2, sz),    // sides
+    box(W - 2 * s, lo, s, cx, lo / 2, zb + s / 2),                                         // back
+    box(W - 2 * s, 0.4, D - 2 * s, cx, 0.2, zc),                                           // base
+    box(W, 0.68, 0.3, cx, lo + 0.34, zb + 0.15),                                           // control panel
+    knob(cx - 0.6), knob(cx + 0.55)
+  ];
+  return { parts, box, x0, x1, W, D, cx, zb, zf };
+}
+
+function washer(px0, px1) {
+  const { h, s } = MACHINE;
+  const { parts, box, W, cx, zb, zf } = machine(px0, px1);
+  const deckZ0 = zb + 0.3, dd = zf - deckZ0, R = 0.75, dz = deckZ0 + dd / 2;
+  // the top deck, with a round hole for the tub
+  const deck = new THREE.Shape();
+  deck.moveTo(-W / 2, -dd / 2); deck.lineTo(W / 2, -dd / 2); deck.lineTo(W / 2, dd / 2); deck.lineTo(-W / 2, dd / 2);
+  const hole = new THREE.Path();
+  hole.absarc(0, 0, R, 0, Math.PI * 2, false);
+  deck.holes.push(hole);
+  const deckGeo = remap(new THREE.ExtrudeGeometry(deck, { depth: s, bevelEnabled: false, curveSegments: 20 }),
+    (u, v, d) => [cx + u, FLOOR + h - s + d, dz + v]);
+  const tubH = h - s - 0.5;
+  const lid = named('washer-lid',
+    solid(new THREE.BoxGeometry(W - 0.12, 0.05, dd - 0.06), [0, 0.025, (dd - 0.06) / 2]),
+    solid(new THREE.BoxGeometry(0.5, 0.05, 0.07), [0, 0.03, dd - 0.05]));       // lip to lift it by
+  lid.position.set(cx, FLOOR + h, deckZ0);
+  return named('washer', ...parts,
+    box(W, h - s, s, cx, (h - s) / 2, zf - s / 2),                                // front
+    solid(deckGeo),
+    tint(solid(new THREE.CylinderGeometry(R - 0.03, R - 0.03, tubH, 20, 1, true), [cx, FLOOR + 0.5 + tubH / 2, dz]), MAT.drum),
+    tint(solid(new THREE.CylinderGeometry(R - 0.03, R - 0.03, 0.04, 20), [cx, FLOOR + 0.5, dz]), MAT.drum),
+    tint(solid(new THREE.CylinderGeometry(0.12, 0.22, 1.4, 10), [cx, FLOOR + 1.2, dz]), MAT.soft),   // agitator
+    openable(lid, t => { lid.rotation.x = -t * 85 * Math.PI / 180; }));
+}
+
+function dryer(px0, px1) {
+  const { h, s } = MACHINE;
+  const { parts, box, W, D, cx, zb, zf } = machine(px0, px1);
+  const DY = 1.6, half = 0.675, R = 0.95;
+  // the front, with a square hole for the door
+  const face = new THREE.Shape();
+  face.moveTo(-W / 2, 0); face.lineTo(W / 2, 0); face.lineTo(W / 2, h); face.lineTo(-W / 2, h);
+  const hole = new THREE.Path();
+  hole.moveTo(-half, DY - half); hole.lineTo(half, DY - half); hole.lineTo(half, DY + half); hole.lineTo(-half, DY + half);
+  face.holes.push(hole);
+  const faceGeo = remap(new THREE.ExtrudeGeometry(face, { depth: s, bevelEnabled: false }),
+    (u, y, d) => [cx + u, FLOOR + y, zf - s + d]);
+  const len = D - 2 * s - 0.05, drumZ = zf - s - len / 2;
+  const drum = new THREE.CylinderGeometry(R, R, len, 20, 1, true);
+  drum.rotateX(Math.PI / 2);
+  const back = new THREE.CylinderGeometry(R, R, 0.04, 20);
+  back.rotateX(Math.PI / 2);
+  const fins = [0, 2.1, 4.2].map(a => tint(solid(new THREE.BoxGeometry(0.1, 0.16, len * 0.9),
+    [cx + Math.sin(a) * (R - 0.08), FLOOR + DY + Math.cos(a) * (R - 0.08), drumZ], [0, 0, -a]), MAT.drum));
+  const door = named('dryer-door',
+    solid(new THREE.BoxGeometry(1.5, 1.5, 0.1), [0.75, FLOOR + DY, 0.05]),
+    solid(new THREE.BoxGeometry(0.08, 0.4, 0.08), [1.36, FLOOR + DY, 0.13]));   // handle
+  door.position.set(cx - 0.75, 0, zf);                                         // hinged on its left
+  return named('dryer', ...parts,
+    box(W, s, D - 0.3 - s, cx, h - s / 2, zb + 0.3 + (D - 0.3 - s) / 2),        // top
+    solid(faceGeo),
+    tint(solid(drum, [cx, FLOOR + DY, drumZ]), MAT.drum),
+    tint(solid(back, [cx, FLOOR + DY, drumZ - len / 2]), MAT.drum),
+    ...fins,
+    openable(door, t => { door.rotation.y = -t * 100 * Math.PI / 180; }));
 }
 
 function foyer() {
@@ -1243,6 +1471,7 @@ function paint(scene) {
   parts('mailbox', MAT.furniture, MAT.dark, MAT.frontDoor);  // wood post, black box, red flag
   set('door-closet', MAT.trim);                          // white accordion door
   set('kitchen-sink', MAT.steel);
+  set('cooktop', MAT.dark);
   for (const n of ['lamp-foyer', 'lamp-living', 'lamp-master', 'lamp-master-2', 'lamp-sofa', 'lamp-porch']) set(n, MAT.dark);   // shades keep glowing
   scene.traverse(o => {
     if (!o.isMesh) return;
