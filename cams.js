@@ -11,14 +11,14 @@
    positions when it tests ghoul1's stare.
    ============================================================ */
 
-import { CEIL } from './world.js?v=11';
+import { CEIL } from './world.js?v=18';
 
 const HIGH = CEIL - 0.4;
 
 export const CAMS = [
   { name: 'front yard',     pos: [-78, 27, 50],       look: [-5, 5, 1],          fov: 32 },
   { name: 'foyer',          pos: [-17.2, HIGH, 6.0],  look: [-17.2, 3.5, -2.5],  fov: 80 },
-  { name: 'living room',    pos: [-6.0, HIGH, -15.9], look: [-5.5, 3, -2],       fov: 80 },
+  { name: 'living room',    pos: [0.1, 10.4, -15.2],  look: [-5.5, 4.7, -9],     fov: 80 },
   { name: 'kitchen',        pos: [2.6, HIGH, -8.9],   look: [13, 3, -1],         fov: 80 },
   { name: 'patio',          pos: [2.6, HIGH, -10.4],  look: [16, 2.5, -15.5],    fov: 64 },
   { name: 'master bedroom', pos: [5.4, HIGH, 4.3],    look: [14, 3.5, 13],       fov: 80 },

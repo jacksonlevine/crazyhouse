@@ -14,11 +14,11 @@
    ============================================================ */
 
 import * as THREE from './vendor/three-r186/three.module.js';
-import { buildWorld } from './world.js?v=11';
+import { buildWorld } from './world.js?v=18';
 import { createGhoul } from './ghoul.js';
-import { camAt } from './cams.js?v=7';
+import { camAt } from './cams.js?v=8';
 
-const scene = buildWorld();
+const scene = buildWorld({ weld: false });   // same shapes, unwelded: much quicker to test
 scene.updateMatrixWorld(true);
 const meshes = [];
 scene.traverse(o => { if (o.isMesh) meshes.push(o); });

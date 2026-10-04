@@ -93,8 +93,91 @@ orange, the moon a little blue (`LAMP_COLOR` and the light colours in
 between the panes and a sheet of faint glass (`glazing()` in
 `world.js`); each is one solid frame plus one sheet, so they're cheap.
 Glass sits on its own layer so it never hides ghoul1 from view. The
-patio has sliding glass doors (`slidingDoor()`), and the front door is
-centred on its wall with the steps and walk lined up to it.
+patio has sliding glass doors (`slidingDoor()`), and the red front door
+has a 4-pane window and is centred on its wall with the steps and walk
+lined up to it.
+
+- **Glass reflections:** glass isn't lit (lit glass showed every lamp
+  as a hard white dot). Instead, at the start each pane takes one small
+  snapshot of what's around it and faintly reflects that
+  (`captureReflections()`). Costs a quarter second once, then nothing.
+  The reflections don't move, and the sky is left out of them.
+- **The bathroom mirror** (`mirror()`) is a real mirror: while a cam can
+  see it, the room is drawn a second time from the mirrored view. About
+  1.5 ms a frame, only while it's on screen. ghoul1 has no reflection
+  (he's on a layer it doesn't draw), like a vampire.
+
+**Things that open, for anomalies.** Each has `setOpen(t)`, 0 shut to
+1 open (anything between works), and `userData.open` says where it is:
+
+```js
+scene.getObjectByName('fridge-door').userData.setOpen(1)
+```
+
+- `door-closet`: the storage closet's 3-panel folding door, facing the couch
+- `door-coat-closet`: the foyer coat closet's sliding doors (the front
+  one slides over the back one, on its own track)
+- `fridge-door` and `freezer-door`: a top-freezer fridge, hollow, with
+  shelves, door bins, food and a little light inside
+- `washer-lid` and `dryer-door`: an old school top-loading washer and a
+  dryer with a square front door, both hollow with a drum inside
+- `cabinet-door-island-1` and so on: every kitchen cabinet door (under
+  the sink, the island, beside the fridge). The cabinets are hollow,
+  with shelves, pipes under the sink, pots, plates and cans
+- every swinging house door too (`door-front`, `door-master`,
+  `door-pantry`), where 1 is 90°
+
+Moving one tells `main.js` where (`scene.userData.moved`), so lamps
+nearby redraw their shadows. Careful: wide open, the fridge door
+reaches into ghoul1's path round the island, so he'd walk through it.
+
+**The 90s.** The house is set in the 90s: a 4' x 6' oatmeal and sage
+rug lying a bit crooked in front of the sectional, with messy fringe
+(the sectional has square arms and throw pillows), end tables with a
+shelf of magazines underneath, a newspaper and a bud vase on the dining
+table, a fire in the wood stove, a gaudy little Tiffany glass sconce in
+muted leaded glass on the pillar by the sofa, teal and plum counter stools with
+chrome posts, almond countertops, an oak vanity with an oval sink and
+brass knobs, frosted glass in a brass shower frame, a mauve bathmat,
+flannel and denim and a couple of shoeboxes in the walk-in closet,
+a blue jug of YEP detergent and a green laundry basket of folded clothes
+on the shelf over the machines, a bed with a rounded mattress, puffy
+pillows and a plaid flannel comforter with its corner turned back, a
+full bookshelf facing the bed, and a messy computer desk under the
+bedroom window: two beige CRTs (a DOS prompt and a teal desktop), a
+beige tower under the desk, an office chair, an ashtray full of butts
+and empty cans of Diet Choke. The rug pattern, the
+Tiffany glass, the newspaper's front page, the monitor screens, the can
+labels and tops, the detergent label, the plaid and the shower glass's
+grain are tiny pictures drawn by the game when it starts, not image
+files.
+
+**The fire** (`woodStove()` and `fire()`): the stove is hollow, with
+firebrick inside, and two crossed logs (and one behind) sit on a grate
+over glowing coals, breathing slowly brighter and dimmer. A small light
+inside lights the firebrick and a soft spotlight warms the room.
+
+**Texture slots.** Every shadowed light costs a texture slot in every
+material, and graphics cards only have 16. The 13 shadowed lights use
+most of them, so **don't add another shadowed light** without taking one
+away (the shower glass is the first thing to break). The newer lights
+(the fire, the pillar sconce, the round ceiling lights in the pantry
+and over the toilet) have no shadows and are aimed or limited so they
+can't shine through walls.
+
+**Shadows are live, nothing is painted on.** Every shadow is a real
+shadow map from its light. To keep it cheap, a lamp only redraws its
+shadows when something near it moves (ghoul1 walking past, a door). The
+laundry's swaying bulb carries its light with it, so its shadows sway
+too; it redraws every other frame at half size and only reaches 16 feet
+(about 0.3 ms a frame). (`bake()` has nothing to do with shadows: it
+only welds furniture parts together so there are fewer things to draw.)
+
+**The front porch** has a lantern by the door and a rocking chair
+(`frontPorch()`). The kitchen has a real double sink with a faucet
+(`sink()`) and a gas cooktop on the island (`cooktop()`), and the
+pantry has a proper door and open shelves of cans and boxes
+(`shelving()`).
 
 **Colours.** Everything is a flat colour, no texture images, so it costs
 nothing extra to draw: green lawn, concrete walk, wood floors, warm
@@ -104,19 +187,29 @@ walls, a red front door, and so on. They're all in `MAT` near the top of
 - **Lamps** (`roomLamps()` in `world.js`): a floor lamp in the foyer, a
   table lamp in the living room, pendants over the dining table and the
   kitchen island, a lamp on an end table by the sectional, both
-  nightstand lamps in the master, a bare bulb in the
-  laundry, a light bar over the bathroom mirror, a lantern on the patio.
-- **Outside:** a tall streetlight by the front walk that reaches up
-  onto the roof (`streetlight()`), moonlight, and a faint fill that
-  keeps dark corners dim rather than pitch black (`sky()`).
-- **Sky:** stars, a moon and a few slowly drifting clouds
-  (`heavens()`). Kept cheap: about a dozen draws, no lights or shadows.
+  nightstand lamps in the master, a bare bulb on a cord with a pull
+  string in the laundry that sways very gently, its light and shadows
+  swaying with it (`pullBulb()`), round ceiling lights in the pantry and
+  over the toilet (`ceilingLight()`), a light bar over the bathroom mirror, a lantern on the patio,
+  a lantern on the front porch.
+- **Outside:** a road past the front of the house with curbs and a
+  dashed yellow line (`road()`), a tall streetlight at the curb whose
+  arm reaches out over the road, its wide cone tipped back enough to
+  catch the yard and the front of the house (`streetlight()`), soft moonlight, and a
+  faint fill that keeps dark corners dim rather than pitch black
+  (`sky()`).
+- **Sky:** stars, a moon high up where the moonlight comes from
+  (`MOON_DIR`; bright enough to give the grass a soft glow) and a few
+  slowly drifting clouds (`heavens()`). Kept cheap: about a dozen draws, no lights or shadows.
 - **Brightness:** each lamp's number is its strength (in
   `floorLamp(lamps, 'lamp-foyer', 140, 775, 28)` it's the 28). The whole
   picture's brightness is `EXPOSURE` at the top of `main.js`. Surface
   greys are `MAT` near the top of `world.js`.
 - **Cost:** shadows are worked out once at the start, then only redrawn
-  for lamps near ghoul1, so it stays fast.
+  for lamps near ghoul1, so it stays fast. And once the house is built,
+  `bake()` welds each named thing's little parts into one mesh per
+  colour, which cut the draw count by about two thirds. Names stay, so
+  `scene.getObjectByName('sofa')` still works.
 
 ## Night vision
 
@@ -164,6 +257,8 @@ in debug mode):
 - **Night vision** and **fully lit** (strong even light everywhere, no
   fog) buttons.
 - **Show ghoul** pins him visible, **freeze ghoul** stops him walking.
+- **Open it all** opens (or shuts) everything in the list above that
+  anomalies can open.
 - **Copy cam** copies the current view as a line you can paste into
   `cams.js`, so a spot you find in free cam can become a real cam.
 - A readout of where the camera is, its FOV and ghoul1's state.

@@ -11,6 +11,9 @@ import { openSignalFolder } from './signal-clip.js?v=7';
    - Night vision and fully lit buttons.
    - Copy cam: copies where you are as a line for cams.js.
    - ghoul1: show him / freeze him.
+   - Open it all: opens (or shuts) every door that can move for
+     anomalies: both closets, the fridge, the freezer, the washer lid,
+     the dryer door and the kitchen cabinets.
    ============================================================ */
 
 export function createDebug(api) {
@@ -35,6 +38,7 @@ export function createDebug(api) {
       <button data-act="freeze">freeze ghoul</button>
     </div>
     <button data-act="composite" aria-pressed="false">bypass composite: off</button>
+    <button data-act="open">open it all</button>
     <button data-act="copy">copy cam</button>
     <pre class="dbg-read" data-out="read"></pre>`;
   document.body.appendChild(panel);
@@ -186,6 +190,17 @@ export function createDebug(api) {
       if (keys.has('shift')) camera.position.y += step;
       if (keys.has('control') || keys.has('c')) camera.position.y -= step;
     }
+    // swing everything toward where the button sent it
+    if (openGoal !== null) {
+      let done = true;
+      for (const o of openers) {
+        const v = o.userData.open, step = dt * 1.2;
+        const next = Math.abs(openGoal - v) <= step ? openGoal : v + Math.sign(openGoal - v) * step;
+        if (next !== v) o.userData.setOpen(next);
+        if (next !== openGoal) done = false;
+      }
+      if (done) openGoal = null;
+    }
     readout();
   };
 
@@ -231,6 +246,16 @@ export function createDebug(api) {
   btn('freeze').addEventListener('click', () => {
     ghoul.paused = !ghoul.paused;
     btn('freeze').classList.toggle('on', ghoul.paused);
+  });
+
+  /* ─── open it all ─── */
+  const openers = ['door-closet', 'door-coat-closet', 'fridge-door', 'freezer-door', 'washer-lid', 'dryer-door']
+    .map(n => scene.getObjectByName(n)).filter(Boolean);
+  scene.traverse(o => { if (o.name.startsWith('cabinet-door')) openers.push(o); });
+  let openGoal = null;             // only set while the button is moving things
+  btn('open').addEventListener('click', () => {
+    openGoal = openers.some(o => o.userData.open > 0.5) ? 0 : 1;
+    btn('open').classList.toggle('on', openGoal === 1);
   });
 
   /* ─── copy the current view as a cams.js line ─── */

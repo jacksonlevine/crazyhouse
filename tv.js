@@ -10,7 +10,7 @@
    ============================================================ */
 
 import * as THREE from './vendor/three-r186/three.module.js';
-import { X, Z, FLOOR, MAT, EDGE } from './world.js?v=11';
+import { X, Z, FLOOR, MAT, EDGE } from './world.js?v=18';
 import * as CRT from './crt.js?v=2';
 
 const GRID = 8;                 // the atlas is GRID x GRID tiles

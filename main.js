@@ -4,9 +4,9 @@
    ============================================================ */
 
 import * as THREE from './vendor/three-r186/three.module.js';
-import { buildWorld, ROOMS, roomAt, GLASS_LAYER, shadowed } from './world.js?v=11';
+import { buildWorld, ROOMS, roomAt, GLASS_LAYER, captureReflections, shadowed } from './world.js?v=18';
 import { createEmp } from './emp.js?v=6';
-import { CAMS, camAt } from './cams.js?v=7';
+import { CAMS, camAt } from './cams.js?v=8';
 import { createGhoul } from './ghoul.js?v=12';
 import { createGhostPass, GHOST_LAYER } from './ghost.js?v=4';
 import { createTv } from './tv.js?v=8';
@@ -28,7 +28,7 @@ let state = 'title';
 // filled in by debug.js when ?debug is on
 const debug = { composite: true, free: false, fov: null, tick: null, onCam: null };       // 'title' | 'playing'
 let camIndex = 0;
-let renderer, scene, camera, ghoul, ghost, lamps, emp, skyTick, ir, tv, analog;
+let renderer, scene, camera, ghoul, ghost, lamps, emp, ticks, ir, tv, analog;
 const EXPOSURE = 0.75;         // overall brightness of the picture
 const buffer = new THREE.Vector2();
 let shiftStart = 0;
@@ -44,6 +44,14 @@ function refreshShadows() {
   const now = new Set();
   for (const l of lamps) {
     if (l.isPointLight && l.getWorldPosition(lampAt).distanceTo(ghoul.object.position) < NEAR_LAMP) now.add(l);
+  }
+  // something in the house moved (the closet door, an anomaly): lamps near it redraw too
+  const moved = scene.userData.moved;
+  if (moved) {
+    for (const at of moved) for (const l of lamps) {
+      if (l.isPointLight && l.getWorldPosition(lampAt).distanceTo(at) < NEAR_LAMP) now.add(l);
+    }
+    scene.userData.moved = null;
   }
   for (const l of now) l.shadow.needsUpdate = true;
   for (const l of nearLamps) if (!now.has(l)) l.shadow.needsUpdate = true;
@@ -83,8 +91,9 @@ function setup() {
   tv = createTv(shadowed);
   scene.add(tv.object);
   lamps.push(tv.light);
-  const heavens = scene.getObjectByName('heavens');
-  skyTick = (heavens && heavens.userData.tick) || (() => {});
+  // things that move on their own every frame: the clouds, the fire
+  ticks = [];
+  scene.traverse(o => { if (o.userData.tick) ticks.push(o.userData.tick); });
   ghoul = createGhoul();
   // he lives on his own layer: the normal render skips him and the
   // ghost pass draws him, so he can blur and fade
@@ -115,6 +124,8 @@ function setup() {
       analog.setClip(clip);
     }).catch(error=>console.error('Signal recording:',error.message));
   }
+  // each window's reflection: one small snapshot apiece, taken now, never again
+  captureReflections(renderer, scene);
   camera = new THREE.PerspectiveCamera(52, 16 / 9, 0.1, 600);
   camera.layers.enable(GLASS_LAYER);        // the main view draws window glass too
 
@@ -144,7 +155,7 @@ function setup() {
       isNight: () => night, camIndex: () => camIndex
     };
     window.crazyhouse = api;
-    import('./debug.js?v=12').then(m => m.createDebug(api));
+    import('./debug.js?v=13').then(m => m.createDebug(api));
   }
 
   renderer.setAnimationLoop(now => {
@@ -162,7 +173,7 @@ function setup() {
     analog.controls.monochrome = night;
     if (debug.tick) debug.tick(dt);
     ir.position.copy(camera.position);
-    skyTick(dt);
+    for (const tick of ticks) tick(dt);
     tickEmp();
     refreshShadows();
     tickClock();
