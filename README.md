@@ -353,6 +353,39 @@ DC preservation, passbands, carrier rejection, clean sync recovery, and
 six uniform-color round trips (maximum channel error below 2.5%).
 The kitchen TV itself no longer adds decorative scanlines or picture warp.
 
+## HD analog view
+
+The default game view uses a custom 1920×1080 progressive analog waveform:
+1125 total lines, 2402 voltage samples per line, 60 frames/second,
+162.135 MHz sampling, and a 40.53375 MHz quadrature color carrier. It has actual
+sync pulses, blanking, burst, 65 MHz luma and 30 MHz chroma filtering, voltage
+mixing, back-porch clamping, sync tracking, burst phase recovery and a line-comb
+receiver. This is a custom HD signal format, not standard NTSC. There are no
+added scanlines, sharpening or cosmetic distortion passes.
+
+The waveform stays on the GPU. Only two RGBA measurements per raster line
+(38,048 bytes/frame) go to the receiver worker. Two bounded waveform buffers and reusable pixel-pack buffers
+retain the matching signal until its timing is recovered and decoded. Missing
+sync free-runs the receiver; it is not replaced by the game's camera coordinates.
+The chroma FIR combines same-sign adjacent taps using texture interpolation,
+preserving the filter while reducing texture fetches. The game still renders at
+monitor refresh, independently of the 60 Hz signal clock.
+
+Use `?debug&analog=ntsc` for the original Lab-compatible 480-line mode. Existing
+Lab recordings contain NTSC timing and carrier frequencies; they **do not become
+HD recordings** when loaded in HD mode. They are mixed as foreign-frequency
+voltages there and will interfere differently. Their NTSC receiver settings are
+not applied to the HD receiver. Use NTSC mode when checking exact
+agreement with Lab. A matching custom HD export would be needed for HD parity;
+Lab's normal preview, recording and virtual camera behavior remain unchanged.
+
+Run `node tools/check-hd-receiver.mjs` for sync, burst, missing-frame, repeated
+refresh and clamp checks. Serve `tools/hd-signal-check.html` to validate the real
+GPU color/ramp round trip, injected DC rejection and carrier-voltage interference.
+Performance is visible in the separate `signals…` debug window. The GPU read
+measurement includes asynchronous fence/queue latency, rather than only GPU
+execution time; rendered and decoded frame rates are reported separately.
+
 ## Designing recorded interferers in Composite Lab
 
 Open the updated native Composite Lab app at
@@ -369,7 +402,7 @@ Game export runs a separate engine using Lab's unchanged normal encoder and
 receiver, at four samples/carrier. It writes contiguous 525-line blocks on a
 sample clock and preserves receiver parameters/source settings in the manifest.
 Normal Lab preview, output, virtual camera, and original raw export are untouched.
-The game uses the receiver settings to decode the sum of its base signal and the
+In NTSC mode, the game uses the receiver settings to decode the sum of its base signal and the
 recorded voltages. Source drift and offsets are present in the waveform itself.
 The original optional raw export preserves its original native sample rate and
 wall-clock block timestamps. Legacy 480-line clips remain readable, but do not
@@ -389,7 +422,7 @@ missing waveform data with zero or skip forward. The sample stream wraps across
 recording boundaries; a finite recording's end-to-start edit can still cause a
 physical waveform discontinuity. Corrupt/missing files stop playback with an error.
 
-Use `?signal=signals/recordings/smooth-cover-ntsc-30s/manifest.json&signalGain=0.15`
+Use `?analog=ntsc&signal=signals/recordings/smooth-cover-ntsc-30s/manifest.json&signalGain=0.15`
 for the local smooth 30 fps test footage, recorded from the existing local Lab
 video. It includes explicit source drift of +79 ppm and offset of 0.37 line,
 recorded by the actual Lab encoder. These are source-clock parameters, not screen
@@ -439,7 +472,7 @@ The game starts clip playback on its NTSC two-frame carrier-phase boundary; only
 phase offsets designed into the recorded waveform remain. Older letterboxed
 recordings need to be re-exported to remove their baked-in bars.
 
-The game uses Lab's line-comb receiver as its default luma/chroma separator.
+NTSC mode uses Lab's line-comb receiver as its default luma/chroma separator.
 The simple three-tap notch removed most fine luma contrast below the carrier:
 a GPU sinusoidal test measures only 17% retained contrast at 2.5 MHz, versus
 80% with the line comb. The picture remains 480 lines and encoder/chroma

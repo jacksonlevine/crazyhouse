@@ -1,3 +1,4 @@
+import {HDReceiver} from './hd-receiver.js?v=1';
 import {CompositeReceiver} from './composite-receiver.js?v=3';
 export function sumSignalChunks(chunks,count){
  let sum;
@@ -58,13 +59,16 @@ export function createPreviewReceiver(){
  };
 }
 if(typeof self!=='undefined'&&typeof document==='undefined'){
- const recover=createPreviewReceiver();
+ const recover=createPreviewReceiver(),hdReceiver=new HDReceiver();
  self.onmessage=({data})=>{
   const {id,kind}=data,start=performance.now();
   try{
    if(kind==='sum'){
     const samples=sumSignalChunks(data.chunks,data.count);
     self.postMessage({id,samples:samples.buffer},[samples.buffer]);
+   }else if(kind==='receiveHD'){
+    const timing=hdReceiver.recover(new Float32Array(data.pixels),data.parameters).slice();
+    self.postMessage({id,pixels:data.pixels,timing:timing.buffer,slice:hdReceiver.slice,sliceValid:hdReceiver.sliceValid,milliseconds:performance.now()-start},[data.pixels,timing.buffer]);
    }else if(kind==='receive'){
     const pixels=new Float32Array(data.pixels),width=910,height=813,samples=data.reuse?new Float32Array(data.reuse):new Float32Array(width*height);
     for(let row=0;row<height;row++)for(let x=0;x<width;x++)samples[row*width+x]=pixels[(height-1-row)*Math.ceil(width/4)*4+x];

@@ -11,6 +11,7 @@ import { createGhoul } from './ghoul.js?v=12';
 import { createGhostPass, GHOST_LAYER } from './ghost.js?v=4';
 import { createTv } from './tv.js?v=8';
 import { openSignalURL } from './signal-clip.js?v=7';
+import { createHDAnalogPass } from './hd-analog.js?v=1';
 import { createAnalogPass } from './analog.js?v=22';
 
 
@@ -111,9 +112,10 @@ function setup() {
     if (o.shadow) o.shadow.camera.layers.enable(GHOST_LAYER);
   });
   ghost = createGhostPass(renderer);
-  // A line-comb receiver preserves luma detail instead of using the broad
-  // three-tap carrier trap. Recorded Lab receiver settings still override it.
-  analog = createAnalogPass(renderer, {receiverParameters:{comb:true}});
+  // HD uses a custom analog raster. Select NTSC for exact Lab recording parity.
+  analog = new URLSearchParams(location.search).get('analog')==='ntsc'
+    ? createAnalogPass(renderer, {receiverParameters:{comb:true}})
+    : createHDAnalogPass(renderer);
   const testInterference = Number(new URLSearchParams(location.search).get('interference'));
   if (Number.isFinite(testInterference)) analog.controls.interference = Math.max(0, Math.min(1, testInterference));
   const recordingURL=new URLSearchParams(location.search).get('signal');
@@ -136,7 +138,7 @@ function setup() {
     if (!w || !h) return;
     renderer.setSize(w, h, false);
     renderer.getDrawingBufferSize(buffer);
-    ghost.setSize(debug.composite ? 768 : buffer.x, debug.composite ? 480 : buffer.y);
+    ghost.setSize(debug.composite ? analog.picture.width : buffer.x, debug.composite ? analog.picture.height : buffer.y);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
   };
@@ -152,7 +154,7 @@ function setup() {
       THREE, scene, camera, renderer, CAMS, showCam, ghoul, lamps, fireEmp, toggleNight, frame, debug, tv, analog,
       setComposite: enabled => {
         debug.composite = enabled;
-        ghost.setSize(enabled ? 768 : buffer.x, enabled ? 480 : buffer.y);
+        ghost.setSize(enabled ? analog.picture.width : buffer.x, enabled ? analog.picture.height : buffer.y);
       },
       isNight: () => night, camIndex: () => camIndex
     };
@@ -180,7 +182,7 @@ function setup() {
     refreshShadows();
     tickClock();
     const target = debug.composite ? analog.picture : null;
-    const height = debug.composite ? 480 : buffer.y;
+    const height = debug.composite ? analog.picture.height : buffer.y;
     renderer.setRenderTarget(target);
     renderer.render(scene, camera);
     // blur scales with the picture, so it looks the same at any size
