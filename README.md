@@ -350,7 +350,10 @@ view and the mouse looks, Shift runs, P goes back to the cams.
   old PlayStation horror style; you're frozen until you close it (E,
   Space, Enter or a click). The texts are `INSPECT` in `world.js`, keyed
   by the thing's name; add a line there, or set `userData.inspect` on
-  any named thing, and it can be looked at.
+  any named thing, and it can be looked at. Little things inside a
+  bigger group (the clutter) are wrapped in `say(text, ...parts)`
+  instead, so each one has its own text and only counts when the
+  crosshair is actually on it; clutter without a `say` can't be looked at.
 - **Walls and furniture block you.** When first person starts, the game
   traces everything between your knees and the top of your head into a
   flat map of the floor (doorways stay open, walls don't); doors get

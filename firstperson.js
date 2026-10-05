@@ -18,7 +18,7 @@
    ============================================================ */
 
 import * as THREE from './vendor/three-r186/three.module.js';
-import { walkHeight } from './world.js?v=34';
+import { walkHeight } from './world.js?v=36';
 
 const EYE = 5.3;               // eye height, feet
 const RADIUS = 0.6;            // how close you can get to things (doorways are under 3 feet)
@@ -171,6 +171,11 @@ export function createFirstPerson({ scene, camera, frame }) {
     if (!hit) return null;
     for (let o = hit.object; o; o = o.parent) {
       if (o.userData.switch) return { o, kind: 'switch' };
+      // a group of little things: only the one you're actually looking at, if it has anything to say
+      if (o.userData.areas) {
+        const area = o.userData.areas.find(a => a.box.containsPoint(hit.point));
+        return area ? { o, kind: 'inspect', text: area.text } : null;
+      }
       if (o.userData.inspect) return { o, kind: 'inspect' };
       if (o.userData.openTo) return { o, kind: 'open' };
     }
@@ -181,7 +186,7 @@ export function createFirstPerson({ scene, camera, frame }) {
     const t = look();
     if (!t) return;
     if (t.kind === 'switch') scene.userData.switches.toggle(t.o.userData.switch);
-    else if (t.kind === 'inspect') say(t.o.userData.inspect);
+    else if (t.kind === 'inspect') say(t.text || t.o.userData.inspect);
     else t.o.userData.openTo(t.o.userData.open > 0.5 ? 0 : 1, 0.9);
   };
 

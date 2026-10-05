@@ -8,7 +8,7 @@
    foot, taken from the plan's 42' and 34' dimensions). Heights
    are in feet.
 
-   Every solid is a lit grey surface with dark ink edges. Real
+   Every solid is a plain lit surface, no outlines. Real
    lights (a lamp in each room, a streetlight, faint moonlight) cast
    real shadows, so light only reaches what it can actually see:
    through doorways, out of windows, into the yard.
@@ -60,9 +60,8 @@ export function roomAt(x, z) {
 
 /* ─── materials ─────────────────────────────── */
 
-/* A surface that light falls on. Grey only, so the picture stays
-   black and white. Faces are pushed back a hair so their own edges
-   draw on top cleanly. */
+/* A surface that light falls on. Faces are pushed back a hair, so
+   anything drawn flat against them (labels, lines) shows cleanly. */
 export function surface(color, roughness = 0.9, side = THREE.FrontSide) {
   return new THREE.MeshStandardMaterial({
     color, roughness, metalness: 0, side,
@@ -143,16 +142,15 @@ export const MAT = {
   shadeGlow: new THREE.MeshBasicMaterial({ color: 0xf2dfbf, side: THREE.DoubleSide })   // open shades, lit inside and out
 };
 
-// dark ink edges: they vanish into the dark, and outline whatever's lit
+// dark lines for cords and wires
 export const EDGE  = new THREE.LineBasicMaterial({ color: 0x0b0b0b });
 
 /* ─── building blocks ───────────────────────── */
 
-// A solid: a lit surface with an ink outline.
+// A solid: a lit surface.
 export function solid(geo, [x, y, z] = [0, 0, 0], rot, mat = MAT.furniture) {
   const g = new THREE.Group();
   g.add(new THREE.Mesh(geo, mat));
-  g.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo, 20), EDGE));
   g.position.set(x, y, z);
   if (rot) g.rotation.set(rot[0], rot[1], rot[2]);
   return g;
@@ -2075,19 +2073,22 @@ function computerDesk() {
   const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
   const tray = [x0 + 0.45, zc - 1.6];
   parts.push(
-    crt(zc - 0.95, 0.12, dos), crt(zc + 0.65, -0.12, desktop),
+    say("Both monitors are still on. On the black one, someone's typed a file out to the screen. The last line says: it is in the house.",
+      crt(zc - 0.95, 0.12, dos), crt(zc + 0.65, -0.12, desktop)),
     box(0.55, 0.06, 1.5, x0 + 0.4, top - 0.24, zc + 0.6, beige),                       // keyboard
     box(0.4, 0.03, 1.36, x0 + 0.42, top - 0.2, zc + 0.6, keys),                        // its keys
     box(0.75, 0.01, 0.65, x0 + 0.45, top + 0.005, zc + 1.75, MAT.denim),               // mousepad
     box(0.32, 0.1, 0.2, x0 + 0.42, top + 0.06, zc + 1.72, beige, [0, 0.2, 0]),         // mouse
-    cyl(0.28, 0.06, tray[0], top + 0.03, tray[1], surface(0x3a4a48, 0.3), null, 14),     // the ashtray
-    ...Array.from({ length: 14 }, (_, k) => butt(tray[0] + (rand() - 0.5) * 0.34, top + 0.05 + (k > 8 ? 0.04 : 0), tray[1] + (rand() - 0.5) * 0.34, rand() * 6)),   // overflowing
+    say("The ashtray is overflowing, and one of the butts is still warm.",
+      cyl(0.28, 0.06, tray[0], top + 0.03, tray[1], surface(0x3a4a48, 0.3), null, 14),   // the ashtray
+      ...Array.from({ length: 14 }, (_, k) => butt(tray[0] + (rand() - 0.5) * 0.34, top + 0.05 + (k > 8 ? 0.04 : 0), tray[1] + (rand() - 0.5) * 0.34, rand() * 6))),   // overflowing
     butt(x0 + 0.9, top, zc - 0.2, 1.1), butt(x0 + 0.3, top, zc + 1.1, 2.6), butt(x0 + 0.6, top, z0 + 0.3, 0.4),
     butt(x0 + 0.75, top, zc - 1.15, 2.2), butt(x0 + 0.2, top, zc - 1.9, 0.7), butt(x0 + 1.25, top, zc + 1.6, 1.9),
     butt(x0 - 0.9, FLOOR, zc - 0.3, 0.3), butt(x0 - 0.15, FLOOR, zc + 1.9, 1.4), butt(x0 + 0.2, FLOOR, z0 - 0.3, 2.8),
     butt(x0 - 0.6, FLOOR, zc + 0.4, 2), butt(x0 - 0.3, FLOOR, zc - 1.0, 0.9),            // on the floor
-    soda(x0 + 0.8, zc - 0.6), soda(x0 + 1.1, z0 + 0.35), soda(x0 + 0.5, zc + 0.15, true), soda(x1 - 0.35, z1 - 0.4, false, true),
-    soda(x0 + 1.3, zc + 1.45), soda(x0 + 0.3, zc - 2.2, false, true), soda(x0 + 1.5, zc - 1.95, true), soda(x1 - 0.3, zc - 0.15),
+    ...[soda(x0 + 0.8, zc - 0.6), soda(x0 + 1.1, z0 + 0.35), soda(x0 + 0.5, zc + 0.15, true), soda(x1 - 0.35, z1 - 0.4, false, true),
+      soda(x0 + 1.3, zc + 1.45), soda(x0 + 0.3, zc - 2.2, false, true), soda(x0 + 1.5, zc - 1.95, true), soda(x1 - 0.3, zc - 0.15)]
+      .map(c => say("Diet Choke, empty. All of them. Somebody drank these one after another and didn't stop.", c)),
     ...[[x0 - 0.5, zc + 1.2, 2.1], [x0 - 1.0, zc - 0.7, 0.6]].map(([cx2, cz2, turn]) => {        // rolled onto the floor
       const c = can(true); c.position.set(cx2, FLOOR + 0.11, cz2); c.rotation.set(Math.PI / 2, 0, turn); return c;
     }),
@@ -2367,8 +2368,9 @@ function laundry() {
 // up on the laundry shelf: bottles of Tried and YEP, and a green laundry basket of folded clothes
 function laundryShelf() {
   const y = FLOOR + 5.4;
-  return [...detergent(X(634), y, Z(841), DETERGENTS.tried), ...detergent(X(661), y, Z(841), DETERGENTS.yep),
-    ...laundryBasket(X(724), y, Z(842))];
+  return [say("Tried and YEP. The YEP is nearly empty, and you can't remember the last time anyone did a load.",
+    ...detergent(X(634), y, Z(841), DETERGENTS.tried), ...detergent(X(661), y, Z(841), DETERGENTS.yep)),
+  say("Clean laundry, folded and stacked. None of it is in your size.", ...laundryBasket(X(724), y, Z(842)))];
 }
 
 /* A liquid detergent bottle: an oval body (round-shouldered, oval from
@@ -2750,14 +2752,12 @@ export function walkHeight(x, z) {
    the same way. */
 export const INSPECT = {
   'pizza-boxes': "Looks like someone had a pizza party. There are still a few slices left, but they're rock hard.",
-  'computer-desk': "Both monitors are still on. The ashtray is overflowing, and one of the butts is still warm.",
   'bed': "The covers are turned back on one side, like someone just got up. The sheets are cold.",
   'bookshelf': "Old paperbacks. One lies open, a line circled in red ink: they only come in when you stop watching.",
   'wood-stove': "The fire's still going. Someone fed it not long ago.",
   'fire': "The logs hiss and pop. You don't remember anyone lighting it.",
   'mirror': "You look tired. For a second you'd swear your reflection moved before you did.",
   'toilet': "The seat is up. The water in the bowl is perfectly still.",
-  'shelf': "Clean laundry, folded and stacked. None of it is in your size.",
   'dish-drainer': "Four plates, washed and drying. Somebody's been eating here.",
   'rocking-chair': "It's still rocking, just a little. There's no wind tonight.",
   'fridge-memo': "A to-do list. The last line has been gone over again and again, pressed so hard the pen tore through: who moved the chair??",
@@ -2773,12 +2773,6 @@ export const INSPECT = {
   'fridge': "The fridge hums. Something inside it ticks, then stops.",
   'stereo': "The receiver's dial is lit, tuned between stations. Under the hiss, very faintly, someone is counting.",
   'fiddle-fig': "The soil is wet. Somebody watered it today. One leaf has been torn in half and laid neatly on the soil.",
-  'kitchen-clutter': "The phone's cord is stretched out and kinked, like someone pulled it as far as it would go. The calendar has a day circled, then crossed out so hard the paper tore.",
-  'bed-clutter': "The alarm clock says 3:33. It's said that all night.",
-  'bath-clutter': "Two toothbrushes in the cup. Both still wet.",
-  'foyer-clutter': "Two pairs of shoes by the door. The boots are caked in fresh mud, and the mud is still wet.",
-  'living-clutter': "A crate of old records. Somebody's pulled one halfway out and left it.",
-  'laundry-clutter': "A heap of clothes waiting for the wash. Something at the bottom of the pile is damp."
 };
 
 /* The lie of the land, in feet: flat round the house, falling away
@@ -2880,7 +2874,7 @@ function driveway() {
 
 function path() {
   // the front walk: a concrete ribbon following WALK over the ground, with joints every few feet
-  const n = 160, hw = 2, pts = WALK.getSpacedPoints(n), pos = [], edge = [], joints = [];
+  const n = 160, hw = 2, pts = WALK.getSpacedPoints(n), pos = [], joints = [];
   const at = (p, side, t) => {
     const nx = -t.z, nz = t.x, l = Math.hypot(nx, nz), x = p.x + side * hw * nx / l, z = p.z + side * hw * nz / l;
     return [x, groundHeight(x, z) + 0.05, z];
@@ -2892,7 +2886,6 @@ function path() {
   for (let i = 1; i <= n; i++) {
     const [a, b] = rows[i - 1], [c, d] = rows[i];
     pos.push(...a, ...b, ...c, ...b, ...d, ...c);
-    edge.push([a, c], [b, d]);
     if (i % 3 === 0) joints.push([c, d]);
   }
   const geo = new THREE.BufferGeometry();
@@ -2900,7 +2893,7 @@ function path() {
   geo.computeVertexNormals();
   const walk = new THREE.Mesh(geo, MAT.concrete);
   walk.material.side = THREE.DoubleSide;
-  return named('path', walk, lines([...edge, ...joints]));
+  return named('path', walk, lines(joints, new THREE.LineBasicMaterial({ color: 0x6b675f })));   // expansion joints
 }
 
 
@@ -3369,7 +3362,15 @@ function shoes(x, z, turn, mat, sole = PROP.white, len = 0.95) {
 }
 
 /* Clutter, room by room. Each room's clutter is one group, so it's drawn
-   in a handful of goes however many little things are in it. */
+   in a handful of goes however many little things are in it. Things you
+   can look at in first person are wrapped in say(text, ...parts): the
+   text belongs to just the space those parts take up (examineAreas). */
+const say = (text, ...parts) => {
+  const g = new THREE.Group();
+  g.add(...parts);
+  g.userData.say = text;
+  return g;
+};
 function clutter() {
   const T = FLOOR + 3;                                                       // kitchen counters
   // the wall phone's keypad, and a calendar (a picture each)
@@ -3399,48 +3400,56 @@ function clutter() {
 
   // ---- living room
   const living = named('living-clutter',
-    ...paperStack(X(562), FLOOR, Z(532), 9, 0.9, 1.15, MAT.cream),                    // old newspapers by the couch
-    cyl(0.1, 0.22, X(392), FLOOR + 1.9 + 0.11, Z(283), PROP.mug, null, 12),            // a coffee mug by the Tiffany lamp
-    box(0.03, 0.1, 0.12, X(392) + 0.12, FLOOR + 2.0, Z(283), PROP.mug),                 // its handle
+    say("Months of old newspapers. Every one has the obituaries torn out.",
+      ...paperStack(X(562), FLOOR, Z(532), 9, 0.9, 1.15, MAT.cream)),                 // old newspapers by the couch
+    say("Cold coffee with a skin on it. There's lipstick on the rim. Nobody here wears lipstick.",
+      cyl(0.1, 0.22, X(392), FLOOR + 1.9 + 0.11, Z(283), PROP.mug, null, 12),          // a coffee mug by the Tiffany lamp
+      box(0.03, 0.1, 0.12, X(392) + 0.12, FLOOR + 2.0, Z(283), PROP.mug)),              // its handle
     // a crate of records under the window, sleeves leaning
-    box(1.1, 0.04, 0.9, X(617), FLOOR + 0.02, Z(190), PROP.cardboard),
-    box(1.1, 0.95, 0.04, X(617), FLOOR + 0.48, Z(190) - 0.43, PROP.cardboard), box(1.1, 0.95, 0.04, X(617), FLOOR + 0.48, Z(190) + 0.43, PROP.cardboard),
-    box(0.04, 0.95, 0.9, X(617) - 0.53, FLOOR + 0.48, Z(190), PROP.cardboard), box(0.04, 0.95, 0.9, X(617) + 0.53, FLOOR + 0.48, Z(190), PROP.cardboard),
-    ...[PROP.red, PROP.black, PROP.yellow, PROP.blue, PROP.paper, PROP.green, PROP.black].map((m, i) =>
-      box(1.02, 1.02, 0.02, X(617), FLOOR + 0.55, Z(190) - 0.33 + i * 0.1, m, [0.12, 0, 0])),
-    shoes(X(432), Z(452), 0.5, PROP.white, PROP.paper, 0.9));                            // sneakers kicked off by the rug
+    say("A crate of old records. Somebody's pulled one halfway out and left it.",
+      box(1.1, 0.04, 0.9, X(617), FLOOR + 0.02, Z(190), PROP.cardboard),
+      box(1.1, 0.95, 0.04, X(617), FLOOR + 0.48, Z(190) - 0.43, PROP.cardboard), box(1.1, 0.95, 0.04, X(617), FLOOR + 0.48, Z(190) + 0.43, PROP.cardboard),
+      box(0.04, 0.95, 0.9, X(617) - 0.53, FLOOR + 0.48, Z(190), PROP.cardboard), box(0.04, 0.95, 0.9, X(617) + 0.53, FLOOR + 0.48, Z(190), PROP.cardboard),
+      ...[PROP.red, PROP.black, PROP.yellow, PROP.blue, PROP.paper, PROP.green, PROP.black].map((m, i) =>
+        box(1.02, 1.02, 0.02, X(617), FLOOR + 0.55, Z(190) - 0.33 + i * 0.1, m, [0.12, 0, 0]))));
 
   // ---- kitchen
   const kitchen = named('kitchen-clutter',
     // a drip coffee maker, beige, with its pot half full
-    box(0.45, 1.15, 0.75, X(1218) + 0.1, T + 0.575, Z(600), PROP.beige),
-    box(0.4, 0.14, 0.75, X(1218) - 0.32, T + 1.08, Z(600), PROP.beige),               // the brew head, over the pot
-    box(0.45, 0.04, 0.75, X(1218) - 0.32, T + 0.02, Z(600), PROP.black),             // the hot plate
-    cyl(0.22, 0.5, X(1218) - 0.32, T + 0.29, Z(600), PROP.water, null, 14),
-    cyl(0.225, 0.22, X(1218) - 0.32, T + 0.15, Z(600), PROP.soil, null, 14),        // the coffee in it
+    say("The pot's half full and still warm. The clock on the front is blinking 12:00.",
+      box(0.45, 1.15, 0.75, X(1218) + 0.1, T + 0.575, Z(600), PROP.beige),
+      box(0.4, 0.14, 0.75, X(1218) - 0.32, T + 1.08, Z(600), PROP.beige),             // the brew head, over the pot
+      box(0.45, 0.04, 0.75, X(1218) - 0.32, T + 0.02, Z(600), PROP.black),           // the hot plate
+      cyl(0.22, 0.5, X(1218) - 0.32, T + 0.29, Z(600), PROP.water, null, 14),
+      cyl(0.225, 0.22, X(1218) - 0.32, T + 0.15, Z(600), PROP.soil, null, 14)),      // the coffee in it
     // paper towels on a wooden stand
     cyl(0.18, 0.04, X(1215), T + 0.02, Z(632), PROP.veneer, null, 12),
     cyl(0.16, 0.95, X(1215), T + 0.5, Z(632), PROP.white, null, 14),
     // the mail on the island: bills, a catalogue
-    ...paperStack(X(1050), T + 0.04, Z(550), 5, 0.75, 0.42),
-    box(0.65, 0.04, 0.85, X(1030), T + 0.02, Z(545), PROP.blue, [0, 0.4, 0]),
-    // a fruit bowl with a few apples and bananas going brown
-    cyl(0.42, 0.18, X(1000), T + 0.09, Z(483), PROP.wicker, null, 16, 0.5),
-    ...[[-0.12, 0.08, PROP.red], [0.15, -0.05, PROP.red], [0.02, 0.18, PROP.green]].map(([dx, dz, m]) =>
-      tint(solid(new THREE.SphereGeometry(0.14, 10, 8), [X(1000) + dx, T + 0.28, Z(483) + dz]), m)),
-    tint(solid(new THREE.TorusGeometry(0.25, 0.06, 6, 12, 2.2), [X(1000), T + 0.3, Z(483) - 0.1], [Math.PI / 2, 0, 0.6]), PROP.yellow),
+    say("Bills, a catalogue, a postcard. The postcard is a picture of this house. On the back, in your handwriting: wish you were here.",
+      ...paperStack(X(1050), T + 0.04, Z(550), 5, 0.75, 0.42),
+      box(0.65, 0.04, 0.85, X(1030), T + 0.02, Z(545), PROP.blue, [0, 0.4, 0])),
+    // a fruit bowl with a few apples and a banana going brown
+    say("The apples look fine. The banana has gone black from the inside out.",
+      cyl(0.42, 0.18, X(1000), T + 0.09, Z(483), PROP.wicker, null, 16, 0.5),
+      ...[[-0.12, 0.08, PROP.red], [0.15, -0.05, PROP.red], [0.02, 0.18, PROP.green]].map(([dx, dz, m]) =>
+        tint(solid(new THREE.SphereGeometry(0.14, 10, 8), [X(1000) + dx, T + 0.28, Z(483) + dz]), m)),
+      tint(solid(new THREE.TorusGeometry(0.25, 0.06, 6, 12, 2.2), [X(1000), T + 0.3, Z(483) - 0.1], [Math.PI / 2, 0, 0.6]), PROP.yellow)),
     // canisters on the south counter: flour, sugar, coffee, tallest first
-    ...[[0.62, 0.38], [0.5, 0.33], [0.4, 0.28]].map(([h, r], i) => [
-      cyl(r, h, X(822) + i * 0.75, T + h / 2, Z(700), PROP.white, null, 16),
-      cyl(r * 0.85, 0.08, X(822) + i * 0.75, T + h + 0.04, Z(700), MAT.brass, null, 16)]).flat(),
+    say("Flour, sugar, coffee. Something in the sugar one rattles when you touch it.",
+      ...[[0.62, 0.38], [0.5, 0.33], [0.4, 0.28]].map(([h, r], i) => [
+        cyl(r, h, X(822) + i * 0.75, T + h / 2, Z(700), PROP.white, null, 16),
+        cyl(r * 0.85, 0.08, X(822) + i * 0.75, T + h + 0.04, Z(700), MAT.brass, null, 16)]).flat()),
     // a wall phone above the counter, its coiled cord hanging down
-    box(0.4, 0.75, 0.16, X(905), FLOOR + 5.0, Z(715) - 0.08, PROP.beige),
-    tint(solid(new THREE.PlaneGeometry(0.3, 0.6), [X(905), FLOOR + 5.0, Z(715) - 0.165], [0, Math.PI, 0]), keypad),
-    box(0.16, 0.85, 0.16, X(905) - 0.25, FLOOR + 5.0, Z(715) - 0.12, PROP.beige),        // the handset, hung on the side
-    tint(solid(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([[X(905) - 0.25, FLOOR + 4.55, Z(715) - 0.12], [X(905) - 0.3, FLOOR + 3.6, Z(715) - 0.3],
-      [X(905) - 0.1, FLOOR + 3.15, Z(715) - 0.4], [X(905) + 0.05, FLOOR + 4.55, Z(715) - 0.12]].map(p => new THREE.Vector3(...p))), 16, 0.025, 4, false)), PROP.beige),
+    say("The cord's stretched out and kinked, like someone pulled it as far as it would go. You lift the handset. Someone is already on the line, breathing.",
+      box(0.4, 0.75, 0.16, X(905), FLOOR + 5.0, Z(715) - 0.08, PROP.beige),
+      tint(solid(new THREE.PlaneGeometry(0.3, 0.6), [X(905), FLOOR + 5.0, Z(715) - 0.165], [0, Math.PI, 0]), keypad),
+      box(0.16, 0.85, 0.16, X(905) - 0.25, FLOOR + 5.0, Z(715) - 0.12, PROP.beige),      // the handset, hung on the side
+      tint(solid(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([[X(905) - 0.25, FLOOR + 4.55, Z(715) - 0.12], [X(905) - 0.3, FLOOR + 3.6, Z(715) - 0.3],
+        [X(905) - 0.1, FLOOR + 3.15, Z(715) - 0.4], [X(905) + 0.05, FLOOR + 4.55, Z(715) - 0.12]].map(p => new THREE.Vector3(...p))), 16, 0.025, 4, false)), PROP.beige)),
     // and a calendar beside it
-    tint(solid(new THREE.PlaneGeometry(1.0, 1.25), [X(948), FLOOR + 4.9, Z(715) - 0.01], [0, Math.PI, 0]), month));
+    say("One day is circled, then crossed out so hard the paper tore. It's today.",
+      tint(solid(new THREE.PlaneGeometry(1.0, 1.25), [X(948), FLOOR + 4.9, Z(715) - 0.01], [0, Math.PI, 0]), month)));
 
   // ---- bathroom
   const tp = (x, y, z, rot) => [cyl(0.2, 0.42, x, y, z, PROP.white, rot, 14), cyl(0.07, 0.43, x, y, z, PROP.cardboard, rot, 8)];
@@ -3451,14 +3460,17 @@ function clutter() {
     // spares stacked on the tank
     ...tp(X(350), FLOOR + 2.7 + 0.21, Z(869), null), ...tp(X(380), FLOOR + 2.7 + 0.21, Z(869), null), ...tp(X(365), FLOOR + 2.7 + 0.63, Z(869), null),
     // soap in a dish, a cup of toothbrushes on the vanity
-    cyl(0.2, 0.04, X(582), FLOOR + 2.82, Z(1052), PROP.potWhite, null, 14),
-    box(0.26, 0.08, 0.16, X(582), FLOOR + 2.88, Z(1052), PROP.pink),
-    cyl(0.1, 0.35, X(488), FLOOR + 2.98, Z(1056), PROP.blue, null, 12),
-    ...[[-0.03, 0.02, PROP.red, 0.15], [0.04, -0.02, PROP.yellow, -0.2]].map(([dx, dz, m, tilt]) =>
-      box(0.03, 0.65, 0.03, X(488) + dx, FLOOR + 3.15, Z(1056) + dz, m, [tilt, 0, tilt])),
+    say("The soap is still wet. There's a long dark hair stuck to it.",
+      cyl(0.2, 0.04, X(582), FLOOR + 2.82, Z(1052), PROP.potWhite, null, 14),
+      box(0.26, 0.08, 0.16, X(582), FLOOR + 2.88, Z(1052), PROP.pink)),
+    say("Two toothbrushes in the cup. Both still wet.",
+      cyl(0.1, 0.35, X(488), FLOOR + 2.98, Z(1056), PROP.blue, null, 12),
+      ...[[-0.03, 0.02, PROP.red, 0.15], [0.04, -0.02, PROP.yellow, -0.2]].map(([dx, dz, m, tilt]) =>
+        box(0.03, 0.65, 0.03, X(488) + dx, FLOOR + 3.15, Z(1056) + dz, m, [tilt, 0, tilt]))),
     // a wicker basket of magazines by the toilet
-    cyl(0.32, 0.75, X(408), FLOOR + 0.375, Z(888), PROP.wicker, null, 14, 0.36),
-    ...[PROP.paper, PROP.red, PROP.blue].map((m, i) => box(0.6, 0.85, 0.02, X(408), FLOOR + 0.6, Z(888) - 0.08 + i * 0.08, m, [0.1 - i * 0.08, 0, 0])),
+    say("Old magazines. Every face in them has been scratched out with a pen.",
+      cyl(0.32, 0.75, X(408), FLOOR + 0.375, Z(888), PROP.wicker, null, 14, 0.36),
+      ...[PROP.paper, PROP.red, PROP.blue].map((m, i) => box(0.6, 0.85, 0.02, X(408), FLOOR + 0.6, Z(888) - 0.08 + i * 0.08, m, [0.1 - i * 0.08, 0, 0]))),
     // and shampoo in the back corner of the shower
     cyl(0.12, 0.6, X(328), FLOOR + 0.35 + 0.3, Z(1059), PROP.green, null, 10),
     cyl(0.1, 0.5, X(337), FLOOR + 0.35 + 0.25, Z(1060), PROP.pink, null, 10));
@@ -3466,27 +3478,34 @@ function clutter() {
   // ---- bedroom
   const bed = named('bed-clutter',
     // the nightstand on the left: the alarm clock (its red numbers stuck at 3:33)
-    box(0.5, 0.22, 0.24, X(882), FLOOR + 2.1 + 0.11, Z(1030), PROP.black),
-    glowing(led, new THREE.PlaneGeometry(0.4, 0.15), X(882), FLOOR + 2.22, Z(1030) - 0.125, [0, Math.PI, 0]),
+    say("The alarm clock says 3:33. It's said that all night.",
+      box(0.5, 0.22, 0.24, X(882), FLOOR + 2.1 + 0.11, Z(1030), PROP.black),
+      glowing(led, new THREE.PlaneGeometry(0.4, 0.15), X(882), FLOOR + 2.22, Z(1030) - 0.125, [0, Math.PI, 0])),
     // the other one: a glass of water, a stack of paperbacks
-    cyl(0.1, 0.4, X(1117), FLOOR + 2.1 + 0.2, Z(1032), PROP.water, null, 12),
-    ...[PROP.red, PROP.blue, PROP.paper, PROP.green].map((m, i) => box(0.55 - i * 0.04, 0.12, 0.38, X(1084), FLOOR + 2.1 + 0.06 + i * 0.12, Z(1032), m, [0, i * 0.2 - 0.3, 0])),
-    // clothes dropped on the floor, slippers by the bed, a pile of papers
-    ...clothesPile(X(1203), Z(808), [MAT.denim, MAT.flannel, PROP.white, MAT.hunter]),
-    shoes(X(1092), Z(1000), 0.2, MAT.mauve, MAT.mauve, 0.8),
-    ...paperStack(X(1095), FLOOR, Z(815), 14, 0.75, 0.95));
+    say("Half a glass of water. There's dust on the surface, but the level keeps going down.",
+      cyl(0.1, 0.4, X(1117), FLOOR + 2.1 + 0.2, Z(1032), PROP.water, null, 12)),
+    say("Library books, years overdue. The last one is checked out in your name.",
+      ...[PROP.red, PROP.blue, PROP.paper, PROP.green].map((m, i) => box(0.55 - i * 0.04, 0.12, 0.38, X(1084), FLOOR + 2.1 + 0.06 + i * 0.12, Z(1032), m, [0, i * 0.2 - 0.3, 0]))),
+    // clothes dropped in the corner, a pile of papers
+    ...clothesPile(X(1203), Z(808), [MAT.denim, MAT.flannel, MAT.hunter]),
+    say("Printouts, hundreds of pages. The same line over and over: I am not the one watching.",
+      ...paperStack(X(1095), FLOOR, Z(815), 14, 0.75, 0.95)));
 
   // ---- foyer: shoes on a tray by the door, keys and mail on the bench
   const foyer = named('foyer-clutter',
-    box(0.95, 0.05, 1.5, X(140), FLOOR + 0.025, Z(722), PROP.rubber),
-    shoes(X(140) - 0.05, Z(700), Math.PI / 2, PROP.rubber, PROP.rubber, 1.0),
-    shoes(X(140) + 0.05, Z(740), Math.PI / 2 + 0.2, MAT.wood, PROP.rubber, 1.05),
-    cyl(0.28, 0.1, X(185), FLOOR + 1.6 + 0.05, Z(762), PROP.celadon, null, 14, 0.36),     // a bowl for keys
-    box(0.25, 0.03, 0.08, X(185), FLOOR + 1.72, Z(762), MAT.brass, [0, 0.6, 0]),
+    say("Two pairs of shoes by the door. The boots are caked in fresh mud, and the mud is still wet.",
+      box(0.95, 0.05, 1.5, X(140), FLOOR + 0.025, Z(722), PROP.rubber),
+      shoes(X(140) - 0.05, Z(700), Math.PI / 2, PROP.rubber, PROP.rubber, 1.0),
+      shoes(X(140) + 0.05, Z(740), Math.PI / 2 + 0.2, MAT.wood, PROP.rubber, 1.05)),
+    say("A bowl for keys. The keys are in it. Whoever lives here never left.",
+      cyl(0.28, 0.1, X(185), FLOOR + 1.6 + 0.05, Z(762), PROP.celadon, null, 14, 0.36),
+      box(0.25, 0.03, 0.08, X(185), FLOOR + 1.72, Z(762), MAT.brass, [0, 0.6, 0])),
     ...paperStack(X(240), FLOOR + 1.6, Z(762), 4, 0.42, 0.75));
 
   // ---- laundry: a heap waiting against the back wall
-  const laundry = named('laundry-clutter', ...clothesPile(X(708), Z(1036), [PROP.white, MAT.denim, MAT.plum, PROP.white, MAT.flannel]));
+  const laundry = named('laundry-clutter',
+    say("A heap of clothes waiting for the wash. Something at the bottom of the pile is damp.",
+      ...clothesPile(X(708), Z(1036), [MAT.denim, MAT.plum, MAT.flannel])));
 
   return named('clutter', ...[living, kitchen, bath, bed, foyer, laundry].map(small));
 }
@@ -3885,6 +3904,21 @@ function bake(scene) {
   }
 }
 
+/* Each say() wrapper becomes an examine area: a box round its parts,
+   stored with the nearest named group (welding drops the wrapper). In
+   first person, looking at that group only offers the text of the box
+   you're actually looking at. */
+function examineAreas(scene) {
+  scene.updateMatrixWorld(true);
+  scene.traverse(o => {
+    if (!o.userData.say) return;
+    let g = o.parent;
+    while (g && !g.name) g = g.parent;
+    if (g) (g.userData.areas ||= []).push({ box: new THREE.Box3().setFromObject(o).expandByScalar(0.08), text: o.userData.say });
+    delete o.userData.say;
+  });
+}
+
 /* Plain painted surfaces (no pictures, not see-through) that differ only
    in colour can be one draw: the colour moves into the corners of each
    triangle, and every such surface in the house shares one material.
@@ -3987,6 +4021,7 @@ export function buildWorld({ weld = true } = {}) {
     scene.traverse(o => { if (o.name === n) o.traverse(m => { m.userData.passable = true; }); });
   for (const n of ['ground', 'forest', 'path', 'path-lamps', 'road', 'driveway'])
     scene.traverse(o => { if (o.name === n) o.traverse(m => { if (m.isMesh) m.castShadow = false; }); });
+  examineAreas(scene);
   if (weld) bake(scene);
   scene.userData.lamps = lamps;
   return scene;
