@@ -543,7 +543,7 @@ function walls() {
   add('v', 1237, 1256, [364, 1068], [345, 1087], [win(416, 607, 3.6), win(826, 1016, 2.5)], out('b', 345, 1087));   // east: sink + master windows
   add('h', 1068, 1087, [315, 1237], [295, 1256],
     [win(839, 912, 3), win(1087, 1159, 3)], out('b', 295, 1256));                              // south: master windows (a mirror over the bath sink)
-  add('v', 295, 315, [645, 1087], [645, 1068], [win(928, 969, 4.2)], out('a', 814, 1087));     // west of the hall, storage, bath
+  add('v', 295, 315, [731, 1087], [731, 1068], [win(928, 969, 4.2)], out('a', 814, 1087));     // west of the storage and bath (the foyer opens wide onto the living room)
 
   // foyer
   add('h', 482, 501, [105, 295], [124, 295], [], out('a', 105, 295));                          // north
@@ -3326,6 +3326,24 @@ function fiddleFig(cx, cy) {
   return g;
 }
 
+/* A coffee mug: a hollow glazed body with a rolled rim, a looped handle,
+   cold coffee a little way down, and a ring on the table where it sat
+   before. y is the table top. */
+function coffeeMug(x, y, z) {
+  const glaze = surface(0x2f4a35, 0.3);
+  const body = new THREE.LatheGeometry(v2([[0.001, 0], [0.08, 0], [0.092, 0.012], [0.098, 0.06], [0.104, 0.2], [0.11, 0.238], [0.104, 0.248],
+    [0.094, 0.236], [0.086, 0.04], [0.001, 0.034]]), 28);
+  const handle = new THREE.TorusGeometry(0.058, 0.017, 8, 18, Math.PI).rotateZ(-Math.PI / 2);
+  const coffee = new THREE.CircleGeometry(0.09, 24).rotateX(-Math.PI / 2);
+  const ring = new THREE.RingGeometry(0.084, 0.1, 28).rotateX(-Math.PI / 2);
+  return [
+    tint(solid(body, [x, y, z]), glaze),
+    tint(solid(handle, [x + 0.1, y + 0.13, z]), glaze),
+    tint(solid(coffee, [x, y + 0.17, z]), surface(0x241509, 0.2)),
+    tint(solid(ring, [x - 0.13, y + 0.003, z + 0.09]), surface(0x4a2e18, 0.8))
+  ];
+}
+
 // a stack of loose paper, each sheet a little askew
 function paperStack(x, y, z, n, w = 0.7, d = 0.9, mat = PROP.paper) {
   let seed = Math.round(x * 100 + z * 7) & 0xffff || 5;
@@ -3403,8 +3421,7 @@ function clutter() {
     say("Months of old newspapers. Every one has the obituaries torn out.",
       ...paperStack(X(562), FLOOR, Z(532), 9, 0.9, 1.15, MAT.cream)),                 // old newspapers by the couch
     say("Cold coffee with a skin on it. There's lipstick on the rim. Nobody here wears lipstick.",
-      cyl(0.1, 0.22, X(392), FLOOR + 1.9 + 0.11, Z(283), PROP.mug, null, 12),          // a coffee mug by the Tiffany lamp
-      box(0.03, 0.1, 0.12, X(392) + 0.12, FLOOR + 2.0, Z(283), PROP.mug)),              // its handle
+      ...coffeeMug(X(390), FLOOR + 1.9, Z(284))),                                         // a coffee mug by the Tiffany lamp
     // a crate of records under the window, sleeves leaning
     say("A crate of old records. Somebody's pulled one halfway out and left it.",
       box(1.1, 0.04, 0.9, X(617), FLOOR + 0.02, Z(190), PROP.cardboard),
@@ -3516,29 +3533,51 @@ function clutter() {
    them a little wrong. They're drawn at the start, all onto one picture
    sheet (so every painting in the house is one material and a single
    draw), each in its own square. */
-const ART = 256, ART_COLS = 4;
+const ART = 160, ART_COLS = 6, ART_SHEET = 1024;
 const PAINTINGS = [
   // [name, wall face, px, py, width, height, centre height, frame, text]
+  // landscapes (drawn here, paintArt) ...
   ['valley', 'x+', 315, 490, 3.0, 2.0, 5.3, 'gilt', "A river valley at sundown, a little farmhouse with one window lit. Every time you look, the light is in a different window."],
-  ['lady', 'z+', 516.5, 173, 1.0, 1.5, 5.4, 'wood', "A lady with folded hands and a little smile. Her eyes follow you round the room. That's just how they painted them. Right?"],
-  ['nobleman', 'z-', 556, 810, 1.5, 2.1, 5.2, 'wood', "A gentleman in a black hat and a big white ruff. On the back of the canvas someone has written the day he died. It's next week."],
   ['forest', 'z-', 752, 810, 2.6, 1.8, 5.3, 'gilt', "A path into an old forest, light coming down between the trunks. The path bends exactly like the walk out front."],
-  ['old-man', 'x+', 124, 735, 1.4, 1.8, 5.7, 'gilt', "An old man in a red robe with a long white beard. His mouth is open a little, like he's halfway through saying your name."],
-  ['moonrise', 'x-', 295, 700, 2.4, 1.6, 5.3, 'wood', "A lake under the moon and a ruined tower on the hill. There's a light at the top of the tower. It wasn't painted on."],
-  ['pearls', 'z+', 365, 861, 1.0, 1.3, 5.7, 'wood', "A young woman with pearls in her hair. Wherever you stand in here, she's turned a little more toward you."],
-  ['child', 'x-', 605, 862, 1.2, 1.6, 5.3, 'wood', "A little girl in a lace collar, holding a flower. The flower's been painted over in black. Recently."],
+  ['moonrise', 'z+', 1062, 364, 2.0, 1.33, 5.9, 'wood', "A lake under the moon and a ruined tower on the hill. There's a light at the top of the tower. It wasn't painted on."],
   ['coast', 'z+', 1205, 364, 1.7, 1.3, 5.6, 'gilt', "Cliffs in a storm, the sea breaking white. It's painted so well you can almost hear it. You can hear it."],
   ['field', 'z-', 845, 715, 1.6, 1.2, 5.6, 'wood', "A wheat field and one old oak at sunset. The crows are all facing the same way. Toward you."],
   ['mountains', 'z-', 1005, 1068, 3.4, 1.9, 6.0, 'gilt', "Mountains over a still lake at dusk. The reflection in the water doesn't quite match the mountains."],
   ['waterfall', 'x+', 815, 862, 2.2, 1.7, 5.4, 'wood', "A waterfall in a gorge, all mist and spray. Your fingertips come away damp."],
   ['church', 'z+', 1150, 789, 2.2, 1.5, 5.4, 'wood', "A little white church at the end of a country road. The road is the road out front. There's no church down there."],
-  ['widow', 'x+', 815, 1024, 1.3, 1.7, 5.4, 'gilt', "A widow in black, in mourning. The little brass plate on the frame has your last name on it."]
+  ['marsh', 'z+', 570, 825, 1.4, 1.0, 5.6, 'wood', "A marsh at dusk, reeds and still water. Something just under the surface has left a ring on the water."],
+  ['isle', 'z-', 1198, 1068, 2.0, 1.4, 5.5, 'gilt', "A little island of black cypresses on a dead calm sea. A rowboat is heading out to it with nobody rowing."],
+  ['winter', 'x-', 1237, 390, 1.2, 1.0, 5.9, 'wood', "A ruined chapel in the snow with bare oaks all round it. Footprints in the snow going in. None coming out."],
+  ['cypress', 'x-', 719, 348, 0.85, 1.15, 5.4, 'wood', "One tall cypress under a thin moon. Cypresses are what they plant in graveyards."],
+  // ... modern art ...
+  ['color-field', 'z+', 997, 724, 2.6, 1.4, 6.55, 'black', "Modern art: two smudgy blocks of dark red and black. Stare at it long enough and the black one gets deeper."],
+  ['black-square', 'x-', 1237, 807, 1.0, 1.0, 5.5, 'black', "A black square on a white canvas, cracked all over. Through the cracks, the paint underneath is red."],
+  // ... and real old portraits (art/portraits, credited in its CREDITS.md), pixelated to match
+  ['ginevra', 'z+', 516.5, 173, 1.0, 1.5, 5.4, 'wood', "A young woman, pale as candle wax, against a dark bush. She looks bored, or sick. Her eyes are fixed just past your shoulder."],
+  ['durer', 'z-', 556, 810, 1.5, 2.1, 5.2, 'wood', "A man with long curled hair staring straight out, one hand at his chest. He looks like he knows exactly what you did."],
+  ['duchess', 'x+', 124, 735, 1.4, 1.8, 5.7, 'gilt', "An old woman dressed up for a ball, horned headdress, low neckline. She's grinning. Somebody hung her by the front door on purpose."],
+  ['young-woman', 'z+', 365, 861, 1.0, 1.3, 5.7, 'wood', "A girl in a tall black hat, her eyes slanted toward you. She looks a little too real. You catch yourself waiting for her to blink."],
+  ['weyden-lady', 'x-', 605, 862, 1.2, 1.6, 5.3, 'wood', "A woman in a white veil, eyes lowered, hands clasped. She's praying. You wonder what for."],
+  ['eleonora', 'x+', 815, 1024, 1.3, 1.7, 5.4, 'gilt', "A duchess in a stiff brocade dress with her little son. Neither of them is smiling. Neither of them looks away."],
+  ['erasmus', 'z+', 702, 173, 0.85, 1.15, 5.4, 'wood', "An old scholar in profile, writing. Lean in and the words on his page are this address."],
+  ['condottiero', 'z+', 756, 364, 0.9, 1.2, 5.4, 'wood', "A soldier with a scar across his lip. He's been watching the patio door all night."],
+  ['more', 'x-', 1237, 634, 1.2, 1.55, 5.6, 'gilt', "A stern man in a fur collar and a heavy gold chain. The stubble on his chin looks longer than it did this morning."],
+  ['young-man', 'x-', 1237, 1042, 1.2, 1.55, 5.4, 'wood', "A young man in black with a book, one hand on his hip, looking down his nose at you. He doesn't like you being in here."],
+  ['bembo', 'z+', 1212, 789, 0.9, 1.2, 5.4, 'wood', "A man holding up an old coin. There's a face on the coin. It's yours."],
+  ['grandson', 'x+', 428, 775, 1.2, 1.6, 5.3, 'gilt', "An old man with a lumpy, ruined nose, and a little boy gazing up at him. The boy's eyes have moved. They're on you now."],
+  ['turban', 'x+', 315, 885, 0.9, 1.2, 5.6, 'wood', "A man in a red turban, every hair of his stubble painted in. His eyes are wet and red-rimmed, like he hasn't slept. Neither have you."],
+  ['lucrezia', 'x-', 295, 762, 0.9, 1.2, 5.6, 'wood', "A woman in a red dress with a gold chain and a little book. Her skin looks like porcelain. Up close, it looks warm."]
 ];
+// the portraits that are real paintings: where to centre the crop (0..1 across and down the picture) and how far in to zoom
+const PORTRAITS = {
+  ginevra: [0.5, 0.4, 1], durer: [0.5, 0.35, 1], duchess: [0.5, 0.35, 1], 'young-woman': [0.5, 0.4, 1], 'weyden-lady': [0.5, 0.4, 1],
+  eleonora: [0.5, 0.33, 1.2], erasmus: [0.5, 0.4, 1], condottiero: [0.5, 0.42, 1.18], more: [0.5, 0.35, 1], 'young-man': [0.5, 0.3, 1.3],
+  bembo: [0.5, 0.4, 1], grandson: [0.5, 0.4, 1], turban: [0.5, 0.4, 1], lucrezia: [0.5, 0.36, 1.45]
+};
 
-/* Each painting is drawn small (about 64 pixels across), roughed up a
-   little, then blown up with hard pixel edges, like an old game's
-   textures: romantic landscapes for the wide frames, Renaissance
-   portraits for the tall ones. w and h are the small size. */
+/* The landscapes and modern pieces, drawn small (about 64 pixels across)
+   like an old game's textures; paintings() roughs them up and blows them
+   up with hard pixel edges. w and h are the small size. */
 function paintArt(name, g, w, h, rand) {
   const grad = (y0, y1, ...stops) => { const l = g.createLinearGradient(0, y0, 0, y1); stops.forEach((c, i) => l.addColorStop(i / (stops.length - 1), c)); return l; };
   const rect = (x, y, rw, rh, c) => { g.fillStyle = c; g.fillRect(x, y, rw, rh); };
@@ -3554,52 +3593,6 @@ function paintArt(name, g, w, h, rand) {
   const pine = (x, y, s, c) => { for (let i = 0; i < 3; i++) poly([[x, y - s * (1 - i * 0.28)], [x - s * (0.18 + i * 0.07), y - s * (0.55 - i * 0.25)], [x + s * (0.18 + i * 0.07), y - s * (0.55 - i * 0.25)]], c); rect(x - 0.5, y - s * 0.12, 1, s * 0.15, c); };
   const treeBlob = (x, y, r, dark, light) => { oval(x, y, r, r * 0.9, dark); oval(x - r * 0.25, y - r * 0.25, r * 0.55, r * 0.5, light); rect(x - 0.5, y + r * 0.6, 1.2, r * 0.9, dark); };
   const clouds = (n, y0, y1, c) => { for (let i = 0; i < n; i++) oval(rand() * w, y0 + rand() * (y1 - y0), w * (0.08 + rand() * 0.12), h * (0.02 + rand() * 0.025), c); };
-
-  /* A Renaissance bust, three-quarter view (turn: -1 looks left, 1 right).
-     o: { skin, dress, hair, bg (function or colour), hat, ruff, beard, veil, hands, collar } */
-  const portrait = o => {
-    if (typeof o.bg === 'function') o.bg(); else rect(0, 0, w, h, o.bg);
-    const t = o.turn || 0.4, cx = w * 0.5 + t * w * 0.02, hy = h * (o.headY || 0.34), rx = w * (o.headW || 0.17), ry = h * 0.135;
-    // shoulders sloping down from the neck, lit from the upper left
-    const body = () => {
-      g.beginPath(); g.moveTo(cx - rx * 0.7, hy + ry * 1.15);
-      g.quadraticCurveTo(w * 0.14, hy + ry * 1.45, w * 0.03, h * 0.84); g.lineTo(0, h); g.lineTo(w, h); g.lineTo(w * 0.97, h * 0.84);
-      g.quadraticCurveTo(w * 0.86, hy + ry * 1.45, cx + rx * 0.7, hy + ry * 1.15); g.closePath();
-    };
-    g.fillStyle = o.dress; body(); g.fill();
-    const lit = g.createLinearGradient(0, 0, w, 0); lit.addColorStop(0, 'rgba(255,240,220,0.12)'); lit.addColorStop(1, 'rgba(0,0,0,0.25)');
-    g.fillStyle = lit; body(); g.fill();
-    if (o.collar) poly([[cx - rx * 0.95, hy + ry * 1.2], [cx + rx * 0.95, hy + ry * 1.2], [cx + rx * 0.55, hy + ry * 2.1], [cx - rx * 0.55, hy + ry * 2.1]], o.collar);
-    rect(cx - rx * 0.38, hy + ry * 0.6, rx * 0.76, ry * 0.75, o.skin);                       // neck
-    rect(cx - rx * 0.38 + rx * 0.4, hy + ry * 0.6, rx * 0.36, ry * 0.75, 'rgba(60,30,20,0.25)');
-    if (o.ruff) for (let i = -4; i <= 4; i++) oval(cx + i * rx * 0.3, hy + ry * 1.3 + Math.abs(i) * 0.25, rx * 0.22, ry * 0.3, i % 2 ? '#e8e2d2' : '#d0c8b6');
-    if (o.veil) oval(cx, hy - ry * 0.05, rx * 1.4, ry * 1.5, o.veil);
-    if (o.long) poly([[cx - rx * 1.05, hy - ry * 0.2], [cx + rx * 1.05, hy - ry * 0.2], [cx + rx * 1.25, hy + ry * 2.0], [cx - rx * 1.25, hy + ry * 2.0]], o.hair);
-    if (o.hair) oval(cx - t * rx * 0.1, hy - ry * 0.18, rx * 1.12, ry * 1.12, o.hair);
-    // the face, softly shaded away from the light
-    oval(cx, hy, rx, ry, o.skin);
-    const sh = g.createRadialGradient(cx - t * rx * 0.35 - rx * 0.2, hy - ry * 0.25, rx * 0.2, cx, hy, rx * 1.2);
-    sh.addColorStop(0, 'rgba(255,235,210,0.18)'); sh.addColorStop(1, 'rgba(50,25,15,0.4)');
-    oval(cx, hy, rx, ry, sh);
-    if (o.hair && !o.bald) poly([[cx - rx * 1.02, hy - ry * 0.2], [cx - rx * 0.3, hy - ry * 1.08], [cx + rx * 0.3, hy - ry * 1.08], [cx + rx * 1.02, hy - ry * 0.2], [cx + rx * 0.55, hy - ry * 0.62], [cx, hy - ry * 0.72], [cx - rx * 0.55, hy - ry * 0.62]], o.hair);
-    // eyes, brows, nose, mouth
-    const ey = hy - ry * 0.05, ex = rx * 0.42, shift = t * rx * 0.15;
-    for (const side of [-1, 1]) {
-      rect(cx + side * ex + shift - 1, ey, 2, 1, '#2a1a12');
-      rect(cx + side * ex + shift - 1, ey - 2, 2, 0.7, 'rgba(60,35,20,0.5)');
-    }
-    rect(cx + shift + t * rx * 0.12, ey + 1.5, 0.8, ry * 0.35, 'rgba(90,50,35,0.45)');       // the nose's shadow
-    rect(cx + shift - rx * 0.2, hy + ry * 0.48, rx * 0.4, 0.9, o.lips || '#7a3a30');
-    if (o.beard) {
-      const len = o.longBeard ? 2.7 : 1.25;
-      poly([[cx - rx * 0.75, hy + ry * 0.35], [cx - rx * 0.55, hy + ry * 0.75], [cx - rx * 0.2, hy + ry * 0.62], [cx + rx * 0.2, hy + ry * 0.62], [cx + rx * 0.55, hy + ry * 0.75],
-        [cx + rx * 0.75, hy + ry * 0.35], [cx + rx * 0.5, hy + ry * len * 0.85], [cx, hy + ry * len], [cx - rx * 0.5, hy + ry * len * 0.85]], o.beard);
-      rect(cx + shift - rx * 0.3, hy + ry * 0.38, rx * 0.6, 1.2, o.beard);                   // moustache
-    }
-    if (o.hat) { oval(cx - t * rx * 0.1, hy - ry * 0.82, rx * 1.3, ry * 0.36, o.hat); oval(cx - t * rx * 0.1, hy - ry * 1.05, rx * 0.95, ry * 0.38, o.hat); }
-    if (o.hands) { oval(w * 0.44, h * 0.9, w * 0.08, h * 0.035, o.skin); oval(w * 0.54, h * 0.92, w * 0.08, h * 0.035, o.skin); oval(w * 0.5, h * 0.91, w * 0.05, h * 0.02, 'rgba(60,30,20,0.3)'); }
-    if (o.extra) o.extra(cx, hy, rx, ry);
-  };
 
   switch (name) {
     case 'valley': {
@@ -3695,64 +3688,116 @@ function paintArt(name, g, w, h, rand) {
       treeBlob(w * 0.82, h * 0.52, w * 0.07, '#1e2a16', '#34421e'); treeBlob(w * 0.15, h * 0.5, w * 0.08, '#1e2a16', '#34421e');
       break;
     }
-    case 'lady':
-      portrait({ turn: 0.5, skin: '#d8b090', dress: '#2e3424', hair: '#2a1a10', long: true, veil: 'rgba(20,14,10,0.6)', hands: true, lips: '#8a4a3a',
-        bg: () => { rect(0, 0, w, h, grad(0, h * 0.5, '#6a8070', '#9aa080', '#5a6a50')); ridge(h * 0.45, h * 0.06, '#4a5a48'); ridge(h * 0.5, h * 0.05, '#3a4436'); } });
+    case 'marsh': {
+      rect(0, 0, w, h, grad(0, h * 0.55, '#2a3040', '#8a8a8a', '#d0c0a0'));
+      ridge(h * 0.52, h * 0.03, '#2e3a2e', 1);
+      rect(0, h * 0.55, w, h * 0.45, grad(h * 0.55, h, '#a8a090', '#2a3030'));
+      for (let i = 0; i < 40; i++) { const x = rand() * w, y = h * (0.55 + rand() * 0.45); rect(x, y - h * 0.12 * rand(), 1, h * 0.14, rand() < 0.5 ? '#2a2a1a' : '#4a4026'); }   // reeds
+      rect(w * 0.2, h * 0.25, 1.5, h * 0.35, '#141410'); rect(w * 0.2, h * 0.32, w * 0.06, 1, '#141410'); rect(w * 0.15, h * 0.38, w * 0.05, 1, '#141410');   // a dead tree
+      g.strokeStyle = 'rgba(240,235,220,0.55)'; g.lineWidth = 1; g.beginPath(); g.ellipse(w * 0.62, h * 0.72, w * 0.06, h * 0.02, 0, 0, Math.PI * 2); g.stroke();   // the ring
+      rect(0, h * 0.5, w, h * 0.08, 'rgba(220,220,210,0.18)');                                  // low mist
       break;
-    case 'nobleman':
-      portrait({ turn: -0.5, skin: '#d0a888', dress: '#141418', hair: '#3a2416', beard: '#4a2e1a', hat: '#0e0e10', ruff: true,
-        bg: grad(0, h, '#3e3a24', '#1e1c12') });
+    }
+    case 'isle': {
+      rect(0, 0, w, h, grad(0, h * 0.6, '#1a2428', '#4a5a5a', '#6a7470'));
+      rect(0, h * 0.62, w, h * 0.38, grad(h * 0.62, h, '#2a3434', '#0e1414'));
+      poly([[w * 0.28, h * 0.64], [w * 0.32, h * 0.42], [w * 0.4, h * 0.38], [w * 0.6, h * 0.37], [w * 0.68, h * 0.44], [w * 0.72, h * 0.64]], '#c8c0aa');   // pale cliffs
+      for (let i = 0; i < 5; i++) rect(w * (0.36 + i * 0.065), h * 0.5, 2, h * 0.08, '#2a2620');   // openings in the rock
+      for (let i = 0; i < 7; i++) { const x = w * (0.42 + i * 0.025), top = h * (0.08 + rand() * 0.1); poly([[x, top], [x - w * 0.018, h * 0.42], [x + w * 0.018, h * 0.42]], '#0e1410'); }   // cypresses
+      for (let i = 0; i < 10; i++) rect(rand() * w, h * (0.66 + rand() * 0.3), w * 0.06, 1, 'rgba(160,170,165,0.3)');
+      poly([[w * 0.44, h * 0.82], [w * 0.56, h * 0.82], [w * 0.53, h * 0.85], [w * 0.46, h * 0.85]], '#1a140e');   // the rowboat, nobody in it
       break;
-    case 'old-man':
-      portrait({ turn: 0.4, skin: '#c89a7a', dress: '#7a1e18', hair: '#b8b4aa', bald: true, beard: '#d8d4c8', longBeard: true, collar: '#5a3a24',
-        bg: grad(0, h, '#4a1a14', '#1e0a08') });
+    }
+    case 'winter': {
+      rect(0, 0, w, h, grad(0, h * 0.7, '#8a8c90', '#b8b4ac'));
+      rect(0, h * 0.68, w, h * 0.32, grad(h * 0.68, h, '#e4e2dc', '#b8b8b4'));
+      poly([[w * 0.38, h * 0.68], [w * 0.38, h * 0.3], [w * 0.5, h * 0.16], [w * 0.62, h * 0.3], [w * 0.62, h * 0.68], [w * 0.56, h * 0.68], [w * 0.56, h * 0.36], [w * 0.5, h * 0.27], [w * 0.44, h * 0.36], [w * 0.44, h * 0.68]], '#3a3632');   // the ruined arch
+      const bare = (x, s) => { rect(x, h * 0.68 - s, 1.5, s, '#1a1612'); for (let k = 0; k < 5; k++) { const y = h * 0.68 - s * (0.4 + k * 0.12), d = (k % 2 ? 1 : -1) * s * (0.2 + rand() * 0.15); g.strokeStyle = '#1a1612'; g.lineWidth = 0.8; g.beginPath(); g.moveTo(x, y); g.lineTo(x + d, y - s * 0.15); g.stroke(); } };
+      for (const [x, s] of [[0.1, 0.55], [0.22, 0.45], [0.75, 0.5], [0.88, 0.6], [0.3, 0.35]]) bare(w * x, h * s);
+      for (let i = 0; i < 6; i++) rect(w * (0.5 + i * 0.012), h * (0.95 - i * 0.045), 1, 1, '#8a8a88');   // footprints, going in
       break;
-    case 'pearls':
-      portrait({ turn: -0.7, skin: '#e2bea0', dress: '#8a2a20', hair: '#b88a4a', lips: '#a04a40',
-        bg: () => { rect(0, 0, w, h, grad(0, h * 0.7, '#6a90b8', '#b8c8d0')); ridge(h * 0.7, h * 0.04, '#5a6a5a'); },
-        extra: (cx, hy, rx, ry) => { for (let i = 0; i < 5; i++) rect(cx - rx * 0.6 + i * rx * 0.3, hy - ry * 0.85, 1, 1, '#f4f0e6'); for (let i = 0; i < 9; i++) rect(cx - rx * 0.9 + i * rx * 0.22, hy + ry * 1.45 + Math.abs(i - 4) * 0.4, 1, 1, '#f4f0e6'); } });
+    }
+    case 'cypress': {
+      rect(0, 0, w, h, grad(0, h, '#1a1e34', '#6a5a6a', '#a87a5a'));
+      g.fillStyle = '#e8e4cc'; g.beginPath(); g.arc(w * 0.7, h * 0.18, w * 0.07, 0, Math.PI * 2); g.fill();
+      g.fillStyle = '#1a1e34'; g.beginPath(); g.arc(w * 0.73, h * 0.17, w * 0.065, 0, Math.PI * 2); g.fill();   // a thin moon
+      rect(0, h * 0.82, w, h * 0.18, '#1a1a14');
+      rect(w * 0.08, h * 0.74, w * 0.32, h * 0.08, '#3a3430');                                  // an old wall
+      poly([[w * 0.5, h * 0.1], [w * 0.38, h * 0.5], [w * 0.4, h * 0.82], [w * 0.6, h * 0.82], [w * 0.62, h * 0.5]], '#0c140e');
+      for (let i = 0; i < 12; i++) oval(w * (0.42 + rand() * 0.16), h * (0.2 + rand() * 0.55), w * 0.05, h * 0.02, '#16221a');
       break;
-    case 'child':
-      portrait({ turn: 0.2, headY: 0.36, headW: 0.18, skin: '#e0c0a8', dress: '#1e1a22', hair: '#4a2e1a', collar: '#e4dccb', lips: '#9a5048',
-        bg: grad(0, h, '#2a2a22', '#121210'),
-        extra: () => { rect(w * 0.55, h * 0.72, 1, h * 0.14, '#1a2a14'); oval(w * 0.555, h * 0.7, w * 0.04, w * 0.04, '#0a0808'); } });   // the flower, painted over black
+    }
+    case 'color-field': {
+      rect(0, 0, w, h, '#6a1c1c');
+      const soft = (x, y, rw, rh, c) => { for (let k = 0; k < 4; k++) { g.globalAlpha = 0.35; rect(x - k, y - k * 0.6, rw + k * 2, rh + k * 1.2, c); } g.globalAlpha = 1; rect(x, y, rw, rh, c); };
+      soft(w * 0.1, h * 0.1, w * 0.8, h * 0.42, '#1e0c0a');
+      soft(w * 0.1, h * 0.6, w * 0.8, h * 0.28, '#a8401e');
       break;
-    case 'widow':
-      portrait({ turn: -0.3, skin: '#d8c0ae', dress: '#0e0c0e', veil: '#16121a', hair: '#1a1214', collar: '#d8d0c0',
-        bg: grad(0, h, '#22202a', '#0a090c') });
+    }
+    case 'black-square': {
+      rect(0, 0, w, h, '#e4dcc6');
+      rect(w * 0.17, h * 0.15, w * 0.68, h * 0.68, '#141210');
+      for (let i = 0; i < 26; i++) {                                                              // craquelure, a little red showing through
+        const x = w * (0.17 + rand() * 0.68), y = h * (0.15 + rand() * 0.68);
+        g.strokeStyle = i % 4 ? 'rgba(200,190,170,0.35)' : 'rgba(150,30,24,0.8)'; g.lineWidth = 0.7;
+        g.beginPath(); g.moveTo(x, y); g.lineTo(x + (rand() - 0.5) * w * 0.15, y + (rand() - 0.5) * h * 0.15); g.stroke();
+      }
       break;
+    }
   }
 }
 
 function paintings() {
-  // the sheet: each painting fills its square's width or height, keeping its shape
+  // each painting is drawn small (64 across, or 72 tall for the narrow ones), then doubled
+  // onto its own square of the sheet with hard pixel edges
   const slots = PAINTINGS.map(([, , , , w, h], i) => {
-    const sw = w >= h ? ART : Math.round(ART * w / h), sh = w >= h ? Math.round(ART * h / w) : ART;
-    return { sx: (i % ART_COLS) * ART, sy: Math.floor(i / ART_COLS) * ART, sw, sh };
+    const lw = w >= h ? 64 : Math.round(72 * w / h), lh = w >= h ? Math.round(64 * h / w) : 72;
+    return { lw, lh, sx: (i % ART_COLS) * ART, sy: Math.floor(i / ART_COLS) * ART, sw: lw * 2, sh: lh * 2 };
   });
-  const size = ART * ART_COLS, mat = surface(0xffffff, 0.85);
+  const size = ART_SHEET, mat = surface(0xffffff, 0.85);
   if (typeof document !== 'undefined') {
     let seed = 77;
     const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-    mat.map = screenCanvas(size, size, g => {
+    const sheet = document.createElement('canvas');
+    sheet.width = sheet.height = size;
+    const g = sheet.getContext('2d');
+    g.fillStyle = '#1a140e'; g.fillRect(0, 0, size, size);                     // (what a portrait shows until it's loaded)
+    // old paint: grain, a slightly limited palette, darker corners, yellowed varnish; then onto the sheet
+    const finish = (small2d, { lw, lh, sx, sy, sw, sh }) => {
+      const img = small2d.getImageData(0, 0, lw, lh), d = img.data;
+      for (let k = 0; k < d.length; k += 4) {
+        const x = (k / 4) % lw / lw - 0.5, y = Math.floor(k / 4 / lw) / lh - 0.5;
+        const shade = 1 - 0.3 * Math.min(1, (x * x + y * y) * 2.2), grain = (rand() - 0.5) * 12;
+        [1, 0.95, 0.84].forEach((warm, ch) => { d[k + ch] = Math.min(255, Math.round((d[k + ch] * shade * warm + grain) / 6) * 6); });
+      }
+      small2d.putImageData(img, 0, 0);
       g.imageSmoothingEnabled = false;
-      PAINTINGS.forEach(([name, , , , pw, ph], i) => {
-        const { sx, sy, sw, sh } = slots[i];
-        const lw = pw >= ph ? 64 : Math.round(72 * pw / ph), lh = pw >= ph ? Math.round(64 * ph / pw) : 72;
-        const c = document.createElement('canvas');
-        c.width = lw; c.height = lh;
-        const small2d = c.getContext('2d');
-        paintArt(name, small2d, lw, lh, rand);
-        // old paint: grain, a slightly limited palette, darker corners, yellowed varnish
-        const img = small2d.getImageData(0, 0, lw, lh), d = img.data;
-        for (let k = 0; k < d.length; k += 4) {
-          const x = (k / 4) % lw / lw - 0.5, y = Math.floor(k / 4 / lw) / lh - 0.5;
-          const shade = 1 - 0.3 * Math.min(1, (x * x + y * y) * 2.2), grain = (rand() - 0.5) * 12;
-          [1, 0.95, 0.84].forEach((warm, ch) => { d[k + ch] = Math.min(255, Math.round((d[k + ch] * shade * warm + grain) / 6) * 6); });
-        }
-        small2d.putImageData(img, 0, 0);
-        g.drawImage(c, sx, sy, sw, sh);                                           // blown up with hard pixel edges
-      });
+      g.drawImage(small2d.canvas, sx, sy, sw, sh);
+    };
+    const smallCanvas = ({ lw, lh }) => { const c = document.createElement('canvas'); c.width = lw; c.height = lh; return c.getContext('2d'); };
+    mat.map = new THREE.CanvasTexture(sheet);
+    mat.map.colorSpace = THREE.SRGBColorSpace;
+    PAINTINGS.forEach(([name], i) => {
+      const slot = slots[i];
+      if (!PORTRAITS[name]) {                                                  // drawn here
+        const s2 = smallCanvas(slot);
+        paintArt(name, s2, slot.lw, slot.lh, rand);
+        finish(s2, slot);
+        return;
+      }
+      // a real painting: crop it to the frame's shape round its sitter, shrink it, finish it like the rest
+      const photo = new Image();
+      photo.onload = () => {
+        const [fx, fy, zoom] = PORTRAITS[name], want = slot.lw / slot.lh, iw = photo.width, ih = photo.height;
+        let cw = Math.min(iw, ih * want) / zoom, ch = cw / want;
+        const cx = Math.min(Math.max(iw * fx - cw / 2, 0), iw - cw), cy = Math.min(Math.max(ih * fy - ch / 2, 0), ih - ch);
+        const s2 = smallCanvas(slot);
+        s2.imageSmoothingQuality = 'high';
+        s2.drawImage(photo, cx, cy, cw, ch, 0, 0, slot.lw, slot.lh);
+        finish(s2, slot);
+        mat.map.needsUpdate = true;
+      };
+      photo.src = 'art/portraits/' + name + '.jpg';
     });
     mat.map.magFilter = THREE.NearestFilter;
     mat.map.anisotropy = 4;
@@ -3761,10 +3806,11 @@ function paintings() {
     mat.emissiveMap = mat.map;
     mat.emissiveIntensity = 0.28;
   } else mat.color.set(0x4a3a2a);
-  const frames = { gilt: metal(0x8a6a2e, 0.5), wood: surface(0x2e1e12, 0.6) };
+  const frames = { gilt: metal(0x8a6a2e, 0.5), wood: surface(0x2e1e12, 0.6), black: surface(0x121212, 0.5) };
+  const widths = { gilt: 0.17, wood: 0.12, black: 0.06 };
   const turn = { 'x+': Math.PI / 2, 'x-': -Math.PI / 2, 'z+': 0, 'z-': Math.PI };
-  return named('paintings', ...PAINTINGS.map(([name, face, px, py, w, h, cy, frame, text], i) => {
-    const { sx, sy, sw, sh } = slots[i], f = frame === 'gilt' ? 0.17 : 0.12;
+  return named('paintings', ...PAINTINGS.map(([, face, px, py, w, h, cy, frame, text], i) => {
+    const { sx, sy, sw, sh } = slots[i], f = widths[frame];
     const pic = new THREE.PlaneGeometry(w, h), uv = pic.attributes.uv;
     for (let k = 0; k < uv.count; k++)                                         // its own square of the sheet
       uv.setXY(k, (sx + uv.getX(k) * sw) / size, 1 - (sy + sh - uv.getY(k) * sh) / size);
@@ -4039,23 +4085,24 @@ export const CIRCUITS = {
 const AT_THE_LAMP = ['foyer lamp', 'table lamp', 'sofa lamp', 'nightstand', 'nightstand 2', 'desk lamp', 'standing lamp', 'laundry bulb'];
 // switch plates: [circuit, x px, y px, which way the plate faces]
 const PLATES = [
-  ['porch light', 124, 724, 'x+'], ['living room', 315, 668, 'x+'], ['patio', 1036, 364, 'z+'], ['kitchen', 1050, 364, 'z+'],
+  ['porch light', 124, 724, 'x+'], ['living room', 295, 762, 'x-'], ['patio', 1036, 364, 'z+'], ['kitchen', 1050, 364, 'z+'],
   ['pantry', 1072, 700, 'x+'], ['bathroom', 525, 825, 'z+'], ['bedroom', 815, 824, 'x+']
 ];
 
 function switchPlates() {
   const plates = PLATES.map(([circuit, px, py, face]) => {
-    const alongX = face === 'z+', x = X(px), z = Z(py), y = FLOOR + 4;
+    const alongX = face[0] === 'z', out = face[1] === '-' ? -1 : 1, x = X(px), z = Z(py), y = FLOOR + 4;
     const lever = solid(new THREE.BoxGeometry(0.05, 0.13, 0.05), [0, 0.03, 0]);
     const pivot = new THREE.Group();
     pivot.add(lever);
-    pivot.position.set(alongX ? 0 : 0.035, 0, alongX ? 0.035 : 0);
+    pivot.position.set(alongX ? 0 : 0.035 * out, 0, alongX ? 0.035 * out : 0);
     const g = named('switch-' + circuit.replace(/ /g, '-'),
       solid(alongX ? new THREE.BoxGeometry(0.27, 0.42, 0.03) : new THREE.BoxGeometry(0.03, 0.42, 0.27), [0, 0, 0]), pivot);
-    g.position.set(x + (alongX ? 0 : 0.015), y, z + (alongX ? 0.015 : 0));
+    g.position.set(x + (alongX ? 0 : 0.015 * out), y, z + (alongX ? 0.015 * out : 0));
     g.userData.switch = circuit;
     g.userData.lever = pivot;
     g.userData.leverAxis = alongX ? 'x' : 'z';
+    g.userData.leverSign = out;                         // which way is up depends on which way the plate faces
     g.userData.movesParts = true;                       // the lever flips; don't weld it into the plate
     return tint(g, MAT.trim);
   });
@@ -4096,7 +4143,7 @@ function wireLights(scene) {
     for (const n of CIRCUITS[name]) if (groups.get(n)) setGroup(groups.get(n), on);
     for (const p of plates) {                                      // flick the levers to match
       const up = isOn(p.userData.switch) ? -0.35 : 0.35;
-      p.userData.lever.rotation[p.userData.leverAxis] = p.userData.leverAxis === 'x' ? up : -up;
+      p.userData.lever.rotation[p.userData.leverAxis] = (p.userData.leverAxis === 'x' ? up : -up) * p.userData.leverSign;
     }
   };
   scene.userData.switches = {
