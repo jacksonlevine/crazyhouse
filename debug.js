@@ -6,7 +6,8 @@
      or C goes down. (Ctrl+W closes the browser tab and no web page
      can stop that, so C is the safe way down.)
    - FOV slider, for the current cam or all of them.
-   - Night vision and fully lit buttons.
+   - Night vision and fully lit buttons, and lighting off (L): flat
+     colours, no lights or shadows, to see what the lighting costs.
    - Copy cam: copies where you are as a line for cams.js.
    - First person (P): walk round the house and yard (firstperson.js):
      WASD, mouse, Shift runs, E opens doors and inspects things.
@@ -35,6 +36,7 @@ export function createDebug(api) {
     <div class="dbg-row">
       <button data-act="night">night vision</button>
       <button data-act="lit">fully lit</button>
+      <button data-act="unlit">lighting off (L)</button>
     </div>
     <div class="dbg-row">
       <button data-act="spawn">spawn ghoul</button>
@@ -85,6 +87,7 @@ export function createDebug(api) {
     if (e.target.closest && e.target.closest('input')) return;
     const k = e.key.toLowerCase();
     if (k === 'p' && !e.repeat) { toggleFP(); return; }
+    if (k === 'l' && !e.repeat) { setUnlit(!debug.unlit); return; }
     if (debug.fp) return;
     if (k === 'f' && !e.repeat) { setFree(!debug.free); return; }
     if (!debug.free) return;
@@ -146,6 +149,36 @@ export function createDebug(api) {
     scene.fog = lit ? null : keepFog;
     btn('lit').classList.toggle('on', lit);
   });
+
+  // lighting off: every surface flat in its own colour, no lights, no
+  // shadows. Shows what the lighting costs (watch the fps) and shows
+  // everything plainly. Switching takes a moment (shaders get rebuilt).
+  const flatMats = new Map(), wasMat = new Map(), darkened = [];
+  function setUnlit(on) {
+    debug.unlit = on;
+    if (on) {
+      scene.traverse(o => {
+        if (o.isLight && o.visible) { darkened.push(o); o.visible = false; }
+        if (!o.isMesh || Array.isArray(o.material)) return;
+        const m = o.material;
+        if (!(m.isMeshStandardMaterial || m.isMeshLambertMaterial || m.isMeshPhongMaterial)) return;
+        if (!flatMats.has(m)) flatMats.set(m, new THREE.MeshBasicMaterial({
+          color: m.color, map: m.map, vertexColors: m.vertexColors, side: m.side, transparent: m.transparent,
+          opacity: m.opacity, alphaTest: m.alphaTest, fog: m.fog,
+          polygonOffset: m.polygonOffset, polygonOffsetFactor: m.polygonOffsetFactor, polygonOffsetUnits: m.polygonOffsetUnits
+        }));
+        wasMat.set(o, m);
+        o.material = flatMats.get(m);
+      });
+    } else {
+      wasMat.forEach((m, o) => { o.material = m; });
+      wasMat.clear();
+      darkened.forEach(l => { l.visible = true; });             // the light budget sorts them out next frame
+      darkened.length = 0;
+    }
+    btn('unlit').classList.toggle('on', on);
+  }
+  btn('unlit').addEventListener('click', () => setUnlit(!debug.unlit));
 
   /* ─── ghoul ─── */
   /* ─── light switches ─── */

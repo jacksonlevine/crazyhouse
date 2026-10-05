@@ -150,6 +150,16 @@ muted leaded glass on the pillar by the sofa, teal and plum counter stools with
 chrome posts, almond countertops, an oak vanity with an oval sink and
 brass knobs, frosted glass in a brass shower frame, a mauve bathmat,
 flannel and denim and a couple of shoeboxes in the walk-in closet,
+a 90s hi-fi against the living room's north wall facing the couch
+(walnut cabinet, CD player, double cassette deck, a receiver with a
+glowing amber dial, a turntable under a smoked lid, two tall floor
+speakers), a fiddle leaf fig in the corner behind the couch, a crate of
+records, a drip coffee maker, canisters, a wall phone with a coiled
+cord and a calendar with one day crossed out, an alarm clock stuck at
+3:33, toilet paper on the holder and spares on the tank, soap,
+toothbrushes, a basket of magazines, piles of clothes and papers,
+shoes by the front door and a bowl for keys (each room's clutter is
+one group, `clutter()`, and small things don't cast shadows),
 a dish drainer and dish soap by the kitchen sink, pizza boxes on the
 island (one open, a couple of pepperoni slices left), a striped afghan
 thrown over the sofa, bottles of Tried and YEP detergent and a green laundry basket of folded
@@ -236,7 +246,10 @@ matters:
 - **Resolution.** `RESOLUTION` in `main.js` is 1 pixel per screen
   pixel, even on retina screens (2x would be four times the pixels).
 - **Welding** (`bake()`): each named thing's parts become one mesh per
-  colour.
+  kind of material. Plain painted surfaces that differ only in colour
+  share one material, with the colour stored in the triangles' corners,
+  so a room's worth of differently coloured junk is a few draws, not
+  dozens.
 - **Light budget.** Every light costs every pixel, and every shadowed
   light also costs a texture slot (see Texture slots). New lights are
   usually spots aimed where they're needed, with a short reach.
@@ -249,9 +262,11 @@ walls, a red front door, and so on. They're all in `MAT` near the top of
 `world.js`, and `paint()` decides which thing gets which.
 
 - **Lamps** (`roomLamps()` in `world.js`): a floor lamp in the foyer, a
-  table lamp in the living room, pendants over the dining table and the
-  kitchen island, a lamp on an end table by the sectional, both
-  nightstand lamps in the master, a bare bulb on a cord with a pull
+  big ceramic lamp (celadon ginger jar, linen drum shade) in the living
+  room, pendants over the dining table and the kitchen island, a
+  Tiffany table lamp on the end table by the sectional, brass
+  candlestick lamps with pleated shades on both nightstands, a green
+  banker's lamp on the computer desk, a bare bulb on a cord with a pull
   string in the laundry that sways very gently, its light and shadows
   swaying with it (`pullBulb()`), round ceiling lights in the pantry
   (`pantryLight()`) and over the toilet (`ceilingLight()`), a pendant
@@ -357,7 +372,9 @@ in debug mode):
 - **FOV slider** with the number, for the current cam, or tick the box
   to try it on all cams.
 - **Night vision** and **fully lit** (strong even light everywhere, no
-  fog) buttons.
+  fog) buttons, and **lighting off** (L): every surface in its flat
+  colour, no lights or shadows at all. Watch the fps to see what the
+  lighting costs. Switching takes a moment while shaders rebuild.
 - **Spawn ghoul**: ghoul1 is out of the house for now (he'll come back
   as an anomaly); this brings him in, or takes him out again. **Show
   ghoul** pins him visible, **freeze ghoul** stops him walking.
