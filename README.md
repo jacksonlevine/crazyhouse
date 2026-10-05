@@ -341,7 +341,7 @@ manual W remains at full amplitude.
 
 The `?debug` panel has a **bypass composite** toggle. Bypass renders the
 same scene render target through a clean presentation shader, skipping encoding,
-sync recovery, and decoding. The normal game always starts with composite on.
+sync recovery, and decoding. The game starts with composite bypassed.
 The kitchen TV faces 45° toward the living room; its glow follows the angle.
 
 Source Y/U/V is bandwidth-limited before modulation using the exposed filter

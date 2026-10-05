@@ -37,7 +37,7 @@ export function createDebug(api) {
       <button data-act="ghoul">show ghoul</button>
       <button data-act="freeze">freeze ghoul</button>
     </div>
-    <button data-act="composite" aria-pressed="false">bypass composite: off</button>
+    <button data-act="composite" aria-pressed="${!debug.composite}">bypass composite: ${debug.composite ? 'off' : 'on'}</button>
     <button data-act="open">open it all</button>
     <button data-act="copy">copy cam</button>
     <pre class="dbg-read" data-out="read"></pre>`;

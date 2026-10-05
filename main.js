@@ -26,7 +26,7 @@ const dots    = $('dots');
 
 let state = 'title';
 // filled in by debug.js when ?debug is on
-const debug = { composite: true, free: false, fov: null, tick: null, onCam: null };       // 'title' | 'playing'
+const debug = { composite: false, free: false, fov: null, tick: null, onCam: null };       // 'title' | 'playing'
 let camIndex = 0;
 // Shared by gameplay and the debug button. No allocation or rendering in the setter.
 export function setComposite(enabled){debug.composite=Boolean(enabled);}
@@ -157,7 +157,7 @@ function setup() {
       isNight: () => night, camIndex: () => camIndex
     };
     window.crazyhouse = api;
-    import('./debug.js?v=17').then(m => m.createDebug(api));
+    import('./debug.js?v=18').then(m => m.createDebug(api));
   }
 
   renderer.setAnimationLoop(now => {
