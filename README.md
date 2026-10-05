@@ -221,15 +221,12 @@ matters:
   cams. Before this, five lamps redrew every frame whenever he was near,
   visible or not, which cost about five times the whole rest of the
   frame.
-- **A shadow budget.** A shadowed lamp costs every pixel a shadow
-  lookup, walls or no walls, so only the 5 nearest lamps (lamps in your
-  room count nearest) light with shadows. Every other lamp shines
-  through a twin with no shadow, same colour and brightness, so no lamp
-  ever goes dark; it just stops casting shadows while it's far away.
-  The counts never change, so the graphics card never rebuilds its
-  shaders. `SHADOW_BUDGET` and `TWIN_REACH` in `main.js`. This also
-  means more lamps could have shadows now (only the nearest 5 use
-  texture slots).
+- **A light budget.** Every light costs every pixel it might touch,
+  walls or no walls, so only the 5 nearest shadowed lamps and 5 nearest
+  spotlights are on at any moment (lights in your room count nearest).
+  The count never changes, so the graphics card never rebuilds its
+  shaders. `LIGHT_BUDGET` in `main.js`. This also means more lights
+  could have shadows now (only the nearest 5 use texture slots).
 - **Per-cam culling** (`pvs.js`). The cams never move, so at the start
   each one works out what it can actually see (drawing the house once
   in ID colours, every door open) and from then on skips the rest; most
