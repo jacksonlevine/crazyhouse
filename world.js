@@ -246,7 +246,6 @@ function slab(outline, holes, y0, y1) {
 export const GLASS_LAYER = 2;
 // things the current cam can't see go here (pvs.js): lights still see them
 export const CULL_LAYER = 4;
-export const CASTER_LAYER = 5;     // what the swaying bulb's shadows are drawn from (roomCasters)
 
 /* A frame for windows and mirrors, inside an opening. place(u, y, w)
    maps along-the-opening, height and depth to the world (same as
@@ -350,7 +349,6 @@ function mirror(u0, u1, y0, y1, z) {
   mesh.rotation.y = Math.PI;                      // facing north, into the room
   mesh.layers.set(GLASS_LAYER);                   // so window snapshots and the ghost pass skip it
   mesh.userData.keep = mesh.userData.noShadow = true;
-  mesh.userData.pvsProbe = true;                  // so we know when no cam can see it (pvs.js)
 
   const view = new THREE.PerspectiveCamera();
   view.layers.set(0);
@@ -359,8 +357,6 @@ function mirror(u0, u1, y0, y1, z) {
   const at = new THREE.Vector3(), eye = new THREE.Vector3(), normal = new THREE.Vector3();
   const look = new THREE.Vector3(), aim = new THREE.Vector3(), turn = new THREE.Matrix4();
   const plane = new THREE.Plane(), clip = new THREE.Vector4(), q = new THREE.Vector4();
-  const lastView = new THREE.Matrix4().makeScale(0, 0, 0);
-  let idle = 0;
 
   mesh.onBeforeRender = (renderer, scene, camera) => {
     at.setFromMatrixPosition(mesh.matrixWorld);
@@ -369,16 +365,6 @@ function mirror(u0, u1, y0, y1, z) {
     normal.set(0, 0, 1).applyMatrix4(turn);
     look.subVectors(at, eye);
     if (look.dot(normal) > 0) return;             // looking at its back
-    // a whole second picture of the house is dear, so only when it can be seen:
-    // the cam's culling knows; in first person, from the bathroom or close by
-    const pvs = scene.userData.pvs, seen = pvs ? pvs.sees(mesh) : null;
-    if (seen === false) return;
-    if (seen === null && look.length() > 9 && roomAt(eye.x, eye.z)?.name !== 'bathroom') return;
-    // and only again once the view's changed, or every 4th frame for things moving in it
-    if (lastView.equals(camera.matrixWorld) && ++idle % 4) return;
-    lastView.copy(camera.matrixWorld);
-    // a cam's culling hides what's behind it, which the mirror shows; room culling doesn't
-    if (pvs && pvs.mode() === 'rooms') view.layers.disable(CULL_LAYER); else view.layers.enable(CULL_LAYER);
     // the camera, mirrored through the glass
     look.reflect(normal).negate().add(at);
     turn.extractRotation(camera.matrixWorld);
@@ -1254,7 +1240,6 @@ function fire() {
     tex.bark.color.setScalar(0.8 + 0.25 * f);
     tex.coals.color.setScalar(0.75 + 0.35 * f);
   };
-  g.userData.weldable = true;                     // the flicker only touches lights and shared materials
   return g;
 }
 
@@ -3108,13 +3093,12 @@ function pullBulb(lamps, name, cx, cy, intensity) {
     lines([[[0.07, -drop - 0.12, 0], [0.07, -drop - 1.3, 0]]], new THREE.LineBasicMaterial({ color: 0xd8d0c0 })),   // pull string
     tint(solid(new THREE.SphereGeometry(0.03, 6, 4), [0.07, -drop - 1.32, 0]), MAT.cream));                       // its bead
   // the light hangs in the bulb and swings with it. Its shadows follow:
-  // redrawn every 4th frame (it swings slowly), at half size, reaching only
-  // 16 feet, from only what's in the laundry, so it stays cheap.
+  // redrawn every other frame, at half size, reaching only 16 feet, so it
+  // stays cheap.
   const light = bulb(lamps, name + '-light', cx, cy, 6.64, intensity);
   light.position.set(0, -drop - 0.26, 0);
   light.distance = 16;
   light.shadow.mapSize.set(256, 256);
-  light.userData.casterRoom = 'laundry';         // and only the laundry casts them (roomCasters)
   swing.add(light);
   const g = named(name, swing);
   let t = 0, n = 0, root = null;
@@ -3125,8 +3109,8 @@ function pullBulb(lamps, name, cx, cy, intensity) {
     swing.rotation.x = 0.02 * Math.sin(t * 0.73 + 1);
     // only redraw its shadows while the cam can see round here
     if (!root) { root = g; while (root.parent) root = root.parent; }
-    const view = root.userData.frustum, seen = root.userData.pvs ? root.userData.pvs.seesRoom('laundry') : null;
-    if (++n % 4 === 0 && seen !== false && (!view || view.intersectsSphere(near))) light.shadow.needsUpdate = true;
+    const view = root.userData.frustum;
+    if (++n % 2 === 0 && (!view || view.intersectsSphere(near))) light.shadow.needsUpdate = true;
   };
   return g;
 }
@@ -3505,39 +3489,9 @@ function wireLights(scene) {
    lights, window glass and the mirror, the sky, and anything that moves
    its own parts (the folding and sliding closet doors, the fire). A
    door that swings as a whole is welded inside itself, and still swings. */
-/* A point light's shadow means drawing everything round it six times
-   over (once per side of a cube), and the swaying laundry bulb redraws
-   its shadows all the time. So a light with userData.casterRoom only
-   draws shadows from things in that room, plus the big stuff (walls,
-   floors) that keeps its light from leaking through. They go on
-   CASTER_LAYER, which is all that light's shadow camera looks at. */
-function roomCasters(scene) {
-  const lights = [];
-  scene.traverse(o => { if (o.isLight && o.userData.casterRoom) lights.push(o); });
-  if (!lights.length) return;
-  scene.updateMatrixWorld(true);
-  const s = new THREE.Sphere(), at = new THREE.Vector3(), reach = new THREE.Sphere();
-  for (const light of lights) {
-    const room = ROOMS.find(r => r.name === light.userData.casterRoom);
-    const inRoom = ({ x, z }) => {
-      const px = x * K + 680.5, py = z * K + 620.5;                       // a foot of slack for doors on the edge
-      return room.rects.some(([x0, x1, y0, y1]) => px >= x0 - K && px <= x1 + K && py >= y0 - K && py <= y1 + K);
-    };
-    reach.set(light.getWorldPosition(at), light.shadow.camera.far);
-    scene.traverse(o => {
-      if (!o.isMesh || !o.castShadow) return;
-      if (o.isInstancedMesh) { if (!o.boundingSphere) o.computeBoundingSphere(); s.copy(o.boundingSphere); }
-      else { if (!o.geometry.boundingSphere) o.geometry.computeBoundingSphere(); s.copy(o.geometry.boundingSphere); }
-      s.applyMatrix4(o.matrixWorld);
-      if (s.intersectsSphere(reach) && (s.radius > 6 || inRoom(s.center))) o.layers.enable(CASTER_LAYER);
-    });
-    light.shadow.camera.layers.set(CASTER_LAYER);
-  }
-}
-
 function bake(scene) {
   const groups = [];
-  scene.traverse(o => { if (o.name && !o.isMesh && !o.isLight && (!o.userData.tick || o.userData.weldable) && !o.userData.movesParts) groups.push(o); });
+  scene.traverse(o => { if (o.name && !o.isMesh && !o.isLight && !o.userData.tick && !o.userData.movesParts) groups.push(o); });
   const inv = new THREE.Matrix4(), rel = new THREE.Matrix4();
   for (const g of groups) {
     g.updateMatrixWorld(true);
@@ -3549,13 +3503,10 @@ function bake(scene) {
         const solidPart = (d.isMesh || d.isLineSegments) && !d.name && !d.userData.reflect &&
           d.onBeforeRender === THREE.Object3D.prototype.onBeforeRender && !d.children.length;
         if (solidPart) {
-          const sig = d.isMesh ? colourless(d.material) : null;
-          const key = [sig || d.material.uuid, d.layers.mask, d.castShadow, d.receiveShadow, d.isMesh].join('|');
-          if (!buckets.has(key)) buckets.set(key, { first: d, geos: [], sig });
+          const key = [d.material.uuid, d.layers.mask, d.castShadow, d.receiveShadow, d.isMesh].join();
+          if (!buckets.has(key)) buckets.set(key, { first: d, geos: [] });
           rel.multiplyMatrices(inv, d.matrixWorld);
-          const geo = (d.geometry.index ? d.geometry.toNonIndexed() : d.geometry.clone()).applyMatrix4(rel);
-          if (d.isMesh && !geo.attributes.normal) geo.computeVertexNormals();
-          buckets.get(key).geos.push(sig ? paintVertices(geo, d.material) : geo);
+          buckets.get(key).geos.push((d.geometry.index ? d.geometry.toNonIndexed() : d.geometry.clone()).applyMatrix4(rel));
           parts++;
         } else if (!d.name && (d.type === 'Group' || d.type === 'Object3D') && d.children.length &&
                    !d.userData.tick && !d.userData.movesParts) {
@@ -3568,10 +3519,9 @@ function bake(scene) {
     walk(g);
     if (parts <= buckets.size) continue;                    // nothing to weld
     const out = [];
-    for (const { first, geos, sig } of buckets.values()) {
+    for (const { first, geos } of buckets.values()) {
       const merged = weld(geos, first.isMesh);
-      const mat = sig ? sharedMaterial(sig, first.material) : first.material;
-      const obj = first.isMesh ? new THREE.Mesh(merged, mat) : new THREE.LineSegments(merged, mat);
+      const obj = first.isMesh ? new THREE.Mesh(merged, first.material) : new THREE.LineSegments(merged, first.material);
       obj.layers.mask = first.layers.mask;
       obj.castShadow = first.castShadow;
       obj.receiveShadow = first.receiveShadow;
@@ -3588,64 +3538,6 @@ function bake(scene) {
     g.clear();
     g.add(...out, ...keep);
   }
-}
-
-/* Rough, non-metal surfaces (paint, wood, cloth, paper) light the cheap
-   way: Lambert, just how much light lands on them, no shine worked out.
-   At roughness this high the shine is only a faint smear anyway, and
-   every lamp costs every pixel far less, which is most of what slows
-   Firefox down. Shiny things (steel, porcelain, glass, counters) keep it. */
-const MATTE_FROM = 0.75;
-const MATTE_KEYS = ['color', 'map', 'vertexColors', 'side', 'transparent', 'opacity', 'alphaTest', 'alphaMap', 'polygonOffset',
-  'polygonOffsetFactor', 'polygonOffsetUnits', 'depthWrite', 'depthTest', 'fog', 'flatShading', 'wireframe', 'emissive',
-  'emissiveIntensity', 'emissiveMap', 'aoMap', 'aoMapIntensity', 'lightMap', 'lightMapIntensity', 'bumpMap', 'bumpScale', 'toneMapped', 'name'];
-function matte(scene) {
-  const made = new Map();
-  scene.traverse(o => {
-    if (!o.isMesh || Array.isArray(o.material)) return;
-    const m = o.material;
-    if (!m.isMeshStandardMaterial || m.isMeshPhysicalMaterial || m.metalness > 0 || m.roughness < MATTE_FROM ||
-        m.envMap || m.normalMap || m.roughnessMap || Object.prototype.hasOwnProperty.call(m, 'onBeforeCompile')) return;
-    if (!made.has(m)) {
-      const l = new THREE.MeshLambertMaterial();
-      for (const k of MATTE_KEYS) if (m[k] !== undefined) l[k] = m[k] && m[k].isColor ? m[k].clone() : m[k];
-      made.set(m, l);
-    }
-    o.material = made.get(m);
-  });
-}
-
-/* Plain painted surfaces (no pictures, not see-through) that differ only
-   in colour can be one draw: the colour moves into the corners of each
-   triangle, and every such surface in the house shares one material.
-   Lamp glows (MeshBasicMaterial) aren't touched, since the switches dim them. */
-const MAPS = ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'emissiveMap', 'aoMap', 'bumpMap', 'alphaMap', 'envMap', 'lightMap', 'displacementMap'];
-function colourless(m) {
-  if (!(m.isMeshStandardMaterial || m.isMeshLambertMaterial) || m.isMeshPhysicalMaterial || m.transparent || MAPS.some(k => m[k]) ||
-      Object.prototype.hasOwnProperty.call(m, 'onBeforeCompile')) return null;
-  return [m.type, m.roughness, m.metalness, m.side, m.flatShading, m.emissive.getHex(), m.emissiveIntensity, m.polygonOffset,
-    m.polygonOffsetFactor, m.polygonOffsetUnits, m.alphaTest, m.depthWrite, m.fog, m.wireframe, m.opacity].join();
-}
-function paintVertices(geo, m) {
-  const n = geo.attributes.position.count, out = new Float32Array(n * 3);
-  const had = m.vertexColors ? geo.attributes.color : null;
-  for (let i = 0; i < n; i++) {
-    out[i * 3] = m.color.r * (had ? had.getX(i) : 1);
-    out[i * 3 + 1] = m.color.g * (had ? had.getY(i) : 1);
-    out[i * 3 + 2] = m.color.b * (had ? had.getZ(i) : 1);
-  }
-  geo.setAttribute('color', new THREE.BufferAttribute(out, 3));
-  return geo;
-}
-const sharedMaterials = new Map();
-function sharedMaterial(sig, like) {
-  if (!sharedMaterials.has(sig)) {
-    const m = like.clone();
-    m.color.set(0xffffff);
-    m.vertexColors = true;
-    sharedMaterials.set(sig, m);
-  }
-  return sharedMaterials.get(sig);
 }
 
 // join several geometries (already in place) into one
@@ -3714,9 +3606,7 @@ export function buildWorld({ weld = true } = {}) {
     scene.traverse(o => { if (o.name === n) o.traverse(m => { m.userData.passable = true; }); });
   for (const n of ['ground', 'forest', 'path', 'path-lamps', 'road', 'driveway'])
     scene.traverse(o => { if (o.name === n) o.traverse(m => { if (m.isMesh) m.castShadow = false; }); });
-  matte(scene);
   if (weld) bake(scene);
-  roomCasters(scene);
   scene.userData.lamps = lamps;
   return scene;
 }
