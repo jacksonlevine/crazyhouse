@@ -3510,6 +3510,262 @@ function clutter() {
   return named('clutter', ...[living, kitchen, bath, bed, foyer, laundry].map(small));
 }
 
+/* ─── paintings ─────────────────────────────── */
+
+/* Old oil paintings in heavy frames, all over the house, every one of
+   them a little wrong. They're drawn at the start, all onto one picture
+   sheet (so every painting in the house is one material and a single
+   draw), each in its own square. */
+const ART = 256, ART_COLS = 4;
+const PAINTINGS = [
+  // [name, wall face, px, py, width, height, centre height, frame, text]
+  ['house', 'x+', 315, 490, 3.0, 2.0, 5.3, 'gilt', "A painting of this house at night. One window is lit, and someone is standing in it, looking out. It's the window behind you."],
+  ['faceless', 'z+', 516.5, 173, 1.0, 1.5, 5.4, 'wood', "A portrait of a woman in her Sunday best. The painter never finished her face. Or someone took it off."],
+  ['hallway', 'z-', 556, 810, 1.5, 2.1, 5.2, 'wood', "A long hallway with a door at the end, open a crack. This house doesn't have a hallway that long."],
+  ['forest', 'z-', 752, 810, 2.6, 1.8, 5.3, 'gilt', "Pines in the fog. Something pale is standing between the trees. You'd swear it was further back yesterday."],
+  ['old-woman', 'x+', 124, 735, 1.4, 1.8, 5.7, 'gilt', "An old woman in a shawl. Someone painted over her eyes, thick and black. The paint is still tacky."],
+  ['lake', 'x-', 295, 700, 2.4, 1.6, 5.3, 'wood', "A lake at dusk and an empty rowboat. Someone is standing in the water up to their waist, facing the shore."],
+  ['balloon', 'z+', 365, 861, 1.0, 1.3, 5.7, 'wood', "A little kid in a field, holding a string. Whatever's on the other end is out of the picture."],
+  ['ship', 'x-', 605, 862, 1.2, 1.6, 5.3, 'wood', "A ship in a storm, sails in rags. Nobody on deck. Nobody at the wheel."],
+  ['still-life', 'z+', 1205, 364, 1.7, 1.3, 5.6, 'gilt', "Fruit going bad, a candle just blown out, a dead bird. The smoke from the candle is still moving."],
+  ['scarecrow', 'z-', 845, 715, 1.6, 1.2, 5.6, 'wood', "A scarecrow in a field at sundown. Its head is turned toward the house."],
+  ['family', 'z-', 1005, 1068, 3.4, 1.9, 6.0, 'gilt', "A family portrait. Mom, dad, two kids. One of the kids has been scratched out so hard the canvas tore."],
+  ['stairs', 'x+', 815, 862, 2.2, 1.7, 5.4, 'wood', "Stairs going down into the dark. This house doesn't have a basement."],
+  ['road', 'z+', 1150, 789, 2.2, 1.5, 5.4, 'wood', "The road out front, under the streetlight. Someone is standing in the light, waiting."],
+  ['shoulder', 'x+', 815, 1024, 1.3, 1.7, 5.4, 'gilt', "A man looking back over his shoulder, at something behind you. Don't turn around."]
+];
+
+// each painting's picture, drawn into a w x h box with its top left at (0, 0)
+function paintArt(name, g, w, h, rand) {
+  const grad = (y0, y1, a, b) => { const l = g.createLinearGradient(0, y0, 0, y1); l.addColorStop(0, a); l.addColorStop(1, b); return l; };
+  const rect = (x, y, rw, rh, c) => { g.fillStyle = c; g.fillRect(x, y, rw, rh); };
+  const oval = (x, y, rx, ry, c, rot = 0) => { g.fillStyle = c; g.beginPath(); g.ellipse(x, y, rx, ry, rot, 0, Math.PI * 2); g.fill(); };
+  const poly = (pts, c) => { g.fillStyle = c; g.beginPath(); g.moveTo(pts[0][0], pts[0][1]); for (const p of pts.slice(1)) g.lineTo(p[0], p[1]); g.closePath(); g.fill(); };
+  const line = (pts, c, lw) => { g.strokeStyle = c; g.lineWidth = lw; g.beginPath(); g.moveTo(pts[0][0], pts[0][1]); for (const p of pts.slice(1)) g.lineTo(p[0], p[1]); g.stroke(); };
+  const glowAt = (x, y, r, c) => { const rg = g.createRadialGradient(x, y, 0, x, y, r); rg.addColorStop(0, c); rg.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = rg; g.fillRect(x - r, y - r, r * 2, r * 2); };
+  // a bust: shoulders, neck and head, for the portraits
+  const bust = (cx, top, s, dress, skin, hair) => {
+    oval(cx, top + s * 1.55, s * 0.95, s * 0.6, dress);
+    rect(cx - s * 0.12, top + s * 0.7, s * 0.24, s * 0.35, skin);
+    oval(cx, top + s * 0.45, s * 0.3, s * 0.4, skin);
+    if (hair) { oval(cx, top + s * 0.2, s * 0.34, s * 0.22, hair); }
+  };
+  switch (name) {
+    case 'house': {
+      rect(0, 0, w, h, grad(0, h * 0.7, '#0b1220', '#26334a'));
+      glowAt(w * 0.8, h * 0.18, h * 0.25, 'rgba(220,220,190,0.35)'); oval(w * 0.8, h * 0.18, h * 0.06, h * 0.06, '#e6e2c8');
+      poly([[0, h * 0.62], [w * 0.3, h * 0.55], [w * 0.7, h * 0.6], [w, h * 0.53], [w, h], [0, h]], '#101a12');
+      const hx = w * 0.32, hy = h * 0.42, hw = w * 0.36, hh = h * 0.2;
+      rect(hx, hy, hw, hh, '#1c1c20');
+      poly([[hx - w * 0.03, hy], [hx + hw / 2, hy - h * 0.14], [hx + hw + w * 0.03, hy]], '#141418');
+      poly([[hx + hw * 0.05, hy + hh * 0.35], [hx + hw * 0.5, hy + hh * 0.05], [hx + hw * 0.95, hy + hh * 0.35]], '#18181c');   // porch roof
+      rect(hx + hw * 0.12, hy + hh * 0.45, hw * 0.12, hh * 0.3, '#0a0a0c'); rect(hx + hw * 0.72, hy + hh * 0.45, hw * 0.12, hh * 0.3, '#0a0a0c');
+      rect(hx + hw * 0.42, hy + hh * 0.42, hw * 0.16, hh * 0.3, '#d8b264');                  // the lit window
+      glowAt(hx + hw * 0.5, hy + hh * 0.57, hw * 0.2, 'rgba(216,178,100,0.3)');
+      oval(hx + hw * 0.5, hy + hh * 0.52, hw * 0.022, hw * 0.026, '#1a120a'); rect(hx + hw * 0.475, hy + hh * 0.56, hw * 0.05, hh * 0.16, '#1a120a');   // someone in it
+      poly([[hx + hw * 0.47, hy + hh], [hx + hw * 0.53, hy + hh], [w * 0.6, h], [w * 0.4, h]], '#3a3a36');    // the walk
+      break;
+    }
+    case 'faceless': {
+      const rg = g.createRadialGradient(w / 2, h * 0.35, 0, w / 2, h * 0.35, h * 0.7); rg.addColorStop(0, '#4a3a26'); rg.addColorStop(1, '#120c08');
+      rect(0, 0, w, h, rg);
+      bust(w / 2, h * 0.2, w * 0.5, '#15101a', '#c9a283', '#3a2616');
+      for (let i = 0; i < 7; i++) oval(w / 2 - w * 0.18 + i * w * 0.06, h * 0.58, w * 0.035, w * 0.025, '#e2dccb');   // lace collar
+      glowAt(w * 0.45, h * 0.38, w * 0.15, 'rgba(255,235,210,0.18)');                         // a smooth blank face
+      break;
+    }
+    case 'hallway': {
+      rect(0, 0, w, h, '#2e2620');
+      const vx = w / 2, vy = h * 0.42, dw = w * 0.16, dh = h * 0.24;
+      poly([[0, 0], [vx - dw, vy - dh], [vx - dw, vy + dh], [0, h]], '#4a3a2a');
+      poly([[w, 0], [vx + dw, vy - dh], [vx + dw, vy + dh], [w, h]], '#3c2f22');
+      poly([[0, h], [vx - dw, vy + dh], [vx + dw, vy + dh], [w, h]], '#261a12');
+      poly([[w * 0.3, h], [vx - dw * 0.4, vy + dh], [vx + dw * 0.4, vy + dh], [w * 0.7, h]], '#5a1e1a');   // the runner
+      rect(vx - dw, vy - dh, dw * 2, dh * 2, '#241a12');
+      rect(vx - dw * 0.55, vy - dh * 0.75, dw * 1.1, dh * 1.75, '#120c08');                    // the door
+      rect(vx + dw * 0.32, vy - dh * 0.75, dw * 0.12, dh * 1.75, '#000');                        // open a crack
+      rect(vx + dw * 0.3, vy - dh * 0.75, dw * 0.025, dh * 1.75, 'rgba(230,210,160,0.5)');
+      break;
+    }
+    case 'forest': {
+      rect(0, 0, w, h, grad(0, h, '#1d2622', '#0b0f0d'));
+      for (let layer = 0; layer < 3; layer++) {
+        if (layer === 1) { rect(0, h * 0.45, w, h * 0.25, 'rgba(200,205,195,0.16)'); }
+        const shade = ['#24302a', '#161e1a', '#0a0d0b'][layer];
+        for (let i = 0; i < 9 + layer * 2; i++) {
+          const tw = w * (0.015 + layer * 0.012) * (0.6 + rand()), tx = rand() * w;
+          if (layer === 2 && Math.abs(tx + tw / 2 - w * 0.6) < w * 0.06) continue;             // keep a gap round it
+          rect(tx, 0, tw, h, shade);
+        }
+        if (layer === 1) {                                                                       // something pale, between the trees
+          glowAt(w * 0.6, h * 0.55, h * 0.2, 'rgba(200,205,195,0.15)');
+          oval(w * 0.6, h * 0.4, w * 0.02, w * 0.026, '#d8d8ce'); rect(w * 0.588, h * 0.43, w * 0.024, h * 0.36, '#c4c4b8');
+          rect(w * 0.578, h * 0.44, w * 0.008, h * 0.24, '#b8b8ac'); rect(w * 0.614, h * 0.44, w * 0.008, h * 0.24, '#b8b8ac');   // long arms
+        }
+      }
+      break;
+    }
+    case 'old-woman': {
+      rect(0, 0, w, h, grad(0, h, '#2e2618', '#100c08'));
+      bust(w / 2, h * 0.2, w * 0.5, '#2a2430', '#b48e72', '#8a8680');
+      oval(w / 2, h * 0.17, w * 0.1, w * 0.08, '#8a8680');                                     // the bun
+      poly([[w * 0.1, h], [w * 0.3, h * 0.62], [w * 0.7, h * 0.62], [w * 0.9, h]], '#3a2a38');   // shawl
+      for (const ex of [-1, 1]) {                                                               // eyes painted over, dripping
+        oval(w / 2 + ex * w * 0.065, h * 0.39, w * 0.05, w * 0.03, '#050404');
+        rect(w / 2 + ex * w * 0.065 - 1, h * 0.39, 2, h * (0.05 + rand() * 0.05), '#050404');
+      }
+      line([[w * 0.44, h * 0.47], [w * 0.56, h * 0.47]], '#6a4a3a', 1.5);
+      break;
+    }
+    case 'lake': {
+      rect(0, 0, w, h * 0.5, grad(0, h * 0.5, '#5e5040', '#2a2a30'));
+      poly([[0, h * 0.42], [w * 0.4, h * 0.38], [w, h * 0.44], [w, h * 0.5], [0, h * 0.5]], '#141814');
+      rect(0, h * 0.5, w, h * 0.5, grad(h * 0.5, h, '#2a2c2e', '#101416'));
+      for (let i = 0; i < 18; i++) rect(rand() * w, h * (0.52 + rand() * 0.45), w * (0.05 + rand() * 0.1), 1.5, 'rgba(200,190,170,0.25)');
+      poly([[w * 0.2, h * 0.66], [w * 0.36, h * 0.66], [w * 0.33, h * 0.7], [w * 0.23, h * 0.7]], '#1a120c');   // the rowboat
+      oval(w * 0.68, h * 0.52, w * 0.012, w * 0.015, '#0c0c0c'); rect(w * 0.672, h * 0.54, w * 0.016, h * 0.07, '#0c0c0c');   // someone in the water
+      oval(w * 0.68, h * 0.615, w * 0.03, w * 0.006, 'rgba(200,190,170,0.3)');
+      break;
+    }
+    case 'balloon': {
+      rect(0, 0, w, h * 0.55, grad(0, h * 0.55, '#8e8a7c', '#b0a68a'));
+      rect(0, h * 0.55, w, h * 0.45, grad(h * 0.55, h, '#7a6a3a', '#3e3620'));
+      oval(w * 0.5, h * 0.66, w * 0.035, w * 0.04, '#3a2416'); rect(w * 0.465, h * 0.69, w * 0.07, h * 0.13, '#7a2a24');   // a kid in a red coat
+      line([[w * 0.53, h * 0.72], [w * 0.6, h * 0.4], [w * 0.62, 0]], '#e8e2d2', 1);           // the string, going up and out
+      break;
+    }
+    case 'ship': {
+      rect(0, 0, w, h * 0.6, grad(0, h * 0.6, '#14181c', '#3a4044'));
+      for (let i = 0; i < 6; i++) oval(rand() * w, rand() * h * 0.4, w * 0.3, h * 0.05, 'rgba(10,12,14,0.5)');
+      rect(0, h * 0.6, w, h * 0.4, grad(h * 0.6, h, '#1c2a26', '#0a100e'));
+      g.save(); g.translate(w * 0.5, h * 0.6); g.rotate(-0.18);
+      poly([[-w * 0.25, 0], [w * 0.25, 0], [w * 0.18, h * 0.06], [-w * 0.2, h * 0.06]], '#120c08');
+      for (const mx of [-0.1, 0.08]) { rect(w * mx, -h * 0.35, 2, h * 0.35, '#120c08'); poly([[w * mx, -h * 0.3], [w * (mx + 0.12), -h * 0.24], [w * (mx + 0.06), -h * 0.12], [w * mx, -h * 0.1]], '#9a9686'); }
+      g.restore();
+      for (let i = 0; i < 14; i++) oval(rand() * w, h * (0.62 + rand() * 0.35), w * 0.05, h * 0.008, 'rgba(220,225,215,0.5)');
+      break;
+    }
+    case 'still-life': {
+      rect(0, 0, w, h, '#120e0a');
+      rect(0, h * 0.68, w, h * 0.32, '#2e1e12');
+      oval(w * 0.42, h * 0.68, w * 0.22, h * 0.05, '#5a5a56');                                // a pewter plate
+      oval(w * 0.34, h * 0.6, w * 0.07, w * 0.07, '#6a2016'); oval(w * 0.46, h * 0.62, w * 0.065, w * 0.065, '#4a3a18');   // fruit, one gone bad
+      for (let i = 0; i < 9; i++) oval(w * (0.5 + rand() * 0.08), h * (0.55 + rand() * 0.1), w * 0.02, w * 0.02, '#2a1830');   // grapes
+      rect(w * 0.75, h * 0.3, w * 0.035, h * 0.38, '#d8d0b8'); rect(w * 0.765, h * 0.27, 2, h * 0.03, '#000');   // the candle, just out
+      line([[w * 0.767, h * 0.27], [w * 0.76, h * 0.18], [w * 0.78, h * 0.1], [w * 0.77, h * 0.02]], 'rgba(200,200,200,0.35)', 2);
+      oval(w * 0.18, h * 0.74, w * 0.07, h * 0.03, '#4a4440');                                  // a dead bird, on its back
+      line([[w * 0.17, h * 0.72], [w * 0.165, h * 0.68]], '#2a2622', 1); line([[w * 0.2, h * 0.72], [w * 0.205, h * 0.68]], '#2a2622', 1);
+      break;
+    }
+    case 'scarecrow': {
+      rect(0, 0, w, h * 0.6, grad(0, h * 0.6, '#3a2a3a', '#b4683a'));
+      rect(0, h * 0.6, w, h * 0.4, '#2a2014');
+      for (let i = 0; i < 8; i++) line([[w * (i / 7), h], [w * 0.5, h * 0.6]], '#1a140c', 1.5);
+      rect(w * 0.495, h * 0.3, 3, h * 0.45, '#1a120a'); rect(w * 0.4, h * 0.38, w * 0.2, 3, '#1a120a');
+      poly([[w * 0.44, h * 0.38], [w * 0.56, h * 0.38], [w * 0.58, h * 0.56], [w * 0.42, h * 0.56]], '#3a3024');   // ragged coat
+      oval(w * 0.5, h * 0.33, w * 0.04, w * 0.045, '#b8a070');                                  // sack head
+      oval(w * 0.488, h * 0.325, 1.6, 1.6, '#000'); oval(w * 0.512, h * 0.325, 1.6, 1.6, '#000');
+      break;
+    }
+    case 'family': {
+      rect(0, 0, w, h, grad(0, h, '#3a2a1a', '#140e08'));
+      const people = [[0.24, 0.62, '#1a1a1e'], [0.42, 0.56, '#3a2430'], [0.6, 0.42, '#24302a'], [0.76, 0.36, '#3a3024']];
+      people.forEach(([px, s, coat], i) => {
+        const cx = w * px, top = h * (1 - s) - h * 0.04, sz = h * s * 0.5;
+        oval(cx, h, sz * 0.7, h * s * 0.55, coat);
+        oval(cx, top + sz * 0.3, sz * 0.25, sz * 0.32, '#c8a284');
+        oval(cx, top + sz * 0.08, sz * 0.27, sz * 0.15, '#2a1a10');
+        if (i === 2) {                                                                           // scratched out, down to the canvas
+          const fy = top + sz * 0.3, r = sz * 0.5;
+          for (let k = 0; k < 70; k++) {
+            const x0 = cx + (rand() - 0.5) * r * 2, y0 = fy + (rand() - 0.5) * r * 2.2;
+            line([[x0, y0], [x0 + (rand() - 0.5) * r * 1.4, y0 + (rand() - 0.5) * r * 1.4]], k % 3 ? '#0a0604' : '#d6ccb4', k % 3 ? 1.6 : 1);
+          }
+        } else { oval(cx - sz * 0.09, top + sz * 0.28, 1.2, 1.2, '#1a100a'); oval(cx + sz * 0.09, top + sz * 0.28, 1.2, 1.2, '#1a100a'); }
+      });
+      break;
+    }
+    case 'stairs': {
+      rect(0, 0, w, h, '#1e1812');
+      for (let i = 0; i < 12; i++) {                                                            // steps going down and away, into black
+        const t = i / 12, y = h * (0.15 + t * 0.85), sw = w * (0.7 - t * 0.45), c = Math.round(110 * (1 - t) ** 2);
+        rect(w / 2 - sw / 2, y - h * 0.07, sw, h * 0.07, `rgb(${c},${Math.round(c * 0.8)},${Math.round(c * 0.6)})`);
+      }
+      rect(w * 0.38, h * 0.95, w * 0.24, h * 0.05, '#000');
+      line([[w * 0.12, h * 0.1], [w * 0.36, h * 0.85]], '#3a2a1a', 3);                        // the banister
+      oval(w * 0.35, h * 0.82, w * 0.018, w * 0.01, '#cfc6b4', -1.2);                          // a hand on it, near the bottom
+      break;
+    }
+    case 'road': {
+      rect(0, 0, w, h, grad(0, h * 0.6, '#06080c', '#1a2028'));
+      oval(w * 0.15, h * 0.18, h * 0.05, h * 0.05, '#cfcbb4');
+      rect(0, h * 0.6, w, h * 0.4, '#0c120c');
+      poly([[w * 0.47, h * 0.6], [w * 0.53, h * 0.6], [w * 0.85, h], [w * 0.15, h]], '#2a2a2a');
+      rect(w * 0.7, h * 0.2, 2.5, h * 0.55, '#0a0a0a'); rect(w * 0.64, h * 0.2, w * 0.07, 3, '#0a0a0a');
+      poly([[w * 0.645, h * 0.22], [w * 0.66, h * 0.22], [w * 0.74, h * 0.82], [w * 0.55, h * 0.82]], 'rgba(230,210,150,0.22)');
+      oval(w * 0.65, h * 0.68, w * 0.012, w * 0.015, '#050505'); rect(w * 0.642, h * 0.7, w * 0.016, h * 0.11, '#050505');   // someone waiting
+      break;
+    }
+    case 'shoulder': {
+      rect(0, 0, w, h, grad(0, h, '#2a2218', '#0e0a06'));
+      oval(w * 0.45, h * 0.86, w * 0.48, h * 0.3, '#16161a');                                 // coat, turned away
+      rect(w * 0.42, h * 0.48, w * 0.14, h * 0.16, '#a88468');
+      oval(w * 0.52, h * 0.38, w * 0.17, h * 0.15, '#b89276');                                 // head, turned back over the shoulder
+      oval(w * 0.47, h * 0.28, w * 0.18, h * 0.08, '#2a1e14');
+      oval(w * 0.6, h * 0.37, w * 0.035, w * 0.022, '#f0ece0'); oval(w * 0.62, h * 0.37, w * 0.012, w * 0.012, '#000');   // eye, wide, looking past you
+      break;
+    }
+  }
+  // oil paint: little strokes all over, darker corners, yellowed varnish
+  for (let i = 0; i < 260; i++) {
+    g.fillStyle = `rgba(${rand() < 0.5 ? '255,240,210' : '0,0,0'},${0.03 + rand() * 0.05})`;
+    g.save(); g.translate(rand() * w, rand() * h); g.rotate(rand() * 3.14); g.fillRect(-3, -1, 6 + rand() * 6, 2); g.restore();
+  }
+  const v = g.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.3, w / 2, h / 2, Math.max(w, h) * 0.75);
+  v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(0,0,0,0.55)');
+  g.fillStyle = v; g.fillRect(0, 0, w, h);
+  g.fillStyle = 'rgba(120,90,30,0.12)'; g.fillRect(0, 0, w, h);
+}
+
+function paintings() {
+  // the sheet: each painting fills its square's width or height, keeping its shape
+  const slots = PAINTINGS.map(([, , , , w, h], i) => {
+    const sw = w >= h ? ART : Math.round(ART * w / h), sh = w >= h ? Math.round(ART * h / w) : ART;
+    return { sx: (i % ART_COLS) * ART, sy: Math.floor(i / ART_COLS) * ART, sw, sh };
+  });
+  const size = ART * ART_COLS, mat = surface(0xffffff, 0.85);
+  if (typeof document !== 'undefined') {
+    let seed = 77;
+    const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    mat.map = screenCanvas(size, size, g => {
+      PAINTINGS.forEach(([name], i) => {
+        const { sx, sy, sw, sh } = slots[i];
+        g.save(); g.translate(sx, sy); g.beginPath(); g.rect(0, 0, sw, sh); g.clip();
+        paintArt(name, g, sw, sh, rand);
+        g.restore();
+      });
+    });
+    mat.map.anisotropy = 4;
+  } else mat.color.set(0x4a3a2a);
+  const frames = { gilt: metal(0x8a6a2e, 0.5), wood: surface(0x2e1e12, 0.6) };
+  const turn = { 'x+': Math.PI / 2, 'x-': -Math.PI / 2, 'z+': 0, 'z-': Math.PI };
+  return named('paintings', ...PAINTINGS.map(([name, face, px, py, w, h, cy, frame, text], i) => {
+    const { sx, sy, sw, sh } = slots[i], f = frame === 'gilt' ? 0.17 : 0.12;
+    const pic = new THREE.PlaneGeometry(w, h), uv = pic.attributes.uv;
+    for (let k = 0; k < uv.count; k++)                                         // its own square of the sheet
+      uv.setXY(k, (sx + uv.getX(k) * sw) / size, 1 - (sy + sh - uv.getY(k) * sh) / size);
+    const bar = (bw, bh, x, y) => tint(solid(new THREE.BoxGeometry(bw, bh, 0.1), [x, y, 0.05]), frames[frame]);
+    const g = new THREE.Group();
+    g.add(tint(solid(pic, [0, 0, 0.03]), mat),
+      bar(w + f * 2, f, 0, h / 2 + f / 2), bar(w + f * 2, f, 0, -h / 2 - f / 2),
+      bar(f, h, -w / 2 - f / 2, 0), bar(f, h, w / 2 + f / 2, 0));
+    const along = face[0] === 'x', sign = face[1] === '+' ? 1 : -1;
+    g.position.set(along ? X(px) + sign * 0.01 : X(px), FLOOR + cy, along ? Z(py) : Z(py) + sign * 0.01);
+    g.rotation.y = turn[face];
+    return small(say(text, g));
+  }));
+}
+
 function roomLamps(lamps) {
   const wallZ = Z(1068), patioZ = Z(345);
   return named('lamps',
@@ -4010,6 +4266,7 @@ export function buildWorld({ weld = true } = {}) {
     stereo(),
     fiddleFig(338, 198),
     clutter(),
+    paintings(),
     switchPlates(),
     sky()
   );
