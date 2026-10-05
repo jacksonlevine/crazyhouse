@@ -3519,212 +3519,209 @@ function clutter() {
 const ART = 256, ART_COLS = 4;
 const PAINTINGS = [
   // [name, wall face, px, py, width, height, centre height, frame, text]
-  ['house', 'x+', 315, 490, 3.0, 2.0, 5.3, 'gilt', "A painting of this house at night. One window is lit, and someone is standing in it, looking out. It's the window behind you."],
-  ['faceless', 'z+', 516.5, 173, 1.0, 1.5, 5.4, 'wood', "A portrait of a woman in her Sunday best. The painter never finished her face. Or someone took it off."],
-  ['hallway', 'z-', 556, 810, 1.5, 2.1, 5.2, 'wood', "A long hallway with a door at the end, open a crack. This house doesn't have a hallway that long."],
-  ['forest', 'z-', 752, 810, 2.6, 1.8, 5.3, 'gilt', "Pines in the fog. Something pale is standing between the trees. You'd swear it was further back yesterday."],
-  ['old-woman', 'x+', 124, 735, 1.4, 1.8, 5.7, 'gilt', "An old woman in a shawl. Someone painted over her eyes, thick and black. The paint is still tacky."],
-  ['lake', 'x-', 295, 700, 2.4, 1.6, 5.3, 'wood', "A lake at dusk and an empty rowboat. Someone is standing in the water up to their waist, facing the shore."],
-  ['balloon', 'z+', 365, 861, 1.0, 1.3, 5.7, 'wood', "A little kid in a field, holding a string. Whatever's on the other end is out of the picture."],
-  ['ship', 'x-', 605, 862, 1.2, 1.6, 5.3, 'wood', "A ship in a storm, sails in rags. Nobody on deck. Nobody at the wheel."],
-  ['still-life', 'z+', 1205, 364, 1.7, 1.3, 5.6, 'gilt', "Fruit going bad, a candle just blown out, a dead bird. The smoke from the candle is still moving."],
-  ['scarecrow', 'z-', 845, 715, 1.6, 1.2, 5.6, 'wood', "A scarecrow in a field at sundown. Its head is turned toward the house."],
-  ['family', 'z-', 1005, 1068, 3.4, 1.9, 6.0, 'gilt', "A family portrait. Mom, dad, two kids. One of the kids has been scratched out so hard the canvas tore."],
-  ['stairs', 'x+', 815, 862, 2.2, 1.7, 5.4, 'wood', "Stairs going down into the dark. This house doesn't have a basement."],
-  ['road', 'z+', 1150, 789, 2.2, 1.5, 5.4, 'wood', "The road out front, under the streetlight. Someone is standing in the light, waiting."],
-  ['shoulder', 'x+', 815, 1024, 1.3, 1.7, 5.4, 'gilt', "A man looking back over his shoulder, at something behind you. Don't turn around."]
+  ['valley', 'x+', 315, 490, 3.0, 2.0, 5.3, 'gilt', "A river valley at sundown, a little farmhouse with one window lit. Every time you look, the light is in a different window."],
+  ['lady', 'z+', 516.5, 173, 1.0, 1.5, 5.4, 'wood', "A lady with folded hands and a little smile. Her eyes follow you round the room. That's just how they painted them. Right?"],
+  ['nobleman', 'z-', 556, 810, 1.5, 2.1, 5.2, 'wood', "A gentleman in a black hat and a big white ruff. On the back of the canvas someone has written the day he died. It's next week."],
+  ['forest', 'z-', 752, 810, 2.6, 1.8, 5.3, 'gilt', "A path into an old forest, light coming down between the trunks. The path bends exactly like the walk out front."],
+  ['old-man', 'x+', 124, 735, 1.4, 1.8, 5.7, 'gilt', "An old man in a red robe with a long white beard. His mouth is open a little, like he's halfway through saying your name."],
+  ['moonrise', 'x-', 295, 700, 2.4, 1.6, 5.3, 'wood', "A lake under the moon and a ruined tower on the hill. There's a light at the top of the tower. It wasn't painted on."],
+  ['pearls', 'z+', 365, 861, 1.0, 1.3, 5.7, 'wood', "A young woman with pearls in her hair. Wherever you stand in here, she's turned a little more toward you."],
+  ['child', 'x-', 605, 862, 1.2, 1.6, 5.3, 'wood', "A little girl in a lace collar, holding a flower. The flower's been painted over in black. Recently."],
+  ['coast', 'z+', 1205, 364, 1.7, 1.3, 5.6, 'gilt', "Cliffs in a storm, the sea breaking white. It's painted so well you can almost hear it. You can hear it."],
+  ['field', 'z-', 845, 715, 1.6, 1.2, 5.6, 'wood', "A wheat field and one old oak at sunset. The crows are all facing the same way. Toward you."],
+  ['mountains', 'z-', 1005, 1068, 3.4, 1.9, 6.0, 'gilt', "Mountains over a still lake at dusk. The reflection in the water doesn't quite match the mountains."],
+  ['waterfall', 'x+', 815, 862, 2.2, 1.7, 5.4, 'wood', "A waterfall in a gorge, all mist and spray. Your fingertips come away damp."],
+  ['church', 'z+', 1150, 789, 2.2, 1.5, 5.4, 'wood', "A little white church at the end of a country road. The road is the road out front. There's no church down there."],
+  ['widow', 'x+', 815, 1024, 1.3, 1.7, 5.4, 'gilt', "A widow in black, in mourning. The little brass plate on the frame has your last name on it."]
 ];
 
-// each painting's picture, drawn into a w x h box with its top left at (0, 0)
+/* Each painting is drawn small (about 64 pixels across), roughed up a
+   little, then blown up with hard pixel edges, like an old game's
+   textures: romantic landscapes for the wide frames, Renaissance
+   portraits for the tall ones. w and h are the small size. */
 function paintArt(name, g, w, h, rand) {
-  const grad = (y0, y1, a, b) => { const l = g.createLinearGradient(0, y0, 0, y1); l.addColorStop(0, a); l.addColorStop(1, b); return l; };
+  const grad = (y0, y1, ...stops) => { const l = g.createLinearGradient(0, y0, 0, y1); stops.forEach((c, i) => l.addColorStop(i / (stops.length - 1), c)); return l; };
   const rect = (x, y, rw, rh, c) => { g.fillStyle = c; g.fillRect(x, y, rw, rh); };
-  const oval = (x, y, rx, ry, c, rot = 0) => { g.fillStyle = c; g.beginPath(); g.ellipse(x, y, rx, ry, rot, 0, Math.PI * 2); g.fill(); };
+  const oval = (x, y, rx, ry, c, rot = 0) => { g.fillStyle = c; g.beginPath(); g.ellipse(x, y, Math.max(rx, 0.5), Math.max(ry, 0.5), rot, 0, Math.PI * 2); g.fill(); };
   const poly = (pts, c) => { g.fillStyle = c; g.beginPath(); g.moveTo(pts[0][0], pts[0][1]); for (const p of pts.slice(1)) g.lineTo(p[0], p[1]); g.closePath(); g.fill(); };
-  const line = (pts, c, lw) => { g.strokeStyle = c; g.lineWidth = lw; g.beginPath(); g.moveTo(pts[0][0], pts[0][1]); for (const p of pts.slice(1)) g.lineTo(p[0], p[1]); g.stroke(); };
-  const glowAt = (x, y, r, c) => { const rg = g.createRadialGradient(x, y, 0, x, y, r); rg.addColorStop(0, c); rg.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = rg; g.fillRect(x - r, y - r, r * 2, r * 2); };
-  // a bust: shoulders, neck and head, for the portraits
-  const bust = (cx, top, s, dress, skin, hair) => {
-    oval(cx, top + s * 1.55, s * 0.95, s * 0.6, dress);
-    rect(cx - s * 0.12, top + s * 0.7, s * 0.24, s * 0.35, skin);
-    oval(cx, top + s * 0.45, s * 0.3, s * 0.4, skin);
-    if (hair) { oval(cx, top + s * 0.2, s * 0.34, s * 0.22, hair); }
+  const glow = (x, y, r, c) => { const rg = g.createRadialGradient(x, y, 0, x, y, r); rg.addColorStop(0, c); rg.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = rg; g.fillRect(x - r, y - r, r * 2, r * 2); };
+  // a ridge line across the picture, filled down to the bottom
+  const ridge = (y, amp, c, f = 1, phase = rand() * 9) => {
+    g.fillStyle = c; g.beginPath(); g.moveTo(0, h);
+    for (let x = 0; x <= w; x += 1) g.lineTo(x, y - amp * (0.6 * Math.abs(Math.sin(x / w * 5 * f + phase)) + 0.4 * Math.sin(x / w * 13 * f + phase * 2)));
+    g.lineTo(w, h); g.closePath(); g.fill();
   };
+  const pine = (x, y, s, c) => { for (let i = 0; i < 3; i++) poly([[x, y - s * (1 - i * 0.28)], [x - s * (0.18 + i * 0.07), y - s * (0.55 - i * 0.25)], [x + s * (0.18 + i * 0.07), y - s * (0.55 - i * 0.25)]], c); rect(x - 0.5, y - s * 0.12, 1, s * 0.15, c); };
+  const treeBlob = (x, y, r, dark, light) => { oval(x, y, r, r * 0.9, dark); oval(x - r * 0.25, y - r * 0.25, r * 0.55, r * 0.5, light); rect(x - 0.5, y + r * 0.6, 1.2, r * 0.9, dark); };
+  const clouds = (n, y0, y1, c) => { for (let i = 0; i < n; i++) oval(rand() * w, y0 + rand() * (y1 - y0), w * (0.08 + rand() * 0.12), h * (0.02 + rand() * 0.025), c); };
+
+  /* A Renaissance bust, three-quarter view (turn: -1 looks left, 1 right).
+     o: { skin, dress, hair, bg (function or colour), hat, ruff, beard, veil, hands, collar } */
+  const portrait = o => {
+    if (typeof o.bg === 'function') o.bg(); else rect(0, 0, w, h, o.bg);
+    const t = o.turn || 0.4, cx = w * 0.5 + t * w * 0.02, hy = h * (o.headY || 0.34), rx = w * (o.headW || 0.17), ry = h * 0.135;
+    // shoulders sloping down from the neck, lit from the upper left
+    const body = () => {
+      g.beginPath(); g.moveTo(cx - rx * 0.7, hy + ry * 1.15);
+      g.quadraticCurveTo(w * 0.14, hy + ry * 1.45, w * 0.03, h * 0.84); g.lineTo(0, h); g.lineTo(w, h); g.lineTo(w * 0.97, h * 0.84);
+      g.quadraticCurveTo(w * 0.86, hy + ry * 1.45, cx + rx * 0.7, hy + ry * 1.15); g.closePath();
+    };
+    g.fillStyle = o.dress; body(); g.fill();
+    const lit = g.createLinearGradient(0, 0, w, 0); lit.addColorStop(0, 'rgba(255,240,220,0.12)'); lit.addColorStop(1, 'rgba(0,0,0,0.25)');
+    g.fillStyle = lit; body(); g.fill();
+    if (o.collar) poly([[cx - rx * 0.95, hy + ry * 1.2], [cx + rx * 0.95, hy + ry * 1.2], [cx + rx * 0.55, hy + ry * 2.1], [cx - rx * 0.55, hy + ry * 2.1]], o.collar);
+    rect(cx - rx * 0.38, hy + ry * 0.6, rx * 0.76, ry * 0.75, o.skin);                       // neck
+    rect(cx - rx * 0.38 + rx * 0.4, hy + ry * 0.6, rx * 0.36, ry * 0.75, 'rgba(60,30,20,0.25)');
+    if (o.ruff) for (let i = -4; i <= 4; i++) oval(cx + i * rx * 0.3, hy + ry * 1.3 + Math.abs(i) * 0.25, rx * 0.22, ry * 0.3, i % 2 ? '#e8e2d2' : '#d0c8b6');
+    if (o.veil) oval(cx, hy - ry * 0.05, rx * 1.4, ry * 1.5, o.veil);
+    if (o.long) poly([[cx - rx * 1.05, hy - ry * 0.2], [cx + rx * 1.05, hy - ry * 0.2], [cx + rx * 1.25, hy + ry * 2.0], [cx - rx * 1.25, hy + ry * 2.0]], o.hair);
+    if (o.hair) oval(cx - t * rx * 0.1, hy - ry * 0.18, rx * 1.12, ry * 1.12, o.hair);
+    // the face, softly shaded away from the light
+    oval(cx, hy, rx, ry, o.skin);
+    const sh = g.createRadialGradient(cx - t * rx * 0.35 - rx * 0.2, hy - ry * 0.25, rx * 0.2, cx, hy, rx * 1.2);
+    sh.addColorStop(0, 'rgba(255,235,210,0.18)'); sh.addColorStop(1, 'rgba(50,25,15,0.4)');
+    oval(cx, hy, rx, ry, sh);
+    if (o.hair && !o.bald) poly([[cx - rx * 1.02, hy - ry * 0.2], [cx - rx * 0.3, hy - ry * 1.08], [cx + rx * 0.3, hy - ry * 1.08], [cx + rx * 1.02, hy - ry * 0.2], [cx + rx * 0.55, hy - ry * 0.62], [cx, hy - ry * 0.72], [cx - rx * 0.55, hy - ry * 0.62]], o.hair);
+    // eyes, brows, nose, mouth
+    const ey = hy - ry * 0.05, ex = rx * 0.42, shift = t * rx * 0.15;
+    for (const side of [-1, 1]) {
+      rect(cx + side * ex + shift - 1, ey, 2, 1, '#2a1a12');
+      rect(cx + side * ex + shift - 1, ey - 2, 2, 0.7, 'rgba(60,35,20,0.5)');
+    }
+    rect(cx + shift + t * rx * 0.12, ey + 1.5, 0.8, ry * 0.35, 'rgba(90,50,35,0.45)');       // the nose's shadow
+    rect(cx + shift - rx * 0.2, hy + ry * 0.48, rx * 0.4, 0.9, o.lips || '#7a3a30');
+    if (o.beard) {
+      const len = o.longBeard ? 2.7 : 1.25;
+      poly([[cx - rx * 0.75, hy + ry * 0.35], [cx - rx * 0.55, hy + ry * 0.75], [cx - rx * 0.2, hy + ry * 0.62], [cx + rx * 0.2, hy + ry * 0.62], [cx + rx * 0.55, hy + ry * 0.75],
+        [cx + rx * 0.75, hy + ry * 0.35], [cx + rx * 0.5, hy + ry * len * 0.85], [cx, hy + ry * len], [cx - rx * 0.5, hy + ry * len * 0.85]], o.beard);
+      rect(cx + shift - rx * 0.3, hy + ry * 0.38, rx * 0.6, 1.2, o.beard);                   // moustache
+    }
+    if (o.hat) { oval(cx - t * rx * 0.1, hy - ry * 0.82, rx * 1.3, ry * 0.36, o.hat); oval(cx - t * rx * 0.1, hy - ry * 1.05, rx * 0.95, ry * 0.38, o.hat); }
+    if (o.hands) { oval(w * 0.44, h * 0.9, w * 0.08, h * 0.035, o.skin); oval(w * 0.54, h * 0.92, w * 0.08, h * 0.035, o.skin); oval(w * 0.5, h * 0.91, w * 0.05, h * 0.02, 'rgba(60,30,20,0.3)'); }
+    if (o.extra) o.extra(cx, hy, rx, ry);
+  };
+
   switch (name) {
-    case 'house': {
-      rect(0, 0, w, h, grad(0, h * 0.7, '#0b1220', '#26334a'));
-      glowAt(w * 0.8, h * 0.18, h * 0.25, 'rgba(220,220,190,0.35)'); oval(w * 0.8, h * 0.18, h * 0.06, h * 0.06, '#e6e2c8');
-      poly([[0, h * 0.62], [w * 0.3, h * 0.55], [w * 0.7, h * 0.6], [w, h * 0.53], [w, h], [0, h]], '#101a12');
-      const hx = w * 0.32, hy = h * 0.42, hw = w * 0.36, hh = h * 0.2;
-      rect(hx, hy, hw, hh, '#1c1c20');
-      poly([[hx - w * 0.03, hy], [hx + hw / 2, hy - h * 0.14], [hx + hw + w * 0.03, hy]], '#141418');
-      poly([[hx + hw * 0.05, hy + hh * 0.35], [hx + hw * 0.5, hy + hh * 0.05], [hx + hw * 0.95, hy + hh * 0.35]], '#18181c');   // porch roof
-      rect(hx + hw * 0.12, hy + hh * 0.45, hw * 0.12, hh * 0.3, '#0a0a0c'); rect(hx + hw * 0.72, hy + hh * 0.45, hw * 0.12, hh * 0.3, '#0a0a0c');
-      rect(hx + hw * 0.42, hy + hh * 0.42, hw * 0.16, hh * 0.3, '#d8b264');                  // the lit window
-      glowAt(hx + hw * 0.5, hy + hh * 0.57, hw * 0.2, 'rgba(216,178,100,0.3)');
-      oval(hx + hw * 0.5, hy + hh * 0.52, hw * 0.022, hw * 0.026, '#1a120a'); rect(hx + hw * 0.475, hy + hh * 0.56, hw * 0.05, hh * 0.16, '#1a120a');   // someone in it
-      poly([[hx + hw * 0.47, hy + hh], [hx + hw * 0.53, hy + hh], [w * 0.6, h], [w * 0.4, h]], '#3a3a36');    // the walk
-      break;
-    }
-    case 'faceless': {
-      const rg = g.createRadialGradient(w / 2, h * 0.35, 0, w / 2, h * 0.35, h * 0.7); rg.addColorStop(0, '#4a3a26'); rg.addColorStop(1, '#120c08');
-      rect(0, 0, w, h, rg);
-      bust(w / 2, h * 0.2, w * 0.5, '#15101a', '#c9a283', '#3a2616');
-      for (let i = 0; i < 7; i++) oval(w / 2 - w * 0.18 + i * w * 0.06, h * 0.58, w * 0.035, w * 0.025, '#e2dccb');   // lace collar
-      glowAt(w * 0.45, h * 0.38, w * 0.15, 'rgba(255,235,210,0.18)');                         // a smooth blank face
-      break;
-    }
-    case 'hallway': {
-      rect(0, 0, w, h, '#2e2620');
-      const vx = w / 2, vy = h * 0.42, dw = w * 0.16, dh = h * 0.24;
-      poly([[0, 0], [vx - dw, vy - dh], [vx - dw, vy + dh], [0, h]], '#4a3a2a');
-      poly([[w, 0], [vx + dw, vy - dh], [vx + dw, vy + dh], [w, h]], '#3c2f22');
-      poly([[0, h], [vx - dw, vy + dh], [vx + dw, vy + dh], [w, h]], '#261a12');
-      poly([[w * 0.3, h], [vx - dw * 0.4, vy + dh], [vx + dw * 0.4, vy + dh], [w * 0.7, h]], '#5a1e1a');   // the runner
-      rect(vx - dw, vy - dh, dw * 2, dh * 2, '#241a12');
-      rect(vx - dw * 0.55, vy - dh * 0.75, dw * 1.1, dh * 1.75, '#120c08');                    // the door
-      rect(vx + dw * 0.32, vy - dh * 0.75, dw * 0.12, dh * 1.75, '#000');                        // open a crack
-      rect(vx + dw * 0.3, vy - dh * 0.75, dw * 0.025, dh * 1.75, 'rgba(230,210,160,0.5)');
+    case 'valley': {
+      rect(0, 0, w, h, grad(0, h * 0.6, '#4a5a7a', '#c88a5a', '#f0c27a'));
+      glow(w * 0.62, h * 0.55, w * 0.35, 'rgba(255,215,140,0.6)');
+      clouds(6, h * 0.08, h * 0.35, 'rgba(240,190,150,0.35)');
+      ridge(h * 0.55, h * 0.12, '#6a7a9a', 1.2);
+      ridge(h * 0.62, h * 0.08, '#4a5a4a', 0.8);
+      ridge(h * 0.72, h * 0.06, '#2e3e26', 1.5);
+      g.strokeStyle = '#e8c890'; g.lineWidth = 2.2; g.beginPath(); g.moveTo(w * 0.62, h * 0.62);   // the river, catching the sky
+      g.bezierCurveTo(w * 0.5, h * 0.72, w * 0.72, h * 0.8, w * 0.45, h); g.stroke();
+      rect(w * 0.3, h * 0.66, w * 0.05, h * 0.04, '#3a2a1e'); poly([[w * 0.29, h * 0.66], [w * 0.325, h * 0.62], [w * 0.36, h * 0.66]], '#2a1a12');
+      rect(w * 0.315, h * 0.675, 1, 1, '#ffd890');                                               // one lit window
+      treeBlob(w * 0.08, h * 0.62, w * 0.09, '#1a2614', '#2e3e20'); treeBlob(w * 0.92, h * 0.6, w * 0.1, '#1a2614', '#2e3e20');
       break;
     }
     case 'forest': {
-      rect(0, 0, w, h, grad(0, h, '#1d2622', '#0b0f0d'));
-      for (let layer = 0; layer < 3; layer++) {
-        if (layer === 1) { rect(0, h * 0.45, w, h * 0.25, 'rgba(200,205,195,0.16)'); }
-        const shade = ['#24302a', '#161e1a', '#0a0d0b'][layer];
-        for (let i = 0; i < 9 + layer * 2; i++) {
-          const tw = w * (0.015 + layer * 0.012) * (0.6 + rand()), tx = rand() * w;
-          if (layer === 2 && Math.abs(tx + tw / 2 - w * 0.6) < w * 0.06) continue;             // keep a gap round it
-          rect(tx, 0, tw, h, shade);
-        }
-        if (layer === 1) {                                                                       // something pale, between the trees
-          glowAt(w * 0.6, h * 0.55, h * 0.2, 'rgba(200,205,195,0.15)');
-          oval(w * 0.6, h * 0.4, w * 0.02, w * 0.026, '#d8d8ce'); rect(w * 0.588, h * 0.43, w * 0.024, h * 0.36, '#c4c4b8');
-          rect(w * 0.578, h * 0.44, w * 0.008, h * 0.24, '#b8b8ac'); rect(w * 0.614, h * 0.44, w * 0.008, h * 0.24, '#b8b8ac');   // long arms
-        }
+      rect(0, 0, w, h, grad(0, h, '#5a6a4a', '#2a3424', '#141a10'));
+      glow(w * 0.55, h * 0.45, w * 0.3, 'rgba(230,220,170,0.45)');
+      poly([[w * 0.5, h * 0.5], [w * 0.58, h * 0.5], [w * 0.85, h], [w * 0.25, h]], '#6a5a3a');   // the path
+      for (let i = 0; i < 14; i++) {
+        const x = rand() * w, near = rand(), tw = 1 + near * w * 0.05;
+        if (Math.abs(x - w * 0.54) < w * 0.07) continue;
+        rect(x, 0, tw, h, near > 0.6 ? '#141a10' : near > 0.3 ? '#2a3222' : '#46503a');
       }
+      for (let i = 0; i < 4; i++) poly([[w * (0.48 + i * 0.03), 0], [w * (0.52 + i * 0.03), 0], [w * (0.62 + i * 0.05), h], [w * (0.56 + i * 0.05), h]], 'rgba(240,230,180,0.08)');   // light coming down
+      rect(0, h * 0.8, w, h * 0.2, 'rgba(20,26,14,0.5)');
       break;
     }
-    case 'old-woman': {
-      rect(0, 0, w, h, grad(0, h, '#2e2618', '#100c08'));
-      bust(w / 2, h * 0.2, w * 0.5, '#2a2430', '#b48e72', '#8a8680');
-      oval(w / 2, h * 0.17, w * 0.1, w * 0.08, '#8a8680');                                     // the bun
-      poly([[w * 0.1, h], [w * 0.3, h * 0.62], [w * 0.7, h * 0.62], [w * 0.9, h]], '#3a2a38');   // shawl
-      for (const ex of [-1, 1]) {                                                               // eyes painted over, dripping
-        oval(w / 2 + ex * w * 0.065, h * 0.39, w * 0.05, w * 0.03, '#050404');
-        rect(w / 2 + ex * w * 0.065 - 1, h * 0.39, 2, h * (0.05 + rand() * 0.05), '#050404');
-      }
-      line([[w * 0.44, h * 0.47], [w * 0.56, h * 0.47]], '#6a4a3a', 1.5);
+    case 'moonrise': {
+      rect(0, 0, w, h, grad(0, h * 0.55, '#0e1626', '#2a3a52', '#4a5a6a'));
+      glow(w * 0.3, h * 0.3, w * 0.22, 'rgba(230,230,200,0.4)'); oval(w * 0.3, h * 0.3, w * 0.035, w * 0.035, '#f0ecd6');
+      ridge(h * 0.52, h * 0.1, '#1a2230', 1);
+      poly([[w * 0.66, h * 0.52], [w * 0.7, h * 0.24], [w * 0.75, h * 0.26], [w * 0.77, h * 0.52]], '#141820');   // the ruined tower
+      rect(w * 0.715, h * 0.28, 1, 1, '#ffd890');
+      rect(0, h * 0.55, w, h * 0.45, grad(h * 0.55, h, '#3a4a5a', '#0e141c'));
+      for (let i = 0; i < 9; i++) rect(w * 0.3 - w * 0.03 + rand() * w * 0.06, h * (0.58 + i * 0.045), w * (0.04 + rand() * 0.06), 1, 'rgba(240,236,214,0.5)');
+      for (let x = 0; x < w; x += 4) rect(x, h * 0.55, 3, 1, '#121820');
       break;
     }
-    case 'lake': {
-      rect(0, 0, w, h * 0.5, grad(0, h * 0.5, '#5e5040', '#2a2a30'));
-      poly([[0, h * 0.42], [w * 0.4, h * 0.38], [w, h * 0.44], [w, h * 0.5], [0, h * 0.5]], '#141814');
-      rect(0, h * 0.5, w, h * 0.5, grad(h * 0.5, h, '#2a2c2e', '#101416'));
-      for (let i = 0; i < 18; i++) rect(rand() * w, h * (0.52 + rand() * 0.45), w * (0.05 + rand() * 0.1), 1.5, 'rgba(200,190,170,0.25)');
-      poly([[w * 0.2, h * 0.66], [w * 0.36, h * 0.66], [w * 0.33, h * 0.7], [w * 0.23, h * 0.7]], '#1a120c');   // the rowboat
-      oval(w * 0.68, h * 0.52, w * 0.012, w * 0.015, '#0c0c0c'); rect(w * 0.672, h * 0.54, w * 0.016, h * 0.07, '#0c0c0c');   // someone in the water
-      oval(w * 0.68, h * 0.615, w * 0.03, w * 0.006, 'rgba(200,190,170,0.3)');
+    case 'coast': {
+      rect(0, 0, w, h, grad(0, h * 0.6, '#1e2228', '#4a5258', '#8a8a7e'));
+      glow(w * 0.3, h * 0.35, w * 0.25, 'rgba(240,230,200,0.35)');                          // a break in the clouds
+      clouds(8, 0, h * 0.3, 'rgba(20,24,28,0.6)');
+      poly([[w * 0.6, h], [w * 0.62, h * 0.5], [w * 0.75, h * 0.38], [w, h * 0.35], [w, h]], '#2a2620');   // cliffs
+      poly([[w * 0.7, h], [w * 0.74, h * 0.6], [w * 0.85, h * 0.52], [w, h * 0.55], [w, h]], '#3a342a');
+      rect(0, h * 0.6, w * 0.65, h * 0.4, grad(h * 0.6, h, '#3a4a48', '#1a2422'));
+      for (let i = 0; i < 16; i++) oval(rand() * w * 0.68, h * (0.62 + rand() * 0.36), w * (0.03 + rand() * 0.05), 1, 'rgba(235,235,225,0.7)');
+      oval(w * 0.62, h * 0.66, w * 0.06, h * 0.05, 'rgba(240,240,230,0.6)');                   // spray against the rocks
       break;
     }
-    case 'balloon': {
-      rect(0, 0, w, h * 0.55, grad(0, h * 0.55, '#8e8a7c', '#b0a68a'));
-      rect(0, h * 0.55, w, h * 0.45, grad(h * 0.55, h, '#7a6a3a', '#3e3620'));
-      oval(w * 0.5, h * 0.66, w * 0.035, w * 0.04, '#3a2416'); rect(w * 0.465, h * 0.69, w * 0.07, h * 0.13, '#7a2a24');   // a kid in a red coat
-      line([[w * 0.53, h * 0.72], [w * 0.6, h * 0.4], [w * 0.62, 0]], '#e8e2d2', 1);           // the string, going up and out
+    case 'field': {
+      rect(0, 0, w, h, grad(0, h * 0.6, '#5a4a6a', '#d0784a', '#f2c070'));
+      glow(w * 0.7, h * 0.58, w * 0.3, 'rgba(255,210,120,0.6)');
+      rect(0, h * 0.6, w, h * 0.4, grad(h * 0.6, h, '#c8a050', '#6a5024'));
+      for (let i = 0; i < 30; i++) rect(rand() * w, h * (0.62 + rand() * 0.36), 1, 2, 'rgba(90,60,20,0.5)');
+      rect(w * 0.33, h * 0.38, 2, h * 0.25, '#2a1e12');                                       // the oak
+      oval(w * 0.335, h * 0.34, w * 0.13, h * 0.12, '#2a2a16'); oval(w * 0.3, h * 0.31, w * 0.07, h * 0.07, '#3e3a20');
+      for (let i = 0; i < 6; i++) rect(w * (0.5 + rand() * 0.4), h * (0.2 + rand() * 0.2), 2, 1, '#1a1410');   // crows
+      rect(w * 0.82, h * 0.56, w * 0.05, h * 0.04, '#3a2a20');                                // a far farmhouse
       break;
     }
-    case 'ship': {
-      rect(0, 0, w, h * 0.6, grad(0, h * 0.6, '#14181c', '#3a4044'));
-      for (let i = 0; i < 6; i++) oval(rand() * w, rand() * h * 0.4, w * 0.3, h * 0.05, 'rgba(10,12,14,0.5)');
-      rect(0, h * 0.6, w, h * 0.4, grad(h * 0.6, h, '#1c2a26', '#0a100e'));
-      g.save(); g.translate(w * 0.5, h * 0.6); g.rotate(-0.18);
-      poly([[-w * 0.25, 0], [w * 0.25, 0], [w * 0.18, h * 0.06], [-w * 0.2, h * 0.06]], '#120c08');
-      for (const mx of [-0.1, 0.08]) { rect(w * mx, -h * 0.35, 2, h * 0.35, '#120c08'); poly([[w * mx, -h * 0.3], [w * (mx + 0.12), -h * 0.24], [w * (mx + 0.06), -h * 0.12], [w * mx, -h * 0.1]], '#9a9686'); }
-      g.restore();
-      for (let i = 0; i < 14; i++) oval(rand() * w, h * (0.62 + rand() * 0.35), w * 0.05, h * 0.008, 'rgba(220,225,215,0.5)');
+    case 'mountains': {
+      rect(0, 0, w, h, grad(0, h * 0.55, '#2a3048', '#7a6a7a', '#d8a888'));
+      ridge(h * 0.5, h * 0.25, '#7a82a0', 0.9);
+      for (let x = 0; x < w; x += 1) { const y = h * 0.5 - h * 0.25 * (0.6 * Math.abs(Math.sin(x / w * 4.5 + 2)) + 0.25); rect(x, y, 1, 2, 'rgba(240,240,250,0.5)'); }   // snow
+      ridge(h * 0.56, h * 0.08, '#3a4a40', 1.6);
+      rect(0, h * 0.6, w, h * 0.4, grad(h * 0.6, h, '#9a8a90', '#2a3040'));
+      for (let i = 0; i < 12; i++) rect(rand() * w, h * (0.62 + rand() * 0.3), w * 0.05, 1, 'rgba(255,235,220,0.3)');
+      for (let i = 0; i < 9; i++) pine(i < 5 ? rand() * w * 0.2 : w * 0.8 + rand() * w * 0.2, h * (0.85 + rand() * 0.15), h * (0.25 + rand() * 0.15), '#121a14');
       break;
     }
-    case 'still-life': {
-      rect(0, 0, w, h, '#120e0a');
-      rect(0, h * 0.68, w, h * 0.32, '#2e1e12');
-      oval(w * 0.42, h * 0.68, w * 0.22, h * 0.05, '#5a5a56');                                // a pewter plate
-      oval(w * 0.34, h * 0.6, w * 0.07, w * 0.07, '#6a2016'); oval(w * 0.46, h * 0.62, w * 0.065, w * 0.065, '#4a3a18');   // fruit, one gone bad
-      for (let i = 0; i < 9; i++) oval(w * (0.5 + rand() * 0.08), h * (0.55 + rand() * 0.1), w * 0.02, w * 0.02, '#2a1830');   // grapes
-      rect(w * 0.75, h * 0.3, w * 0.035, h * 0.38, '#d8d0b8'); rect(w * 0.765, h * 0.27, 2, h * 0.03, '#000');   // the candle, just out
-      line([[w * 0.767, h * 0.27], [w * 0.76, h * 0.18], [w * 0.78, h * 0.1], [w * 0.77, h * 0.02]], 'rgba(200,200,200,0.35)', 2);
-      oval(w * 0.18, h * 0.74, w * 0.07, h * 0.03, '#4a4440');                                  // a dead bird, on its back
-      line([[w * 0.17, h * 0.72], [w * 0.165, h * 0.68]], '#2a2622', 1); line([[w * 0.2, h * 0.72], [w * 0.205, h * 0.68]], '#2a2622', 1);
+    case 'waterfall': {
+      rect(0, 0, w, h, grad(0, h, '#7a8a90', '#4a5a54'));
+      poly([[0, 0], [w * 0.38, 0], [w * 0.42, h * 0.3], [w * 0.36, h], [0, h]], '#3a3a30');   // the gorge walls
+      poly([[w, 0], [w * 0.6, 0], [w * 0.57, h * 0.35], [w * 0.64, h], [w, h]], '#2e3028');
+      for (let i = 0; i < 6; i++) treeBlob(rand() < 0.5 ? rand() * w * 0.3 : w * 0.7 + rand() * w * 0.3, rand() * h * 0.4, w * 0.05, '#1e2a1a', '#34442a');
+      rect(w * 0.44, h * 0.08, w * 0.12, h * 0.7, grad(h * 0.08, h * 0.78, '#e8ece8', '#b8c4c4'));   // the falls
+      for (let i = 0; i < 10; i++) rect(w * (0.44 + rand() * 0.11), h * (0.1 + rand() * 0.6), 1, h * 0.12, 'rgba(120,140,140,0.5)');
+      glow(w * 0.5, h * 0.8, w * 0.25, 'rgba(240,245,245,0.6)');                            // mist
+      rect(w * 0.3, h * 0.85, w * 0.4, h * 0.15, '#3a4a4a');
       break;
     }
-    case 'scarecrow': {
-      rect(0, 0, w, h * 0.6, grad(0, h * 0.6, '#3a2a3a', '#b4683a'));
-      rect(0, h * 0.6, w, h * 0.4, '#2a2014');
-      for (let i = 0; i < 8; i++) line([[w * (i / 7), h], [w * 0.5, h * 0.6]], '#1a140c', 1.5);
-      rect(w * 0.495, h * 0.3, 3, h * 0.45, '#1a120a'); rect(w * 0.4, h * 0.38, w * 0.2, 3, '#1a120a');
-      poly([[w * 0.44, h * 0.38], [w * 0.56, h * 0.38], [w * 0.58, h * 0.56], [w * 0.42, h * 0.56]], '#3a3024');   // ragged coat
-      oval(w * 0.5, h * 0.33, w * 0.04, w * 0.045, '#b8a070');                                  // sack head
-      oval(w * 0.488, h * 0.325, 1.6, 1.6, '#000'); oval(w * 0.512, h * 0.325, 1.6, 1.6, '#000');
+    case 'church': {
+      rect(0, 0, w, h, grad(0, h * 0.6, '#3a3a5a', '#a87a6a', '#e0b080'));
+      ridge(h * 0.6, h * 0.05, '#4a5a3a', 1);
+      rect(0, h * 0.62, w, h * 0.38, '#3a4a2a');
+      poly([[w * 0.47, h * 0.6], [w * 0.53, h * 0.6], [w * 0.75, h], [w * 0.25, h]], '#8a7a5a');   // the road
+      rect(w * 0.55, h * 0.48, w * 0.12, h * 0.12, '#e6e0d0'); poly([[w * 0.54, h * 0.48], [w * 0.61, h * 0.4], [w * 0.68, h * 0.48]], '#4a3a3a');
+      rect(w * 0.57, h * 0.3, w * 0.035, h * 0.18, '#e6e0d0'); poly([[w * 0.565, h * 0.3], [w * 0.5875, h * 0.18], [w * 0.61, h * 0.3]], '#4a3a3a');   // the steeple
+      rect(w * 0.6, h * 0.52, 1, 2, '#2a2020');
+      for (let i = 0; i < 8; i++) rect(w * (0.1 + i * 0.04), h * (0.7 + i * 0.03), 1, h * 0.05, '#2a2016');   // fence posts
+      treeBlob(w * 0.82, h * 0.52, w * 0.07, '#1e2a16', '#34421e'); treeBlob(w * 0.15, h * 0.5, w * 0.08, '#1e2a16', '#34421e');
       break;
     }
-    case 'family': {
-      rect(0, 0, w, h, grad(0, h, '#3a2a1a', '#140e08'));
-      const people = [[0.24, 0.62, '#1a1a1e'], [0.42, 0.56, '#3a2430'], [0.6, 0.42, '#24302a'], [0.76, 0.36, '#3a3024']];
-      people.forEach(([px, s, coat], i) => {
-        const cx = w * px, top = h * (1 - s) - h * 0.04, sz = h * s * 0.5;
-        oval(cx, h, sz * 0.7, h * s * 0.55, coat);
-        oval(cx, top + sz * 0.3, sz * 0.25, sz * 0.32, '#c8a284');
-        oval(cx, top + sz * 0.08, sz * 0.27, sz * 0.15, '#2a1a10');
-        if (i === 2) {                                                                           // scratched out, down to the canvas
-          const fy = top + sz * 0.3, r = sz * 0.5;
-          for (let k = 0; k < 70; k++) {
-            const x0 = cx + (rand() - 0.5) * r * 2, y0 = fy + (rand() - 0.5) * r * 2.2;
-            line([[x0, y0], [x0 + (rand() - 0.5) * r * 1.4, y0 + (rand() - 0.5) * r * 1.4]], k % 3 ? '#0a0604' : '#d6ccb4', k % 3 ? 1.6 : 1);
-          }
-        } else { oval(cx - sz * 0.09, top + sz * 0.28, 1.2, 1.2, '#1a100a'); oval(cx + sz * 0.09, top + sz * 0.28, 1.2, 1.2, '#1a100a'); }
-      });
+    case 'lady':
+      portrait({ turn: 0.5, skin: '#d8b090', dress: '#2e3424', hair: '#2a1a10', long: true, veil: 'rgba(20,14,10,0.6)', hands: true, lips: '#8a4a3a',
+        bg: () => { rect(0, 0, w, h, grad(0, h * 0.5, '#6a8070', '#9aa080', '#5a6a50')); ridge(h * 0.45, h * 0.06, '#4a5a48'); ridge(h * 0.5, h * 0.05, '#3a4436'); } });
       break;
-    }
-    case 'stairs': {
-      rect(0, 0, w, h, '#1e1812');
-      for (let i = 0; i < 12; i++) {                                                            // steps going down and away, into black
-        const t = i / 12, y = h * (0.15 + t * 0.85), sw = w * (0.7 - t * 0.45), c = Math.round(110 * (1 - t) ** 2);
-        rect(w / 2 - sw / 2, y - h * 0.07, sw, h * 0.07, `rgb(${c},${Math.round(c * 0.8)},${Math.round(c * 0.6)})`);
-      }
-      rect(w * 0.38, h * 0.95, w * 0.24, h * 0.05, '#000');
-      line([[w * 0.12, h * 0.1], [w * 0.36, h * 0.85]], '#3a2a1a', 3);                        // the banister
-      oval(w * 0.35, h * 0.82, w * 0.018, w * 0.01, '#cfc6b4', -1.2);                          // a hand on it, near the bottom
+    case 'nobleman':
+      portrait({ turn: -0.5, skin: '#d0a888', dress: '#141418', hair: '#3a2416', beard: '#4a2e1a', hat: '#0e0e10', ruff: true,
+        bg: grad(0, h, '#3e3a24', '#1e1c12') });
       break;
-    }
-    case 'road': {
-      rect(0, 0, w, h, grad(0, h * 0.6, '#06080c', '#1a2028'));
-      oval(w * 0.15, h * 0.18, h * 0.05, h * 0.05, '#cfcbb4');
-      rect(0, h * 0.6, w, h * 0.4, '#0c120c');
-      poly([[w * 0.47, h * 0.6], [w * 0.53, h * 0.6], [w * 0.85, h], [w * 0.15, h]], '#2a2a2a');
-      rect(w * 0.7, h * 0.2, 2.5, h * 0.55, '#0a0a0a'); rect(w * 0.64, h * 0.2, w * 0.07, 3, '#0a0a0a');
-      poly([[w * 0.645, h * 0.22], [w * 0.66, h * 0.22], [w * 0.74, h * 0.82], [w * 0.55, h * 0.82]], 'rgba(230,210,150,0.22)');
-      oval(w * 0.65, h * 0.68, w * 0.012, w * 0.015, '#050505'); rect(w * 0.642, h * 0.7, w * 0.016, h * 0.11, '#050505');   // someone waiting
+    case 'old-man':
+      portrait({ turn: 0.4, skin: '#c89a7a', dress: '#7a1e18', hair: '#b8b4aa', bald: true, beard: '#d8d4c8', longBeard: true, collar: '#5a3a24',
+        bg: grad(0, h, '#4a1a14', '#1e0a08') });
       break;
-    }
-    case 'shoulder': {
-      rect(0, 0, w, h, grad(0, h, '#2a2218', '#0e0a06'));
-      oval(w * 0.45, h * 0.86, w * 0.48, h * 0.3, '#16161a');                                 // coat, turned away
-      rect(w * 0.42, h * 0.48, w * 0.14, h * 0.16, '#a88468');
-      oval(w * 0.52, h * 0.38, w * 0.17, h * 0.15, '#b89276');                                 // head, turned back over the shoulder
-      oval(w * 0.47, h * 0.28, w * 0.18, h * 0.08, '#2a1e14');
-      oval(w * 0.6, h * 0.37, w * 0.035, w * 0.022, '#f0ece0'); oval(w * 0.62, h * 0.37, w * 0.012, w * 0.012, '#000');   // eye, wide, looking past you
+    case 'pearls':
+      portrait({ turn: -0.7, skin: '#e2bea0', dress: '#8a2a20', hair: '#b88a4a', lips: '#a04a40',
+        bg: () => { rect(0, 0, w, h, grad(0, h * 0.7, '#6a90b8', '#b8c8d0')); ridge(h * 0.7, h * 0.04, '#5a6a5a'); },
+        extra: (cx, hy, rx, ry) => { for (let i = 0; i < 5; i++) rect(cx - rx * 0.6 + i * rx * 0.3, hy - ry * 0.85, 1, 1, '#f4f0e6'); for (let i = 0; i < 9; i++) rect(cx - rx * 0.9 + i * rx * 0.22, hy + ry * 1.45 + Math.abs(i - 4) * 0.4, 1, 1, '#f4f0e6'); } });
       break;
-    }
+    case 'child':
+      portrait({ turn: 0.2, headY: 0.36, headW: 0.18, skin: '#e0c0a8', dress: '#1e1a22', hair: '#4a2e1a', collar: '#e4dccb', lips: '#9a5048',
+        bg: grad(0, h, '#2a2a22', '#121210'),
+        extra: () => { rect(w * 0.55, h * 0.72, 1, h * 0.14, '#1a2a14'); oval(w * 0.555, h * 0.7, w * 0.04, w * 0.04, '#0a0808'); } });   // the flower, painted over black
+      break;
+    case 'widow':
+      portrait({ turn: -0.3, skin: '#d8c0ae', dress: '#0e0c0e', veil: '#16121a', hair: '#1a1214', collar: '#d8d0c0',
+        bg: grad(0, h, '#22202a', '#0a090c') });
+      break;
   }
-  // oil paint: little strokes all over, darker corners, yellowed varnish
-  for (let i = 0; i < 260; i++) {
-    g.fillStyle = `rgba(${rand() < 0.5 ? '255,240,210' : '0,0,0'},${0.03 + rand() * 0.05})`;
-    g.save(); g.translate(rand() * w, rand() * h); g.rotate(rand() * 3.14); g.fillRect(-3, -1, 6 + rand() * 6, 2); g.restore();
-  }
-  const v = g.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.3, w / 2, h / 2, Math.max(w, h) * 0.75);
-  v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(0,0,0,0.55)');
-  g.fillStyle = v; g.fillRect(0, 0, w, h);
-  g.fillStyle = 'rgba(120,90,30,0.12)'; g.fillRect(0, 0, w, h);
 }
 
 function paintings() {
@@ -3738,14 +3735,31 @@ function paintings() {
     let seed = 77;
     const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
     mat.map = screenCanvas(size, size, g => {
-      PAINTINGS.forEach(([name], i) => {
+      g.imageSmoothingEnabled = false;
+      PAINTINGS.forEach(([name, , , , pw, ph], i) => {
         const { sx, sy, sw, sh } = slots[i];
-        g.save(); g.translate(sx, sy); g.beginPath(); g.rect(0, 0, sw, sh); g.clip();
-        paintArt(name, g, sw, sh, rand);
-        g.restore();
+        const lw = pw >= ph ? 64 : Math.round(72 * pw / ph), lh = pw >= ph ? Math.round(64 * ph / pw) : 72;
+        const c = document.createElement('canvas');
+        c.width = lw; c.height = lh;
+        const small2d = c.getContext('2d');
+        paintArt(name, small2d, lw, lh, rand);
+        // old paint: grain, a slightly limited palette, darker corners, yellowed varnish
+        const img = small2d.getImageData(0, 0, lw, lh), d = img.data;
+        for (let k = 0; k < d.length; k += 4) {
+          const x = (k / 4) % lw / lw - 0.5, y = Math.floor(k / 4 / lw) / lh - 0.5;
+          const shade = 1 - 0.3 * Math.min(1, (x * x + y * y) * 2.2), grain = (rand() - 0.5) * 12;
+          [1, 0.95, 0.84].forEach((warm, ch) => { d[k + ch] = Math.min(255, Math.round((d[k + ch] * shade * warm + grain) / 6) * 6); });
+        }
+        small2d.putImageData(img, 0, 0);
+        g.drawImage(c, sx, sy, sw, sh);                                           // blown up with hard pixel edges
       });
     });
+    mat.map.magFilter = THREE.NearestFilter;
     mat.map.anisotropy = 4;
+    // a faint glow of their own, so they read in a dark room
+    mat.emissive.set(0xffffff);
+    mat.emissiveMap = mat.map;
+    mat.emissiveIntensity = 0.28;
   } else mat.color.set(0x4a3a2a);
   const frames = { gilt: metal(0x8a6a2e, 0.5), wood: surface(0x2e1e12, 0.6) };
   const turn = { 'x+': Math.PI / 2, 'x-': -Math.PI / 2, 'z+': 0, 'z-': Math.PI };
