@@ -160,16 +160,20 @@ cord and a calendar with one day crossed out, an alarm clock stuck at
 toothbrushes, a basket of magazines, piles of clothes and papers,
 shoes by the front door and a bowl for keys (each room's clutter is
 one group, `clutter()`, and small things don't cast shadows),
-fourteen old paintings in gilt and dark wood frames all over the house,
-low-res like old game textures: romantic landscapes (a river valley at
-sundown, a forest path, a ruined tower by moonlight, a stormy coast, a
-wheat field, a mountain lake, a waterfall, a country church) and
-Renaissance portraits (a lady with folded hands, a gentleman in a ruff,
-an old man in a red robe, a girl with pearls, a child in a lace collar,
-a widow in black), each with something wrong about it when you look
-closer. `PAINTINGS` in `world.js` says where each hangs and what you
-think when you look at it; `paintArt()` draws them small at the start,
-all onto one picture sheet, with a faint glow so they read in the dark,
+twenty-eight old paintings in gilt, dark wood and plain black frames all
+over the house, low-res like old game textures: romantic landscapes
+drawn in code (a river valley at sundown, a forest path, a ruined tower
+by moonlight, a stormy coast, a wheat field, a mountain lake, a
+waterfall, a country church, a marsh, an island of cypresses, a ruined
+chapel in the snow, a lone cypress), two modern pieces (a dark color
+field, a cracked black square), and fourteen real Renaissance portraits
+(Leonardo, Dürer, van Eyck, Holbein, Bronzino, Memling, Ghirlandaio and
+more: small public-domain copies in `art/portraits/`, credited in its
+`CREDITS.md`, shrunk and pixelated at the start to match). Each has
+something wrong about it when you look closer. `PAINTINGS` in
+`world.js` says where each hangs and what you think when you look at
+it, `PORTRAITS` how each real one is cropped; they all share one
+picture sheet with a faint glow so they read in the dark,
 a dish drainer and dish soap by the kitchen sink, pizza boxes on the
 island (one open, a couple of pepperoni slices left), a striped afghan
 thrown over the sofa, bottles of Tried and YEP detergent and a green laundry basket of folded
