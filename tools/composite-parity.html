@@ -3,7 +3,7 @@
 <h1>Actual game GPU pipeline vs normal Composite Lab</h1><pre id="result">Running…</pre><canvas id="view"></canvas>
 <script type="module">
 import * as THREE from '../vendor/three-r186/three.module.js';
-import {createAnalogPass,GAME_SIGNAL} from '../analog.js?v=22';
+import {createAnalogPass,GAME_SIGNAL} from '../analog.js?v=26';
 import {SignalClip} from '../signal-clip.js?v=7';
 const result=document.getElementById('result'),root='./fixtures/runtime/';
 const read=async name=>{const r=await fetch(root+name);if(!r.ok)throw new Error(`${name}: ${r.status}`);return r.arrayBuffer();};
@@ -14,7 +14,9 @@ try{
  for(const mixed of [false,true]){
   let resolveFrame,frameDone;
   const pass=createAnalogPass(renderer,{videoSource:video,onFrame:({target})=>{const pixels=new Uint8Array(720*480*4);renderer.readRenderTargetPixels(target,0,0,720,480,pixels);resolveFrame(pixels);}});
-  pass.controls.automaticHum=false;
+  // Explicit Lab profile: game defaults are the user's tuned Safari settings.
+  Object.assign(pass.controls,{automaticHum:false,lumaMHz:4.2,sourceTaps:49,sourceLinear:true,outputLinear:true});
+  Object.assign(pass.controls.receiverOverrides,{comb:false,gain:1,slew:0,colorKiller:true});pass.setSize(720,480);
   if(mixed){const period=525*910/GAME_SIGNAL.sampleRate;
    const manifest={format:'composite-lab-signal',version:1,encoding:'float32-le',raster:'game-ntsc-525',sampleRate:GAME_SIGNAL.sampleRate,samplesPerLine:910,linesPerFrame:525,samplesPerFrame:525*910,voltageScale:1,duration:3*period,tracks:[{id:'test',label:'Native mixed source'}],frames:[0,1,2].map(index=>({index,timestamp:index*period}))};
    const clip=new SignalClip(manifest,p=>read(`interference-${Number(p.split('/')[1].split('.')[0])}.f32`));await clip.prime();clip.gain=1;pass.setClip(clip);clip.started=0;

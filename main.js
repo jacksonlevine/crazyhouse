@@ -11,7 +11,7 @@ import { createGhoul } from './ghoul.js?v=12';
 import { createGhostPass, GHOST_LAYER } from './ghost.js?v=4';
 import { createTv } from './tv.js?v=8';
 import { openSignalURL } from './signal-clip.js?v=7';
-import { createAnalogPass } from './analog.js?v=25';
+import { createAnalogPass } from './analog.js?v=26';
 
 
 const $ = id => document.getElementById(id);
@@ -28,6 +28,9 @@ let state = 'title';
 // filled in by debug.js when ?debug is on
 const debug = { composite: true, free: false, fov: null, tick: null, onCam: null };       // 'title' | 'playing'
 let camIndex = 0;
+// Shared by gameplay and the debug button. No allocation or rendering in the setter.
+export function setComposite(enabled){debug.composite=Boolean(enabled);}
+
 let renderer, scene, camera, ghoul, ghost, lamps, emp, ticks, ir, tv, analog;
 const EXPOSURE = 0.75;         // overall brightness of the picture
 const buffer = new THREE.Vector2();
@@ -135,7 +138,7 @@ function setup() {
     renderer.setSize(w, h, false);
     renderer.getDrawingBufferSize(buffer);
     analog.setSize?.(buffer.x,buffer.y);
-    ghost.setSize(debug.composite ? analog.picture.width : buffer.x, debug.composite ? analog.picture.height : buffer.y);
+    ghost.setSize(analog.picture.width,analog.picture.height);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
   };
@@ -150,14 +153,11 @@ function setup() {
     const api = {
       THREE, scene, camera, renderer, CAMS, showCam, ghoul, lamps, fireEmp, toggleNight, frame, debug, tv, analog,
       resizeAnalog: fit,
-      setComposite: enabled => {
-        debug.composite = enabled;
-        ghost.setSize(enabled ? analog.picture.width : buffer.x, enabled ? analog.picture.height : buffer.y);
-      },
+      setComposite,
       isNight: () => night, camIndex: () => camIndex
     };
     window.crazyhouse = api;
-    import('./debug.js?v=16').then(m => m.createDebug(api));
+    import('./debug.js?v=17').then(m => m.createDebug(api));
   }
 
   renderer.setAnimationLoop(now => {
@@ -179,13 +179,14 @@ function setup() {
     tickEmp();
     refreshShadows();
     tickClock();
-    const target = debug.composite ? analog.picture : null;
-    const height = debug.composite ? analog.picture.height : buffer.y;
+    const target = analog.picture;
+    const height = analog.picture.height;
     renderer.setRenderTarget(target);
     renderer.render(scene, camera);
     // blur scales with the picture, so it looks the same at any size
     if (ghoulInView()) ghost.render(scene, camera, ghoul.presence, ghoul.blur * height * 0.022, target);
     if (debug.composite) analog.render(now / 1000);
+    else analog.presentClean();
   });
   return true;
 }

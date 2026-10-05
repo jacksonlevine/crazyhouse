@@ -288,11 +288,11 @@ The browser console also gets `crazyhouse.scene`, `.camera`, `.CAMS`,
 
 ## Live composite camera view
 
-The scene and ghost render at 768×480, then use Composite Lab's normal NTSC
+The scene and ghost render at display resolution, then use Composite Lab's normal NTSC
 encoder: 525 lines, two interlaced fields, 910 samples/line, exactly 14.318181818
 MS/s, equalizing/broad vertical-sync pulses, horizontal sync, blanking and
-nine-cycle -U burst. The decoded picture is 720×480. Source filtering uses the
-same 49-tap Blackman filters (4.2 MHz Y; 1.3 MHz U/V), 7.5 IRE setup, voltage
+nine-cycle -U burst. The receiver reconstructs at display width with 480 lines. Source filtering uses adjustable
+Blackman filters (Lab profile: 49 taps, 4.2 MHz Y; 1.3 MHz U/V), 7.5 IRE setup, voltage
 units, U/V modulation, and 32-sample causal latency as a flat Lab connection.
 
 `composite-receiver.js` ports the **normal** Lab receiver: horizontal and vertical
@@ -340,13 +340,13 @@ voltage). `crazyhouse.analog.controls.automaticHumGain` adjusts this ratio;
 manual W remains at full amplitude.
 
 The `?debug` panel has a **bypass composite** toggle. Bypass renders the
-scene and ghost directly at display resolution, skipping encoding, sync
-recovery, and decoding. The normal game always starts with composite on.
+same scene render target through a clean presentation shader, skipping encoding,
+sync recovery, and decoding. The normal game always starts with composite on.
 The kitchen TV faces 45° toward the living room; its glow follows the angle.
 
-Source Y/U/V is bandwidth-limited before modulation (2.5 MHz luma,
-1 MHz chroma). Receiver input bandwidth defaults to 4.2 MHz, before
-sync detection and demodulation. FIR weights are calculated once on the
+Source Y/U/V is bandwidth-limited before modulation using the exposed filter
+parameters. Receiver channel bandwidth defaults off; the user-selected slew
+limit remains active before sync detection and demodulation. FIR weights are calculated once on the
 CPU and uploaded as shader uniforms. `node tools/check-analog.mjs` checks
 DC preservation, passbands, carrier rejection, clean sync recovery, and
 six uniform-color round trips (maximum channel error below 2.5%).
@@ -356,6 +356,17 @@ The NTSC scene renders at the display's drawing-buffer resolution, then enters
 its fixed 720×480 encoder once. The receiver reconstructs horizontally at display
 width directly from the waveform, avoiding a second 720-pixel image enlargement.
 Vertical output remains 480 lines; NTSC luma/chroma bandwidth limits remain intact.
+
+The defaults are the user's Safari settings: 3 MHz luma, 1.3 MHz chroma,
+3 encoder taps, 33 decoder taps, 1.5 channel gain, 1.1 V/µs slew, line comb and
+clamp enabled, color killer and automatic hum disabled, nearest encoder/output
+sampling, linear waveform sampling, and display-resolution rendering/reconstruction.
+
+Composite bypass uses the same scene and ghost render targets, then displays the
+clean scene through a precompiled presentation shader. `setComposite(enabled)`
+changes only the presentation state; it allocates no buffers and does not wait
+for the receiver worker. Enabling displays the cached composite immediately;
+fresh decoding follows asynchronously at the receiver's processing rate.
 
 ## Live signal parameters
 

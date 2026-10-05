@@ -48,11 +48,11 @@ export function createAnalogPass(renderer,{videoSource=null,onFrame=null,receive
     const receiver=lowPassWeights(controls.receiverChromaMHz,315/88*4,controls.receiverTaps,33);
     chromaWeights.forEach((v,i)=>v.set(2*receiver[i]*Math.cos((i-16)*Math.PI/2),2*receiver[i]*Math.sin((i-16)*Math.PI/2)));
   }
-  const uniforms = {sourceSetup:{value:7.5},sourceChromaGain:{value:1},notchSpacing:{value:2}, sourceWeights:{value:sourceWeights},chromaWeights:{value:chromaWeights}, videoMode:{value:videoSource?1:0}, videoSource:{value:videoSource??picture.texture}, picture:{value:picture.texture}, source:{value:filtered.texture},  signal:{value:signal.texture}, injection:{value:picture.texture}, injectionGain:{value:0}, time:{value:0}, interference:{value:0}, noise:{value:0.004}, timing:{value:timingTexture}, humGain:{value:0}, testGain:{value:1}, exposure:{value:0.75}, monochrome:{value:0}, humPhase:{value:0}, frameParity:{value:0}, comb:{value:0}, colorKiller:{value:1}, receiverSetup:{value:7.5}, clipPrevious:{value:picture.texture}, clipHasPrevious:{value:0}, clipPreviousStart:{value:-1e20}, clipCurrent:{value:picture.texture}, clipNext:{value:picture.texture}, clipEnabled:{value:0}, clipHasNext:{value:0}, clipGain:{value:0}, clipOffset:{value:0}, clipRatio:{value:1}, clipNextStart:{value:1e20}, clipEnd:{value:1e20}, clipSamples:{value:1}, clipWidth:{value:1}, clipLines:{value:480}, clipFilter:{value:clipFilter} };
+  const uniforms = {sourceSetup:{value:7.5},sourceChromaGain:{value:1},notchSpacing:{value:2},cleanView:{value:0}, sourceWeights:{value:sourceWeights},chromaWeights:{value:chromaWeights}, videoMode:{value:videoSource?1:0}, videoSource:{value:videoSource??picture.texture}, picture:{value:picture.texture}, source:{value:filtered.texture},  signal:{value:signal.texture}, injection:{value:picture.texture}, injectionGain:{value:0}, time:{value:0}, interference:{value:0}, noise:{value:0.004}, timing:{value:timingTexture}, humGain:{value:0}, testGain:{value:1}, exposure:{value:0.75}, monochrome:{value:0}, humPhase:{value:0}, frameParity:{value:0}, comb:{value:0}, colorKiller:{value:1}, receiverSetup:{value:7.5}, clipPrevious:{value:picture.texture}, clipHasPrevious:{value:0}, clipPreviousStart:{value:-1e20}, clipCurrent:{value:picture.texture}, clipNext:{value:picture.texture}, clipEnabled:{value:0}, clipHasNext:{value:0}, clipGain:{value:0}, clipOffset:{value:0}, clipRatio:{value:1}, clipNextStart:{value:1e20}, clipEnd:{value:1e20}, clipSamples:{value:1}, clipWidth:{value:1}, clipLines:{value:480}, clipFilter:{value:clipFilter} };
   const material = fragmentShader => new THREE.ShaderMaterial({uniforms, vertexShader:VERT, fragmentShader, depthTest:false, depthWrite:false, toneMapped:false});
   const prepare = material(`
     uniform sampler2D picture,videoSource;uniform float videoMode;
-    uniform float monochrome;
+    uniform float monochrome,cleanView;
     ${THREE.ShaderChunk.tonemapping_pars_fragment.replaceAll('toneMappingExposure','exposure')}
     varying vec2 vUv;
     void main(){
@@ -62,7 +62,7 @@ export function createAnalogPass(renderer,{videoSource=null,onFrame=null,receive
       float y=dot(rgb,vec3(0.299,0.587,0.114));
       float i=0.493*(rgb.b-y)*(1.-monochrome);
       float q=0.877*(rgb.r-y)*(1.-monochrome);
-      gl_FragColor=vec4(y,i,q,1.);
+      gl_FragColor=cleanView>.5?vec4(mix(rgb,vec3(y),monochrome),1.):vec4(y,i,q,1.);
     }`);
   // The export engine uses this same 49-tap Blackman source filter at 720 pixels.
   const bandlimit = material(`
@@ -180,8 +180,12 @@ export function createAnalogPass(renderer,{videoSource=null,onFrame=null,receive
   const quad = new THREE.Mesh(geometry,encode); quad.frustumCulled=false;
   const scene=new THREE.Scene(); scene.add(quad);
   const camera=new THREE.OrthographicCamera(-1,1,1,-1,0,1);
-  const defaults=Object.freeze({lumaMHz:4.2,chromaMHz:1.3,sourceTaps:49,receiverChromaMHz:1.3,receiverTaps:33,sourceSetup:7.5,sourceChromaGain:1,notchSpacing:2,sceneScale:1,displayWidth:true,sourceLinear:true,waveLinear:true,outputLinear:true});
-  const controls={...defaults,receiverOverrides:{},noise:0,  interference:0,  injection:null, injectionGain:0, testGain:1, automaticHum:true, automaticHumGain:0.15, monochrome:false};
+  const defaults=Object.freeze({lumaMHz:3,chromaMHz:1.3,sourceTaps:3,receiverChromaMHz:1.3,receiverTaps:33,sourceSetup:7.5,sourceChromaGain:1,notchSpacing:2,sceneScale:1,displayWidth:true,sourceLinear:false,waveLinear:true,outputLinear:false});
+  const receiverDefaults=Object.freeze({comb:true,colorKiller:false,gain:1.5,slew:1.1});
+  // Compile the clean presentation variant during setup, not on the first toggle.
+  const previousTarget=renderer.getRenderTarget();quad.material=prepare;
+  renderer.setRenderTarget(null);renderer.compile(scene,camera);renderer.setRenderTarget(previousTarget);quad.material=encode;
+  const controls={...defaults,receiverOverrides:{},noise:0,  interference:0,  injection:null, injectionGain:0, testGain:1, automaticHum:false, automaticHumGain:0.15, monochrome:false};
   const heldSignals = new Set();
   let clip=null;
   // Alternate quiet gaps and live mains injection; both last 1–5 seconds.
@@ -190,6 +194,14 @@ export function createAnalogPass(renderer,{videoSource=null,onFrame=null,receive
   const stats={frames:0,signalFPS:0,readMilliseconds:0,receiverMilliseconds:0,buffering:false,error:''};
   let statsStart=performance.now(),statsFrames=0;
   function show(){const target=renderer.getRenderTarget();quad.material=display;renderer.setRenderTarget(null);renderer.render(scene,camera);renderer.setRenderTarget(target);}
+  function presentClean(){
+    uniforms.exposure.value=renderer.toneMappingExposure;
+    uniforms.monochrome.value=controls.monochrome?1:0;
+    uniforms.cleanView.value=1;
+    const target=renderer.getRenderTarget();quad.material=prepare;
+    renderer.setRenderTarget(null);renderer.render(scene,camera);renderer.setRenderTarget(target);
+    uniforms.cleanView.value=0;
+  }
   function render(seconds){
     updateFilters();
     uniforms.sourceSetup.value=controls.sourceSetup;uniforms.sourceChromaGain.value=controls.sourceChromaGain;
@@ -248,7 +260,7 @@ export function createAnalogPass(renderer,{videoSource=null,onFrame=null,receive
     renderer.setRenderTarget(target);
     inFlight++;
     const started=performance.now();
-    const parameters={...receiverParameters,...(clip?.manifest.receiverParameters??{}),...controls.receiverOverrides,frame:signalFrame};
+    const parameters={...receiverDefaults,...receiverParameters,...(clip?.manifest.receiverParameters??{}),...controls.receiverOverrides,frame:signalFrame};
     const readback=renderer.readRenderTargetPixelsAsync(signal,0,0,PACKED_W,SIGNAL_H,readbackPool.pop());
     // Two bounded readbacks overlap fence polling with the next screen refresh.
     // Receiver work stays ordered even if GPU fences complete out of order.
@@ -303,7 +315,8 @@ export function createAnalogPass(renderer,{videoSource=null,onFrame=null,receive
     const outputFilter=controls.outputLinear?THREE.LinearFilter:THREE.NearestFilter;
     if(decoded.texture.magFilter!==outputFilter){decoded.dispose();decoded.texture.minFilter=decoded.texture.magFilter=outputFilter;}
   }
-  function resetParameters(){Object.assign(controls,defaults,{receiverOverrides:{},noise:0,interference:0,testGain:1,automaticHum:true,automaticHumGain:.15});setSize(displaySize.width,displaySize.height);}
-  function getReceiverParameters(){return {gain:1,bias:0,headroom:0,noise:0,slew:0,bandwidth:0,comb:false,clamp:true,colorKiller:true,autoSlice:true,threshold:-.12,tracking:.8,colorTracking:.5,holdPPM:0,setupIRE:7.5,...receiverParameters,...(clip?.manifest.receiverParameters??{}),...controls.receiverOverrides};}
-  return {picture, controls, render, heldSignals, setClip, setSize, resetParameters, getReceiverParameters, defaults, stats, get clip(){return clip;}};
+  function resetParameters(){Object.assign(controls,defaults,{receiverOverrides:{},noise:0,interference:0,testGain:1,automaticHum:false,automaticHumGain:.15});setSize(displaySize.width,displaySize.height);}
+  function getReceiverParameters(){return {gain:1,bias:0,headroom:0,noise:0,slew:0,bandwidth:0,comb:false,clamp:true,colorKiller:true,autoSlice:true,threshold:-.12,tracking:.8,colorTracking:.5,holdPPM:0,setupIRE:7.5,...receiverDefaults,...receiverParameters,...(clip?.manifest.receiverParameters??{}),...controls.receiverOverrides};}
+  setSize(displaySize.width,displaySize.height);
+  return {picture, controls, render, presentClean, heldSignals, setClip, setSize, resetParameters, getReceiverParameters, defaults, stats, get clip(){return clip;}};
 }

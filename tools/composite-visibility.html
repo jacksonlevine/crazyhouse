@@ -2,7 +2,7 @@
 <style>body{background:#151515;color:#ddd;font:16px monospace}canvas{width:720px;max-width:48vw}pre{white-space:pre-wrap}</style><h1>Same signal: notch receiver vs line-comb receiver</h1><pre id="out">Measuring actual GPU output…</pre><canvas id="notch"></canvas><canvas id="comb"></canvas>
 <script type="module">
 import * as THREE from '../vendor/three-r186/three.module.js';
-import {createAnalogPass} from '../analog.js?v=22';
+import {createAnalogPass} from '../analog.js?v=26';
 const W=720,H=480,bytes=new Uint8Array(W*H*4),freqs=[0,1,2.5,3.5];
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){
  const band=Math.floor(y/120),value=band===0?Math.round(x/719*255):Math.round(128+90*Math.cos(2*Math.PI*freqs[band]*52.655*x/W));
@@ -15,7 +15,7 @@ for(const comb of [false,true]){
  let done;const complete=new Promise(resolve=>done=resolve);
  const pass=createAnalogPass(renderer,{videoSource:video,receiverParameters:{comb},onFrame:({target})=>{
   const pixels=new Uint8Array(W*H*4);renderer.readRenderTargetPixels(target,0,0,W,H,pixels);done(pixels);
- }});pass.controls.automaticHum=false;pass.render(0);
+ }});Object.assign(pass.controls,{automaticHum:false,lumaMHz:4.2,sourceTaps:49,sourceLinear:true,outputLinear:true});Object.assign(pass.controls.receiverOverrides,{gain:1,slew:0,colorKiller:true});pass.setSize(W,H);pass.render(0);
  const pixels=await complete;pass.render(0);
  const gray=(x,y)=>{const i=((H-1-y)*W+x)*4;return .299*pixels[i]+.587*pixels[i+1]+.114*pixels[i+2];};
  const metrics={decoder:comb?'line comb':'three-tap notch',rampMeanError:0,contrastGain:{}};
