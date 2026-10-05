@@ -4,7 +4,7 @@
    ============================================================ */
 
 import * as THREE from './vendor/three-r186/three.module.js';
-import { buildWorld, ROOMS, roomAt, GLASS_LAYER, CULL_LAYER, captureReflections, shadowed } from './world.js?v=25';
+import { buildWorld, ROOMS, roomAt, GLASS_LAYER, CULL_LAYER, captureReflections, shadowed } from './world.js?v=41';
 import { buildPVS } from './pvs.js?v=1';
 import { createEmp } from './emp.js?v=6';
 import { CAMS, camAt } from './cams.js?v=8';
@@ -27,7 +27,7 @@ const dots    = $('dots');
 
 let state = 'title';
 // filled in by debug.js when ?debug is on
-const debug = { composite: false, free: false, fov: null, tick: null, onCam: null, fp: false };
+const debug = { composite: false, free: false, fov: null, tick: null, onCam: null, fp: false, unlit: false };
 let camIndex = 0;
 export function setComposite(enabled){debug.composite=Boolean(enabled);}
 let renderer, scene, camera, ghoul, ghost, lamps, emp, ticks, ir, tv, analog, pvs;
@@ -235,7 +235,7 @@ function setup() {
       isNight: () => night, camIndex: () => camIndex
     };
     window.crazyhouse = api;
-    import('./debug.js?v=19').then(m => m.createDebug(api));
+    import('./debug.js?v=20').then(m => m.createDebug(api));
   }
 
   renderer.setAnimationLoop(now => {
@@ -256,7 +256,7 @@ function setup() {
     ir.position.copy(camera.position);
     // free cam or a changed FOV can see anything, so cull nothing then
     pvs.apply(debug.free || debug.fov || debug.fp ? null : camIndex);
-    applyLightBudget(camera.position);
+    if (!debug.unlit) applyLightBudget(camera.position);        // lighting off (debug) keeps every light off
     updateView();
     for (const tick of ticks) tick(dt);
     tickEmp();

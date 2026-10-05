@@ -150,6 +150,26 @@ muted leaded glass on the pillar by the sofa, teal and plum counter stools with
 chrome posts, almond countertops, an oak vanity with an oval sink and
 brass knobs, frosted glass in a brass shower frame, a mauve bathmat,
 flannel and denim and a couple of shoeboxes in the walk-in closet,
+a 90s hi-fi against the living room's north wall facing the couch
+(walnut cabinet, CD player, double cassette deck, a receiver with a
+glowing amber dial, a turntable under a smoked lid, two tall floor
+speakers), a fiddle leaf fig in the corner behind the couch, a crate of
+records, a drip coffee maker, canisters, a wall phone with a coiled
+cord and a calendar with one day crossed out, an alarm clock stuck at
+3:33, toilet paper on the holder and spares on the tank, soap,
+toothbrushes, a basket of magazines, piles of clothes and papers,
+shoes by the front door and a bowl for keys (each room's clutter is
+one group, `clutter()`, and small things don't cast shadows),
+fourteen old paintings in gilt and dark wood frames all over the house,
+low-res like old game textures: romantic landscapes (a river valley at
+sundown, a forest path, a ruined tower by moonlight, a stormy coast, a
+wheat field, a mountain lake, a waterfall, a country church) and
+Renaissance portraits (a lady with folded hands, a gentleman in a ruff,
+an old man in a red robe, a girl with pearls, a child in a lace collar,
+a widow in black), each with something wrong about it when you look
+closer. `PAINTINGS` in `world.js` says where each hangs and what you
+think when you look at it; `paintArt()` draws them small at the start,
+all onto one picture sheet, with a faint glow so they read in the dark,
 a dish drainer and dish soap by the kitchen sink, pizza boxes on the
 island (one open, a couple of pepperoni slices left), a striped afghan
 thrown over the sofa, bottles of Tried and YEP detergent and a green laundry basket of folded
@@ -236,7 +256,10 @@ matters:
 - **Resolution.** `RESOLUTION` in `main.js` is 1 pixel per screen
   pixel, even on retina screens (2x would be four times the pixels).
 - **Welding** (`bake()`): each named thing's parts become one mesh per
-  colour.
+  kind of material. Plain painted surfaces that differ only in colour
+  share one material, with the colour stored in the triangles' corners,
+  so a room's worth of differently coloured junk is a few draws, not
+  dozens.
 - **Light budget.** Every light costs every pixel, and every shadowed
   light also costs a texture slot (see Texture slots). New lights are
   usually spots aimed where they're needed, with a short reach.
@@ -249,9 +272,11 @@ walls, a red front door, and so on. They're all in `MAT` near the top of
 `world.js`, and `paint()` decides which thing gets which.
 
 - **Lamps** (`roomLamps()` in `world.js`): a floor lamp in the foyer, a
-  table lamp in the living room, pendants over the dining table and the
-  kitchen island, a lamp on an end table by the sectional, both
-  nightstand lamps in the master, a bare bulb on a cord with a pull
+  big ceramic lamp (celadon ginger jar, linen drum shade) in the living
+  room, pendants over the dining table and the kitchen island, a
+  Tiffany table lamp on the end table by the sectional, brass
+  candlestick lamps with pleated shades on both nightstands, a green
+  banker's lamp on the computer desk, a bare bulb on a cord with a pull
   string in the laundry that sways very gently, its light and shadows
   swaying with it (`pullBulb()`), round ceiling lights in the pantry
   (`pantryLight()`) and over the toilet (`ceilingLight()`), a pendant
@@ -335,7 +360,10 @@ view and the mouse looks, Shift runs, P goes back to the cams.
   old PlayStation horror style; you're frozen until you close it (E,
   Space, Enter or a click). The texts are `INSPECT` in `world.js`, keyed
   by the thing's name; add a line there, or set `userData.inspect` on
-  any named thing, and it can be looked at.
+  any named thing, and it can be looked at. Little things inside a
+  bigger group (the clutter) are wrapped in `say(text, ...parts)`
+  instead, so each one has its own text and only counts when the
+  crosshair is actually on it; clutter without a `say` can't be looked at.
 - **Walls and furniture block you.** When first person starts, the game
   traces everything between your knees and the top of your head into a
   flat map of the floor (doorways stay open, walls don't); doors get
@@ -357,7 +385,9 @@ in debug mode):
 - **FOV slider** with the number, for the current cam, or tick the box
   to try it on all cams.
 - **Night vision** and **fully lit** (strong even light everywhere, no
-  fog) buttons.
+  fog) buttons, and **lighting off** (L): every surface in its flat
+  colour, no lights or shadows at all. Watch the fps to see what the
+  lighting costs. Switching takes a moment while shaders rebuild.
 - **Spawn ghoul**: ghoul1 is out of the house for now (he'll come back
   as an anomaly); this brings him in, or takes him out again. **Show
   ghoul** pins him visible, **freeze ghoul** stops him walking.

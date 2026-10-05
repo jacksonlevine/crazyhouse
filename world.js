@@ -8,7 +8,7 @@
    foot, taken from the plan's 42' and 34' dimensions). Heights
    are in feet.
 
-   Every solid is a lit grey surface with dark ink edges. Real
+   Every solid is a plain lit surface, no outlines. Real
    lights (a lamp in each room, a streetlight, faint moonlight) cast
    real shadows, so light only reaches what it can actually see:
    through doorways, out of windows, into the yard.
@@ -60,9 +60,8 @@ export function roomAt(x, z) {
 
 /* ─── materials ─────────────────────────────── */
 
-/* A surface that light falls on. Grey only, so the picture stays
-   black and white. Faces are pushed back a hair so their own edges
-   draw on top cleanly. */
+/* A surface that light falls on. Faces are pushed back a hair, so
+   anything drawn flat against them (labels, lines) shows cleanly. */
 export function surface(color, roughness = 0.9, side = THREE.FrontSide) {
   return new THREE.MeshStandardMaterial({
     color, roughness, metalness: 0, side,
@@ -143,16 +142,15 @@ export const MAT = {
   shadeGlow: new THREE.MeshBasicMaterial({ color: 0xf2dfbf, side: THREE.DoubleSide })   // open shades, lit inside and out
 };
 
-// dark ink edges: they vanish into the dark, and outline whatever's lit
+// dark lines for cords and wires
 export const EDGE  = new THREE.LineBasicMaterial({ color: 0x0b0b0b });
 
 /* ─── building blocks ───────────────────────── */
 
-// A solid: a lit surface with an ink outline.
+// A solid: a lit surface.
 export function solid(geo, [x, y, z] = [0, 0, 0], rot, mat = MAT.furniture) {
   const g = new THREE.Group();
   g.add(new THREE.Mesh(geo, mat));
-  g.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo, 20), EDGE));
   g.position.set(x, y, z);
   if (rot) g.rotation.set(rot[0], rot[1], rot[2]);
   return g;
@@ -1993,23 +1991,6 @@ function bookshelf() {
 }
 
 // a 90s black gooseneck desk lamp at the back corner, bent over the mess
-function deskLamp(x0, x1, z0, zc, top) {
-  const bx = x1 - 0.35, bz = z0 + 0.35, hx = x0 + 0.95, hz = zc - 1.3, hy = top + 1.55;
-  const neck = new THREE.CatmullRomCurve3([[bx, top + 0.1, bz], [bx, top + 1.2, bz], [bx - 0.4, top + 1.85, bz + 0.25],
-    [hx + 0.35, hy + 0.35, hz - 0.1], [hx, hy + 0.12, hz]].map(p => new THREE.Vector3(...p)));
-  const head = new THREE.CylinderGeometry(0.1, 0.24, 0.32, 14, 1, true);
-  const light = new THREE.SpotLight(LAMP_COLOR, 9, 4.5, 0.75, 0.55, 2);        // fades out before it could reach the yard
-  light.name = 'lamp-desk-light';
-  light.position.set(hx, hy, hz);
-  light.target.position.set(x0 + 0.6, top, zc - 1.0);
-  return named('lamp-desk',
-    tint(solid(new THREE.CylinderGeometry(0.22, 0.26, 0.08, 14), [bx, top + 0.04, bz]), MAT.dark),
-    tint(solid(new THREE.TubeGeometry(neck, 20, 0.03, 6, false)), MAT.dark),
-    tint(solid(head, [hx, hy, hz]), MAT.dark),
-    glow(new THREE.CircleGeometry(0.22, 14).rotateX(Math.PI / 2), hx, hy - 0.15, hz),
-    light, light.target);
-}
-
 // soda can materials, made once (the pictures need a browser)
 const CAN = (() => {
   const side = surface(0xffffff, 0.35), top = surface(0xffffff, 0.35), metal = surface(0xc3c3c8, 0.35);
@@ -2092,23 +2073,26 @@ function computerDesk() {
   const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
   const tray = [x0 + 0.45, zc - 1.6];
   parts.push(
-    crt(zc - 0.95, 0.12, dos), crt(zc + 0.65, -0.12, desktop),
+    say("Both monitors are still on. On the black one, someone's typed a file out to the screen. The last line says: it is in the house.",
+      crt(zc - 0.95, 0.12, dos), crt(zc + 0.65, -0.12, desktop)),
     box(0.55, 0.06, 1.5, x0 + 0.4, top - 0.24, zc + 0.6, beige),                       // keyboard
     box(0.4, 0.03, 1.36, x0 + 0.42, top - 0.2, zc + 0.6, keys),                        // its keys
     box(0.75, 0.01, 0.65, x0 + 0.45, top + 0.005, zc + 1.75, MAT.denim),               // mousepad
     box(0.32, 0.1, 0.2, x0 + 0.42, top + 0.06, zc + 1.72, beige, [0, 0.2, 0]),         // mouse
-    cyl(0.28, 0.06, tray[0], top + 0.03, tray[1], surface(0x3a4a48, 0.3), null, 14),     // the ashtray
-    ...Array.from({ length: 14 }, (_, k) => butt(tray[0] + (rand() - 0.5) * 0.34, top + 0.05 + (k > 8 ? 0.04 : 0), tray[1] + (rand() - 0.5) * 0.34, rand() * 6)),   // overflowing
+    say("The ashtray is overflowing, and one of the butts is still warm.",
+      cyl(0.28, 0.06, tray[0], top + 0.03, tray[1], surface(0x3a4a48, 0.3), null, 14),   // the ashtray
+      ...Array.from({ length: 14 }, (_, k) => butt(tray[0] + (rand() - 0.5) * 0.34, top + 0.05 + (k > 8 ? 0.04 : 0), tray[1] + (rand() - 0.5) * 0.34, rand() * 6))),   // overflowing
     butt(x0 + 0.9, top, zc - 0.2, 1.1), butt(x0 + 0.3, top, zc + 1.1, 2.6), butt(x0 + 0.6, top, z0 + 0.3, 0.4),
     butt(x0 + 0.75, top, zc - 1.15, 2.2), butt(x0 + 0.2, top, zc - 1.9, 0.7), butt(x0 + 1.25, top, zc + 1.6, 1.9),
     butt(x0 - 0.9, FLOOR, zc - 0.3, 0.3), butt(x0 - 0.15, FLOOR, zc + 1.9, 1.4), butt(x0 + 0.2, FLOOR, z0 - 0.3, 2.8),
     butt(x0 - 0.6, FLOOR, zc + 0.4, 2), butt(x0 - 0.3, FLOOR, zc - 1.0, 0.9),            // on the floor
-    soda(x0 + 0.8, zc - 0.6), soda(x0 + 1.1, z0 + 0.35), soda(x0 + 0.5, zc + 0.15, true), soda(x1 - 0.35, z1 - 0.4, false, true),
-    soda(x0 + 1.3, zc + 1.45), soda(x0 + 0.3, zc - 2.2, false, true), soda(x0 + 1.5, zc - 1.95, true), soda(x1 - 0.3, zc - 0.15),
+    ...[soda(x0 + 0.8, zc - 0.6), soda(x0 + 1.1, z0 + 0.35), soda(x0 + 0.5, zc + 0.15, true), soda(x1 - 0.35, z1 - 0.4, false, true),
+      soda(x0 + 1.3, zc + 1.45), soda(x0 + 0.3, zc - 2.2, false, true), soda(x0 + 1.5, zc - 1.95, true), soda(x1 - 0.3, zc - 0.15)]
+      .map(c => say("Diet Choke, empty. All of them. Somebody drank these one after another and didn't stop.", c)),
     ...[[x0 - 0.5, zc + 1.2, 2.1], [x0 - 1.0, zc - 0.7, 0.6]].map(([cx2, cz2, turn]) => {        // rolled onto the floor
       const c = can(true); c.position.set(cx2, FLOOR + 0.11, cz2); c.rotation.set(Math.PI / 2, 0, turn); return c;
     }),
-    deskLamp(x0, x1, z0, zc, top),
+    bankersLamp(x0, x1, z0, zc, top),
     // a couple of floppy disks
     box(0.3, 0.01, 0.3, x0 + 0.95, top + 0.005, zc + 0.15, MAT.dark, [0, 0.4, 0]), box(0.3, 0.01, 0.3, x0 + 0.98, top + 0.016, zc + 0.2, MAT.denim, [0, 0.9, 0])
   );
@@ -2384,8 +2368,9 @@ function laundry() {
 // up on the laundry shelf: bottles of Tried and YEP, and a green laundry basket of folded clothes
 function laundryShelf() {
   const y = FLOOR + 5.4;
-  return [...detergent(X(634), y, Z(841), DETERGENTS.tried), ...detergent(X(661), y, Z(841), DETERGENTS.yep),
-    ...laundryBasket(X(724), y, Z(842))];
+  return [say("Tried and YEP. The YEP is nearly empty, and you can't remember the last time anyone did a load.",
+    ...detergent(X(634), y, Z(841), DETERGENTS.tried), ...detergent(X(661), y, Z(841), DETERGENTS.yep)),
+  say("Clean laundry, folded and stacked. None of it is in your size.", ...laundryBasket(X(724), y, Z(842)))];
 }
 
 /* A liquid detergent bottle: an oval body (round-shouldered, oval from
@@ -2767,14 +2752,12 @@ export function walkHeight(x, z) {
    the same way. */
 export const INSPECT = {
   'pizza-boxes': "Looks like someone had a pizza party. There are still a few slices left, but they're rock hard.",
-  'computer-desk': "Both monitors are still on. The ashtray is overflowing, and one of the butts is still warm.",
   'bed': "The covers are turned back on one side, like someone just got up. The sheets are cold.",
   'bookshelf': "Old paperbacks. One lies open, a line circled in red ink: they only come in when you stop watching.",
   'wood-stove': "The fire's still going. Someone fed it not long ago.",
   'fire': "The logs hiss and pop. You don't remember anyone lighting it.",
   'mirror': "You look tired. For a second you'd swear your reflection moved before you did.",
   'toilet': "The seat is up. The water in the bowl is perfectly still.",
-  'shelf': "Clean laundry, folded and stacked. None of it is in your size.",
   'dish-drainer': "Four plates, washed and drying. Somebody's been eating here.",
   'rocking-chair': "It's still rocking, just a little. There's no wind tonight.",
   'fridge-memo': "A to-do list. The last line has been gone over again and again, pressed so hard the pen tore through: who moved the chair??",
@@ -2787,7 +2770,9 @@ export const INSPECT = {
   'newspaper': "Yesterday's paper. No. The date says next Tuesday.",
   'cooktop': "One of the burners is still warm.",
   'lamp-pillar': "A gaudy little Tiffany lamp. The bulb flickers when you lean in close.",
-  'fridge': "The fridge hums. Something inside it ticks, then stops."
+  'fridge': "The fridge hums. Something inside it ticks, then stops.",
+  'stereo': "The receiver's dial is lit, tuned between stations. Under the hiss, very faintly, someone is counting.",
+  'fiddle-fig': "The soil is wet. Somebody watered it today. One leaf has been torn in half and laid neatly on the soil.",
 };
 
 /* The lie of the land, in feet: flat round the house, falling away
@@ -2889,7 +2874,7 @@ function driveway() {
 
 function path() {
   // the front walk: a concrete ribbon following WALK over the ground, with joints every few feet
-  const n = 160, hw = 2, pts = WALK.getSpacedPoints(n), pos = [], edge = [], joints = [];
+  const n = 160, hw = 2, pts = WALK.getSpacedPoints(n), pos = [], joints = [];
   const at = (p, side, t) => {
     const nx = -t.z, nz = t.x, l = Math.hypot(nx, nz), x = p.x + side * hw * nx / l, z = p.z + side * hw * nz / l;
     return [x, groundHeight(x, z) + 0.05, z];
@@ -2901,7 +2886,6 @@ function path() {
   for (let i = 1; i <= n; i++) {
     const [a, b] = rows[i - 1], [c, d] = rows[i];
     pos.push(...a, ...b, ...c, ...b, ...d, ...c);
-    edge.push([a, c], [b, d]);
     if (i % 3 === 0) joints.push([c, d]);
   }
   const geo = new THREE.BufferGeometry();
@@ -2909,7 +2893,7 @@ function path() {
   geo.computeVertexNormals();
   const walk = new THREE.Mesh(geo, MAT.concrete);
   walk.material.side = THREE.DoubleSide;
-  return named('path', walk, lines([...edge, ...joints]));
+  return named('path', walk, lines(joints, new THREE.LineBasicMaterial({ color: 0x6b675f })));   // expansion joints
 }
 
 
@@ -3059,17 +3043,6 @@ function floorLamp(lamps, name, cx, cy, intensity) {
     bulb(lamps, name + '-light', cx, cy, 5.2, intensity));
 }
 
-function tableLamp(lamps, name, cx, cy, top, intensity) {
-  const x = X(cx), z = Z(cy);
-  const parts = [
-    solid(new THREE.CylinderGeometry(0.1, 0.17, 0.7, 8), [x, FLOOR + top + 0.35, z]),
-    solid(new THREE.CylinderGeometry(0.3, 0.48, 0.6, 12), [x, FLOOR + top + 0.95, z], null,
-      intensity ? MAT.glow : MAT.soft)
-  ];
-  if (intensity) parts.push(bulb(lamps, name + '-light', cx, cy, top + 0.9, intensity));
-  return named(name, ...parts);
-}
-
 function pendant(lamps, name, cx, cy, intensity) {
   const x = X(cx), z = Z(cy);
   const shade = new THREE.CylinderGeometry(0.12, 0.75, 0.55, 18, 1, true);
@@ -3150,18 +3123,675 @@ function ceilingLight(name, cx, cy, intensity = 70) {
     light, light.target);
 }
 
+/* ─── lamps with some character ─────────────── */
+
+const v2 = pts => pts.map(([r, y]) => new THREE.Vector2(r, y));
+
+/* A big ceramic table lamp: a glazed ginger jar on a wooden foot, a
+   brass neck, and a wide linen drum shade lit from inside. */
+function ceramicLamp(lamps, name, cx, cy, top, intensity) {
+  const x = X(cx), z = Z(cy), y = FLOOR + top;
+  const jar = new THREE.LatheGeometry(v2([[0.001, 0], [0.22, 0], [0.25, 0.06], [0.36, 0.3], [0.42, 0.62], [0.38, 0.95],
+    [0.24, 1.18], [0.16, 1.26], [0.17, 1.34], [0.001, 1.34]]), 28);
+  return named(name,
+    tint(solid(new THREE.CylinderGeometry(0.3, 0.33, 0.08, 20), [x, y + 0.04, z]), PROP.veneer),
+    tint(solid(jar, [x, y + 0.08, z]), PROP.celadon),
+    tint(solid(new THREE.CylinderGeometry(0.035, 0.035, 0.6, 8), [x, y + 1.71, z]), MAT.brass),
+    solid(new THREE.CylinderGeometry(0.62, 0.78, 1.0, 28, 1, true), [x, y + 2.15, z], null, MAT.shadeGlow),
+    tint(solid(new THREE.SphereGeometry(0.05, 8, 6), [x, y + 2.72, z]), MAT.brass),            // finial
+    bulb(lamps, name + '-light', cx, cy, top + 2.0, intensity));
+}
+
+/* A Tiffany table lamp: a bronze base and a dome of leaded glass in
+   muted colours, glowing from the bulb inside. */
+function tiffanyLamp(lamps, name, cx, cy, top, intensity) {
+  const x = X(cx), z = Z(cy), y = FLOOR + top;
+  const base = new THREE.LatheGeometry(v2([[0.001, 0], [0.3, 0], [0.3, 0.04], [0.22, 0.1], [0.07, 0.18], [0.05, 0.5],
+    [0.065, 0.9], [0.05, 1.2], [0.001, 1.2]]), 20);
+  const dome = new THREE.LatheGeometry(v2([[0.8, 0], [0.76, 0.12], [0.64, 0.32], [0.44, 0.5], [0.2, 0.61], [0.09, 0.64]]), 32);
+  const glass = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide });
+  if (typeof document !== 'undefined') glass.map = leadedGlass(); else glass.color.set(0x8a6a32);
+  glass.color.multiplyScalar(0.95);                                          // lit from inside, but muted
+  return named(name,
+    tint(solid(base, [x, y, z]), PROP.bronze),
+    solid(dome, [x, y + 1.15, z], null, glass),
+    tint(solid(new THREE.TorusGeometry(0.8, 0.018, 4, 32).rotateX(Math.PI / 2), [x, y + 1.15, z]), PROP.bronze),   // the rim
+    tint(solid(new THREE.SphereGeometry(0.05, 8, 6), [x, y + 1.82, z]), PROP.bronze),                               // finial
+    glow(new THREE.SphereGeometry(0.07, 10, 8), x, y + 1.3, z),
+    bulb(lamps, name + '-light', cx, cy, top + 1.3, intensity));
+}
+
+/* A brass candlestick lamp with a pleated shade, for the nightstands. */
+function bedsideLamp(lamps, name, cx, cy, top, intensity) {
+  const x = X(cx), z = Z(cy), y = FLOOR + top;
+  const base = new THREE.LatheGeometry(v2([[0.001, 0], [0.26, 0], [0.26, 0.05], [0.16, 0.12], [0.08, 0.2], [0.06, 0.3],
+    [0.09, 0.38], [0.05, 0.46], [0.045, 0.95], [0.07, 1.0], [0.06, 1.05], [0.001, 1.05]]), 20);
+  const shade = new THREE.CylinderGeometry(0.3, 0.48, 0.6, 72, 1, true);
+  const p = shade.attributes.position;
+  for (let i = 0; i < p.count; i++) {                                        // the pleats
+    const a = Math.atan2(p.getZ(i), p.getX(i)), k = 1 + 0.04 * Math.cos(a * 24);
+    p.setXYZ(i, p.getX(i) * k, p.getY(i), p.getZ(i) * k);
+  }
+  shade.computeVertexNormals();
+  return named(name,
+    tint(solid(base, [x, y, z]), MAT.brass),
+    solid(shade, [x, y + 1.25, z], null, MAT.shadeGlow),
+    bulb(lamps, name + '-light', cx, cy, top + 1.2, intensity));
+}
+
+/* A banker's lamp on the computer desk: brass base and stem, a green
+   glass shade lying lengthways, a pull chain, and the light pooled on
+   the desk under it. */
+function bankersLamp(x0, x1, z0, zc, top) {
+  const bx = x1 - 0.55, bz = zc - 2.05, sy = top + 0.88;
+  const green = new THREE.MeshBasicMaterial({ color: 0x1c4a2c, side: THREE.DoubleSide });   // emerald glass, lit through
+  const shade = new THREE.CylinderGeometry(0.22, 0.22, 0.8, 20, 1, true, Math.PI / 2, Math.PI).rotateX(Math.PI / 2);
+  const ends = [-0.4, 0.4].map(dz => new THREE.CircleGeometry(0.22, 12, 0, Math.PI).translate(0, 0, dz));
+  const light = new THREE.SpotLight(LAMP_COLOR, 9, 4.5, 0.85, 0.55, 2);
+  light.name = 'lamp-desk-light';
+  light.position.set(bx - 0.05, sy - 0.05, bz);
+  light.target.position.set(x0 + 0.7, top, bz + 0.3);
+  const brass = (geo, p) => tint(solid(geo, p), MAT.brass);
+  return named('lamp-desk',
+    brass(new THREE.BoxGeometry(0.42, 0.07, 0.7), [bx, top + 0.035, bz]),
+    brass(new THREE.CylinderGeometry(0.035, 0.04, 0.72, 8), [bx, top + 0.43, bz]),
+    brass(new THREE.BoxGeometry(0.05, 0.05, 0.55), [bx, sy - 0.12, bz]),
+    solid(shade, [bx - 0.05, sy, bz], null, green),
+    ...ends.map(e => solid(e, [bx - 0.05, sy, bz], null, green)),
+    brass(new THREE.CylinderGeometry(0.015, 0.015, 0.84, 6).rotateX(Math.PI / 2), [bx - 0.05, sy + 0.22, bz]),   // brass ridge along the top
+    glow(new THREE.PlaneGeometry(0.38, 0.74).rotateX(Math.PI / 2), bx - 0.05, sy - 0.01, bz),
+    lines([[[bx - 0.12, sy - 0.05, bz + 0.3], [bx - 0.12, sy - 0.42, bz + 0.3]]], new THREE.LineBasicMaterial({ color: 0xb8963e })),
+    brass(new THREE.SphereGeometry(0.025, 6, 4), [bx - 0.12, sy - 0.44, bz + 0.3]),
+    light, light.target);
+}
+
+/* ─── the lived-in stuff ────────────────────── */
+
+const PROP = {
+  paper:     surface(0xeeeae0, 0.95),
+  cardboard: surface(0xb08a5a, 0.95),
+  black:     surface(0x1c1c1e, 0.5),
+  silver:    metal(0xa9adb0, 0.4),
+  veneer:    surface(0x5a3b24, 0.6),       // walnut-look stereo wood
+  grille:    surface(0x161616, 1),
+  leaf:      surface(0x2c4f26, 0.55, THREE.DoubleSide),
+  soil:      surface(0x2e2219, 1),
+  potWhite:  surface(0xe8e4da, 0.5),
+  celadon:   surface(0x7d9a8c, 0.3),       // glazed ceramic
+  bronze:    metal(0x5c4326, 0.5),
+  red:       surface(0x9a2a24, 0.6),
+  blue:      surface(0x2f4f7a, 0.7),
+  white:     surface(0xf2efe8, 0.6),
+  mug:       surface(0x2e5a7a, 0.4),
+  beige:     surface(0xd9d0b8, 0.7),       // 90s plastic
+  wicker:    surface(0x9b7a4a, 1),
+  pink:      surface(0xd99aa5, 0.5),
+  yellow:    surface(0xd8b13a, 0.6),
+  green:     surface(0x5b7d3a, 0.7),
+  orange:    surface(0xd9772b, 0.7),
+  rubber:    surface(0x26201c, 1),
+  water:     new THREE.MeshBasicMaterial({ color: 0x8fa6b0, transparent: true, opacity: 0.28, depthWrite: false })
+};
+
+// small things don't cast shadows (a pen's shadow is lost from across a room, and each one is drawn again per lamp)
+function small(obj) {
+  obj.traverse(o => { if (o.isMesh) o.userData.small = true; });
+  return obj;
+}
+const box = (w, h, d, x, y, z, mat, rot) => tint(solid(new THREE.BoxGeometry(w, h, d), [x, y, z], rot), mat);
+const cyl = (r, h, x, y, z, mat, rot, segs = 12, rTop = r) => tint(solid(new THREE.CylinderGeometry(rTop, r, h, segs), [x, y, z], rot), mat);
+const glowing = (mat, geo, x, y, z, rot) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); if (rot) m.rotation.set(...rot); return m; };
+
+/* A 90s hi-fi against the living room's north wall, facing the couch:
+   a walnut cabinet, a rack of components (CD player, double cassette
+   deck, receiver with a glowing dial, turntable under a smoked lid) and
+   two tall floor speakers. */
+function stereo() {
+  const zb = Z(174), d = 0.95, zf = zb + d, cx = X(478), top = FLOOR + 1.9, w = 1.5;
+  const amber = new THREE.MeshBasicMaterial({ color: 0xe0a040 }), teal = new THREE.MeshBasicMaterial({ color: 0x4fc6b8 });
+  const lid = new THREE.MeshBasicMaterial({ color: 0x1a1612, transparent: true, opacity: 0.35, depthWrite: false });
+  const unit = (y0, h, mat) => box(w, h - 0.02, d - 0.15, cx, y0 + h / 2, zb + d / 2 - 0.05, mat);
+  const speaker = sx => [
+    box(0.84, 3.0, 0.8, sx, FLOOR + 1.5, zb + 0.42, PROP.veneer),
+    box(0.74, 2.6, 0.03, sx, FLOOR + 1.62, zb + 0.83, PROP.grille),
+    box(0.2, 0.05, 0.01, sx, FLOOR + 0.42, zb + 0.85, PROP.silver)                 // the badge
+  ];
+  return named('stereo',
+    // the cabinet: two doors with a gap, little feet
+    box(3.45, 1.78, d, cx, FLOOR + 1.0, zb + d / 2, PROP.veneer),
+    box(1.68, 1.55, 0.03, cx - 0.86, FLOOR + 1.0, zf + 0.01, PROP.veneer),
+    box(1.68, 1.55, 0.03, cx + 0.86, FLOOR + 1.0, zf + 0.01, PROP.veneer),
+    cyl(0.03, 0.1, cx - 0.1, FLOOR + 1.0, zf + 0.04, MAT.brass, [Math.PI / 2, 0, 0], 6),
+    cyl(0.03, 0.1, cx + 0.1, FLOOR + 1.0, zf + 0.04, MAT.brass, [Math.PI / 2, 0, 0], 6),
+    box(3.45, 0.04, d, cx, top + 0.02, zb + d / 2, PROP.veneer),
+    // CD player
+    unit(top + 0.04, 0.26, PROP.silver),
+    box(0.6, 0.03, 0.01, cx - 0.3, top + 0.2, zf - 0.09, PROP.black),
+    glowing(teal, new THREE.PlaneGeometry(0.3, 0.07), cx + 0.35, top + 0.17, zf - 0.088),
+    // double cassette deck
+    unit(top + 0.3, 0.36, PROP.black),
+    box(0.45, 0.24, 0.01, cx - 0.4, top + 0.48, zf - 0.09, MAT.dark), box(0.45, 0.24, 0.01, cx + 0.15, top + 0.48, zf - 0.09, MAT.dark),
+    // receiver: a long amber dial and a big volume knob
+    unit(top + 0.66, 0.42, PROP.silver),
+    glowing(amber, new THREE.PlaneGeometry(0.8, 0.1), cx - 0.2, top + 0.93, zf - 0.088),
+    cyl(0.12, 0.08, cx + 0.5, top + 0.86, zf - 0.06, PROP.black, [Math.PI / 2, 0, 0], 16),
+    // turntable on top, under its smoked dust cover
+    box(w, 0.14, d - 0.1, cx, top + 1.15, zb + d / 2 - 0.05, PROP.veneer),
+    cyl(0.48, 0.04, cx - 0.12, top + 1.24, zb + d / 2 - 0.05, PROP.black, null, 28),
+    cyl(0.06, 0.02, cx - 0.12, top + 1.27, zb + d / 2 - 0.05, PROP.red, null, 10),     // the label
+    box(0.025, 0.025, 0.6, cx + 0.5, top + 1.28, zb + d / 2 - 0.1, PROP.silver, [0, 0.35, 0]),   // tonearm
+    glowing(lid, new THREE.BoxGeometry(w, 0.32, d - 0.1), cx, top + 1.38, zb + d / 2 - 0.05),
+    ...speaker(X(415.5)), ...speaker(X(540.5)));
+}
+
+/* A fiddle leaf fig in a white pot in the corner behind the couch: a bare
+   trunk, then big violin-shaped leaves, glossy and drooping a little. */
+function fiddleFig(cx, cy) {
+  const x = X(cx), z = Z(cy);
+  // one leaf, about a foot long: narrow at the stalk, a waist, broad and round at the tip
+  const s = new THREE.Shape();
+  const half = [[0, 0], [0.09, 0.08], [0.17, 0.25], [0.15, 0.45], [0.22, 0.65], [0.25, 0.82], [0.2, 0.96], [0.08, 1.04], [0, 1.05]];
+  s.moveTo(0, 0);
+  for (const [px, py] of half.slice(1)) s.lineTo(px, py);
+  for (const [px, py] of half.slice(1, -1).reverse()) s.lineTo(-px, py);
+  const leafGeo = new THREE.ShapeGeometry(s, 2);
+  const lp = leafGeo.attributes.position;
+  for (let i = 0; i < lp.count; i++) {                                       // cupped, and the tip droops
+    const lx = lp.getX(i), ly = lp.getY(i);
+    lp.setZ(i, 0.25 * lx * lx - 0.22 * ly * ly);
+  }
+  leafGeo.computeVertexNormals();
+  let seed = 31;
+  const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const trunk = new THREE.CatmullRomCurve3([[0, 0.85, 0], [0.04, 2.0, 0.02], [0.1, 3.4, -0.04], [0.06, 5.6, 0]].map(p => new THREE.Vector3(...p)));
+  const parts = [
+    tint(solid(new THREE.LatheGeometry(v2([[0.001, 0], [0.34, 0], [0.42, 0.85], [0.46, 0.9], [0.44, 0.92], [0.001, 0.92]]), 24)), PROP.potWhite),
+    tint(solid(new THREE.CylinderGeometry(0.41, 0.41, 0.02, 20), [0, 0.86, 0]), PROP.soil),
+    tint(solid(new THREE.TubeGeometry(trunk, 16, 0.045, 6, false)), MAT.bark)
+  ];
+  for (let i = 0; i < 46; i++) {
+    const t = 0.32 + 0.68 * Math.pow(i / 45, 0.8);                          // more leaves up top
+    const at = trunk.getPoint(t), size = 0.75 + 0.45 * rand();
+    const leaf = new THREE.Mesh(leafGeo, PROP.leaf);
+    leaf.scale.setScalar(size);
+    leaf.rotation.set(-(Math.PI / 2 - (0.25 + 0.7 * rand()) - (t > 0.95 ? 0.6 : 0)), 0, (rand() - 0.5) * 0.6);
+    const holder = new THREE.Group();
+    holder.position.copy(at);
+    holder.rotation.y = i * 2.4 + rand() * 0.4;                              // spiralling round the trunk
+    holder.add(leaf);
+    parts.push(holder);
+  }
+  const g = named('fiddle-fig', ...parts);
+  g.position.set(x, FLOOR, z);
+  return g;
+}
+
+// a stack of loose paper, each sheet a little askew
+function paperStack(x, y, z, n, w = 0.7, d = 0.9, mat = PROP.paper) {
+  let seed = Math.round(x * 100 + z * 7) & 0xffff || 5;
+  const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  return Array.from({ length: n }, (_, i) => box(w, 0.025, d, x + (rand() - 0.5) * 0.08, y + 0.0125 + i * 0.026, z + (rand() - 0.5) * 0.08,
+    i % 4 === 3 ? PROP.cardboard : mat, [0, (rand() - 0.5) * 0.3, 0]));
+}
+
+// a little pile of clothes on the floor: a few soft lumps in a heap
+function clothesPile(x, z, mats) {
+  const spots = [[0, 0], [0.5, 0.3], [-0.45, 0.35], [0.25, -0.45], [-0.3, -0.3], [0.1, 0.1]];
+  return mats.map((m, i) => {
+    const [dx, dz] = spots[i % spots.length];
+    const s = new THREE.SphereGeometry(0.5, 12, 6);
+    s.scale(1.7 - i * 0.12, 0.26, 1.15 - i * 0.07);
+    return tint(solid(s, [x + dx, FLOOR + 0.06 + i * 0.05, z + dz], [0, i * 1.3, i % 2 ? 0.05 : -0.05]), m);
+  });
+}
+
+// a pair of shoes: each a low rounded block with a pale sole
+function shoes(x, z, turn, mat, sole = PROP.white, len = 0.95) {
+  const one = dx => {
+    const g = new THREE.Group();
+    g.add(box(0.36, 0.08, len, 0, 0.04, 0, sole),
+      tint(solid(new THREE.SphereGeometry(0.5, 10, 6).scale(0.36, 0.3, len), [0, 0.08, 0.05]), mat));
+    g.position.set(dx, 0, 0);
+    return g;
+  };
+  const g = new THREE.Group();
+  g.add(one(-0.22), one(0.22));
+  g.position.set(x, FLOOR, z);
+  g.rotation.y = turn;
+  return g;
+}
+
+/* Clutter, room by room. Each room's clutter is one group, so it's drawn
+   in a handful of goes however many little things are in it. Things you
+   can look at in first person are wrapped in say(text, ...parts): the
+   text belongs to just the space those parts take up (examineAreas). */
+const say = (text, ...parts) => {
+  const g = new THREE.Group();
+  g.add(...parts);
+  g.userData.say = text;
+  return g;
+};
+function clutter() {
+  const T = FLOOR + 3;                                                       // kitchen counters
+  // the wall phone's keypad, and a calendar (a picture each)
+  const keypad = surface(0xffffff, 0.6), month = surface(0xffffff, 0.9), led = new THREE.MeshBasicMaterial({ color: 0xffffff });
+  if (typeof document !== 'undefined') {
+    keypad.map = screenCanvas(32, 64, g => {
+      g.fillStyle = '#d9d0b8'; g.fillRect(0, 0, 32, 64);
+      g.fillStyle = '#6b6658';
+      for (let r = 0; r < 4; r++) for (let c = 0; c < 3; c++) g.fillRect(4 + c * 9, 24 + r * 9, 6, 6);
+    });
+    month.map = screenCanvas(64, 80, g => {
+      g.fillStyle = '#f2ede2'; g.fillRect(0, 0, 64, 80);
+      g.fillStyle = '#5b7d6a'; g.fillRect(0, 0, 64, 34);                    // the picture: a lake, some pines
+      g.fillStyle = '#2e4a36'; for (let i = 0; i < 6; i++) { g.beginPath(); g.moveTo(4 + i * 10, 34); g.lineTo(9 + i * 10, 14 + (i % 3) * 4); g.lineTo(14 + i * 10, 34); g.fill(); }
+      g.strokeStyle = '#9a968c'; g.lineWidth = 0.6;
+      for (let r = 0; r <= 5; r++) { g.beginPath(); g.moveTo(3, 40 + r * 7); g.lineTo(61, 40 + r * 7); g.stroke(); }
+      for (let c = 0; c <= 7; c++) { g.beginPath(); g.moveTo(3 + c * 8.3, 40); g.lineTo(3 + c * 8.3, 75); g.stroke(); }
+      g.strokeStyle = '#b02a20'; g.lineWidth = 1.5;                         // one day circled. Then crossed out, hard
+      g.beginPath(); g.arc(32, 58, 4, 0, Math.PI * 2); g.stroke();
+      g.beginPath(); g.moveTo(26, 52); g.lineTo(38, 64); g.moveTo(38, 52); g.lineTo(26, 64); g.stroke();
+    });
+    led.map = screenCanvas(64, 24, g => {
+      g.fillStyle = '#120404'; g.fillRect(0, 0, 64, 24);
+      g.fillStyle = '#ff2a1a'; g.font = 'bold 18px monospace'; g.fillText('3:33', 8, 19);
+    });
+  } else { keypad.color.set(0xd9d0b8); month.color.set(0xf2ede2); led.color.set(0xff2a1a); }
+
+  // ---- living room
+  const living = named('living-clutter',
+    say("Months of old newspapers. Every one has the obituaries torn out.",
+      ...paperStack(X(562), FLOOR, Z(532), 9, 0.9, 1.15, MAT.cream)),                 // old newspapers by the couch
+    say("Cold coffee with a skin on it. There's lipstick on the rim. Nobody here wears lipstick.",
+      cyl(0.1, 0.22, X(392), FLOOR + 1.9 + 0.11, Z(283), PROP.mug, null, 12),          // a coffee mug by the Tiffany lamp
+      box(0.03, 0.1, 0.12, X(392) + 0.12, FLOOR + 2.0, Z(283), PROP.mug)),              // its handle
+    // a crate of records under the window, sleeves leaning
+    say("A crate of old records. Somebody's pulled one halfway out and left it.",
+      box(1.1, 0.04, 0.9, X(617), FLOOR + 0.02, Z(190), PROP.cardboard),
+      box(1.1, 0.95, 0.04, X(617), FLOOR + 0.48, Z(190) - 0.43, PROP.cardboard), box(1.1, 0.95, 0.04, X(617), FLOOR + 0.48, Z(190) + 0.43, PROP.cardboard),
+      box(0.04, 0.95, 0.9, X(617) - 0.53, FLOOR + 0.48, Z(190), PROP.cardboard), box(0.04, 0.95, 0.9, X(617) + 0.53, FLOOR + 0.48, Z(190), PROP.cardboard),
+      ...[PROP.red, PROP.black, PROP.yellow, PROP.blue, PROP.paper, PROP.green, PROP.black].map((m, i) =>
+        box(1.02, 1.02, 0.02, X(617), FLOOR + 0.55, Z(190) - 0.33 + i * 0.1, m, [0.12, 0, 0]))));
+
+  // ---- kitchen
+  const kitchen = named('kitchen-clutter',
+    // a drip coffee maker, beige, with its pot half full
+    say("The pot's half full and still warm. The clock on the front is blinking 12:00.",
+      box(0.45, 1.15, 0.75, X(1218) + 0.1, T + 0.575, Z(600), PROP.beige),
+      box(0.4, 0.14, 0.75, X(1218) - 0.32, T + 1.08, Z(600), PROP.beige),             // the brew head, over the pot
+      box(0.45, 0.04, 0.75, X(1218) - 0.32, T + 0.02, Z(600), PROP.black),           // the hot plate
+      cyl(0.22, 0.5, X(1218) - 0.32, T + 0.29, Z(600), PROP.water, null, 14),
+      cyl(0.225, 0.22, X(1218) - 0.32, T + 0.15, Z(600), PROP.soil, null, 14)),      // the coffee in it
+    // paper towels on a wooden stand
+    cyl(0.18, 0.04, X(1215), T + 0.02, Z(632), PROP.veneer, null, 12),
+    cyl(0.16, 0.95, X(1215), T + 0.5, Z(632), PROP.white, null, 14),
+    // the mail on the island: bills, a catalogue
+    say("Bills, a catalogue, a postcard. The postcard is a picture of this house. On the back, in your handwriting: wish you were here.",
+      ...paperStack(X(1050), T + 0.04, Z(550), 5, 0.75, 0.42),
+      box(0.65, 0.04, 0.85, X(1030), T + 0.02, Z(545), PROP.blue, [0, 0.4, 0])),
+    // a fruit bowl with a few apples and a banana going brown
+    say("The apples look fine. The banana has gone black from the inside out.",
+      cyl(0.42, 0.18, X(1000), T + 0.09, Z(483), PROP.wicker, null, 16, 0.5),
+      ...[[-0.12, 0.08, PROP.red], [0.15, -0.05, PROP.red], [0.02, 0.18, PROP.green]].map(([dx, dz, m]) =>
+        tint(solid(new THREE.SphereGeometry(0.14, 10, 8), [X(1000) + dx, T + 0.28, Z(483) + dz]), m)),
+      tint(solid(new THREE.TorusGeometry(0.25, 0.06, 6, 12, 2.2), [X(1000), T + 0.3, Z(483) - 0.1], [Math.PI / 2, 0, 0.6]), PROP.yellow)),
+    // canisters on the south counter: flour, sugar, coffee, tallest first
+    say("Flour, sugar, coffee. Something in the sugar one rattles when you touch it.",
+      ...[[0.62, 0.38], [0.5, 0.33], [0.4, 0.28]].map(([h, r], i) => [
+        cyl(r, h, X(822) + i * 0.75, T + h / 2, Z(700), PROP.white, null, 16),
+        cyl(r * 0.85, 0.08, X(822) + i * 0.75, T + h + 0.04, Z(700), MAT.brass, null, 16)]).flat()),
+    // a wall phone above the counter, its coiled cord hanging down
+    say("The cord's stretched out and kinked, like someone pulled it as far as it would go. You lift the handset. Someone is already on the line, breathing.",
+      box(0.4, 0.75, 0.16, X(905), FLOOR + 5.0, Z(715) - 0.08, PROP.beige),
+      tint(solid(new THREE.PlaneGeometry(0.3, 0.6), [X(905), FLOOR + 5.0, Z(715) - 0.165], [0, Math.PI, 0]), keypad),
+      box(0.16, 0.85, 0.16, X(905) - 0.25, FLOOR + 5.0, Z(715) - 0.12, PROP.beige),      // the handset, hung on the side
+      tint(solid(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([[X(905) - 0.25, FLOOR + 4.55, Z(715) - 0.12], [X(905) - 0.3, FLOOR + 3.6, Z(715) - 0.3],
+        [X(905) - 0.1, FLOOR + 3.15, Z(715) - 0.4], [X(905) + 0.05, FLOOR + 4.55, Z(715) - 0.12]].map(p => new THREE.Vector3(...p))), 16, 0.025, 4, false)), PROP.beige)),
+    // and a calendar beside it
+    say("One day is circled, then crossed out so hard the paper tore. It's today.",
+      tint(solid(new THREE.PlaneGeometry(1.0, 1.25), [X(948), FLOOR + 4.9, Z(715) - 0.01], [0, Math.PI, 0]), month)));
+
+  // ---- bathroom
+  const tp = (x, y, z, rot) => [cyl(0.2, 0.42, x, y, z, PROP.white, rot, 14), cyl(0.07, 0.43, x, y, z, PROP.cardboard, rot, 8)];
+  const bath = named('bath-clutter',
+    // a roll on the holder on the wall beside the toilet
+    cyl(0.025, 0.55, X(316) + 0.25, FLOOR + 2.35, Z(925), MAT.chrome, [Math.PI / 2, 0, 0], 6),
+    ...tp(X(316) + 0.25, FLOOR + 2.15, Z(925), [Math.PI / 2, 0, 0]),
+    // spares stacked on the tank
+    ...tp(X(350), FLOOR + 2.7 + 0.21, Z(869), null), ...tp(X(380), FLOOR + 2.7 + 0.21, Z(869), null), ...tp(X(365), FLOOR + 2.7 + 0.63, Z(869), null),
+    // soap in a dish, a cup of toothbrushes on the vanity
+    say("The soap is still wet. There's a long dark hair stuck to it.",
+      cyl(0.2, 0.04, X(582), FLOOR + 2.82, Z(1052), PROP.potWhite, null, 14),
+      box(0.26, 0.08, 0.16, X(582), FLOOR + 2.88, Z(1052), PROP.pink)),
+    say("Two toothbrushes in the cup. Both still wet.",
+      cyl(0.1, 0.35, X(488), FLOOR + 2.98, Z(1056), PROP.blue, null, 12),
+      ...[[-0.03, 0.02, PROP.red, 0.15], [0.04, -0.02, PROP.yellow, -0.2]].map(([dx, dz, m, tilt]) =>
+        box(0.03, 0.65, 0.03, X(488) + dx, FLOOR + 3.15, Z(1056) + dz, m, [tilt, 0, tilt]))),
+    // a wicker basket of magazines by the toilet
+    say("Old magazines. Every face in them has been scratched out with a pen.",
+      cyl(0.32, 0.75, X(408), FLOOR + 0.375, Z(888), PROP.wicker, null, 14, 0.36),
+      ...[PROP.paper, PROP.red, PROP.blue].map((m, i) => box(0.6, 0.85, 0.02, X(408), FLOOR + 0.6, Z(888) - 0.08 + i * 0.08, m, [0.1 - i * 0.08, 0, 0]))),
+    // and shampoo in the back corner of the shower
+    cyl(0.12, 0.6, X(328), FLOOR + 0.35 + 0.3, Z(1059), PROP.green, null, 10),
+    cyl(0.1, 0.5, X(337), FLOOR + 0.35 + 0.25, Z(1060), PROP.pink, null, 10));
+
+  // ---- bedroom
+  const bed = named('bed-clutter',
+    // the nightstand on the left: the alarm clock (its red numbers stuck at 3:33)
+    say("The alarm clock says 3:33. It's said that all night.",
+      box(0.5, 0.22, 0.24, X(882), FLOOR + 2.1 + 0.11, Z(1030), PROP.black),
+      glowing(led, new THREE.PlaneGeometry(0.4, 0.15), X(882), FLOOR + 2.22, Z(1030) - 0.125, [0, Math.PI, 0])),
+    // the other one: a glass of water, a stack of paperbacks
+    say("Half a glass of water. There's dust on the surface, but the level keeps going down.",
+      cyl(0.1, 0.4, X(1117), FLOOR + 2.1 + 0.2, Z(1032), PROP.water, null, 12)),
+    say("Library books, years overdue. The last one is checked out in your name.",
+      ...[PROP.red, PROP.blue, PROP.paper, PROP.green].map((m, i) => box(0.55 - i * 0.04, 0.12, 0.38, X(1084), FLOOR + 2.1 + 0.06 + i * 0.12, Z(1032), m, [0, i * 0.2 - 0.3, 0]))),
+    // clothes dropped in the corner, a pile of papers
+    ...clothesPile(X(1203), Z(808), [MAT.denim, MAT.flannel, MAT.hunter]),
+    say("Printouts, hundreds of pages. The same line over and over: I am not the one watching.",
+      ...paperStack(X(1095), FLOOR, Z(815), 14, 0.75, 0.95)));
+
+  // ---- foyer: shoes on a tray by the door, keys and mail on the bench
+  const foyer = named('foyer-clutter',
+    say("Two pairs of shoes by the door. The boots are caked in fresh mud, and the mud is still wet.",
+      box(0.95, 0.05, 1.5, X(140), FLOOR + 0.025, Z(722), PROP.rubber),
+      shoes(X(140) - 0.05, Z(700), Math.PI / 2, PROP.rubber, PROP.rubber, 1.0),
+      shoes(X(140) + 0.05, Z(740), Math.PI / 2 + 0.2, MAT.wood, PROP.rubber, 1.05)),
+    say("A bowl for keys. The keys are in it. Whoever lives here never left.",
+      cyl(0.28, 0.1, X(185), FLOOR + 1.6 + 0.05, Z(762), PROP.celadon, null, 14, 0.36),
+      box(0.25, 0.03, 0.08, X(185), FLOOR + 1.72, Z(762), MAT.brass, [0, 0.6, 0])),
+    ...paperStack(X(240), FLOOR + 1.6, Z(762), 4, 0.42, 0.75));
+
+  // ---- laundry: a heap waiting against the back wall
+  const laundry = named('laundry-clutter',
+    say("A heap of clothes waiting for the wash. Something at the bottom of the pile is damp.",
+      ...clothesPile(X(708), Z(1036), [MAT.denim, MAT.plum, MAT.flannel])));
+
+  return named('clutter', ...[living, kitchen, bath, bed, foyer, laundry].map(small));
+}
+
+/* ─── paintings ─────────────────────────────── */
+
+/* Old oil paintings in heavy frames, all over the house, every one of
+   them a little wrong. They're drawn at the start, all onto one picture
+   sheet (so every painting in the house is one material and a single
+   draw), each in its own square. */
+const ART = 256, ART_COLS = 4;
+const PAINTINGS = [
+  // [name, wall face, px, py, width, height, centre height, frame, text]
+  ['valley', 'x+', 315, 490, 3.0, 2.0, 5.3, 'gilt', "A river valley at sundown, a little farmhouse with one window lit. Every time you look, the light is in a different window."],
+  ['lady', 'z+', 516.5, 173, 1.0, 1.5, 5.4, 'wood', "A lady with folded hands and a little smile. Her eyes follow you round the room. That's just how they painted them. Right?"],
+  ['nobleman', 'z-', 556, 810, 1.5, 2.1, 5.2, 'wood', "A gentleman in a black hat and a big white ruff. On the back of the canvas someone has written the day he died. It's next week."],
+  ['forest', 'z-', 752, 810, 2.6, 1.8, 5.3, 'gilt', "A path into an old forest, light coming down between the trunks. The path bends exactly like the walk out front."],
+  ['old-man', 'x+', 124, 735, 1.4, 1.8, 5.7, 'gilt', "An old man in a red robe with a long white beard. His mouth is open a little, like he's halfway through saying your name."],
+  ['moonrise', 'x-', 295, 700, 2.4, 1.6, 5.3, 'wood', "A lake under the moon and a ruined tower on the hill. There's a light at the top of the tower. It wasn't painted on."],
+  ['pearls', 'z+', 365, 861, 1.0, 1.3, 5.7, 'wood', "A young woman with pearls in her hair. Wherever you stand in here, she's turned a little more toward you."],
+  ['child', 'x-', 605, 862, 1.2, 1.6, 5.3, 'wood', "A little girl in a lace collar, holding a flower. The flower's been painted over in black. Recently."],
+  ['coast', 'z+', 1205, 364, 1.7, 1.3, 5.6, 'gilt', "Cliffs in a storm, the sea breaking white. It's painted so well you can almost hear it. You can hear it."],
+  ['field', 'z-', 845, 715, 1.6, 1.2, 5.6, 'wood', "A wheat field and one old oak at sunset. The crows are all facing the same way. Toward you."],
+  ['mountains', 'z-', 1005, 1068, 3.4, 1.9, 6.0, 'gilt', "Mountains over a still lake at dusk. The reflection in the water doesn't quite match the mountains."],
+  ['waterfall', 'x+', 815, 862, 2.2, 1.7, 5.4, 'wood', "A waterfall in a gorge, all mist and spray. Your fingertips come away damp."],
+  ['church', 'z+', 1150, 789, 2.2, 1.5, 5.4, 'wood', "A little white church at the end of a country road. The road is the road out front. There's no church down there."],
+  ['widow', 'x+', 815, 1024, 1.3, 1.7, 5.4, 'gilt', "A widow in black, in mourning. The little brass plate on the frame has your last name on it."]
+];
+
+/* Each painting is drawn small (about 64 pixels across), roughed up a
+   little, then blown up with hard pixel edges, like an old game's
+   textures: romantic landscapes for the wide frames, Renaissance
+   portraits for the tall ones. w and h are the small size. */
+function paintArt(name, g, w, h, rand) {
+  const grad = (y0, y1, ...stops) => { const l = g.createLinearGradient(0, y0, 0, y1); stops.forEach((c, i) => l.addColorStop(i / (stops.length - 1), c)); return l; };
+  const rect = (x, y, rw, rh, c) => { g.fillStyle = c; g.fillRect(x, y, rw, rh); };
+  const oval = (x, y, rx, ry, c, rot = 0) => { g.fillStyle = c; g.beginPath(); g.ellipse(x, y, Math.max(rx, 0.5), Math.max(ry, 0.5), rot, 0, Math.PI * 2); g.fill(); };
+  const poly = (pts, c) => { g.fillStyle = c; g.beginPath(); g.moveTo(pts[0][0], pts[0][1]); for (const p of pts.slice(1)) g.lineTo(p[0], p[1]); g.closePath(); g.fill(); };
+  const glow = (x, y, r, c) => { const rg = g.createRadialGradient(x, y, 0, x, y, r); rg.addColorStop(0, c); rg.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = rg; g.fillRect(x - r, y - r, r * 2, r * 2); };
+  // a ridge line across the picture, filled down to the bottom
+  const ridge = (y, amp, c, f = 1, phase = rand() * 9) => {
+    g.fillStyle = c; g.beginPath(); g.moveTo(0, h);
+    for (let x = 0; x <= w; x += 1) g.lineTo(x, y - amp * (0.6 * Math.abs(Math.sin(x / w * 5 * f + phase)) + 0.4 * Math.sin(x / w * 13 * f + phase * 2)));
+    g.lineTo(w, h); g.closePath(); g.fill();
+  };
+  const pine = (x, y, s, c) => { for (let i = 0; i < 3; i++) poly([[x, y - s * (1 - i * 0.28)], [x - s * (0.18 + i * 0.07), y - s * (0.55 - i * 0.25)], [x + s * (0.18 + i * 0.07), y - s * (0.55 - i * 0.25)]], c); rect(x - 0.5, y - s * 0.12, 1, s * 0.15, c); };
+  const treeBlob = (x, y, r, dark, light) => { oval(x, y, r, r * 0.9, dark); oval(x - r * 0.25, y - r * 0.25, r * 0.55, r * 0.5, light); rect(x - 0.5, y + r * 0.6, 1.2, r * 0.9, dark); };
+  const clouds = (n, y0, y1, c) => { for (let i = 0; i < n; i++) oval(rand() * w, y0 + rand() * (y1 - y0), w * (0.08 + rand() * 0.12), h * (0.02 + rand() * 0.025), c); };
+
+  /* A Renaissance bust, three-quarter view (turn: -1 looks left, 1 right).
+     o: { skin, dress, hair, bg (function or colour), hat, ruff, beard, veil, hands, collar } */
+  const portrait = o => {
+    if (typeof o.bg === 'function') o.bg(); else rect(0, 0, w, h, o.bg);
+    const t = o.turn || 0.4, cx = w * 0.5 + t * w * 0.02, hy = h * (o.headY || 0.34), rx = w * (o.headW || 0.17), ry = h * 0.135;
+    // shoulders sloping down from the neck, lit from the upper left
+    const body = () => {
+      g.beginPath(); g.moveTo(cx - rx * 0.7, hy + ry * 1.15);
+      g.quadraticCurveTo(w * 0.14, hy + ry * 1.45, w * 0.03, h * 0.84); g.lineTo(0, h); g.lineTo(w, h); g.lineTo(w * 0.97, h * 0.84);
+      g.quadraticCurveTo(w * 0.86, hy + ry * 1.45, cx + rx * 0.7, hy + ry * 1.15); g.closePath();
+    };
+    g.fillStyle = o.dress; body(); g.fill();
+    const lit = g.createLinearGradient(0, 0, w, 0); lit.addColorStop(0, 'rgba(255,240,220,0.12)'); lit.addColorStop(1, 'rgba(0,0,0,0.25)');
+    g.fillStyle = lit; body(); g.fill();
+    if (o.collar) poly([[cx - rx * 0.95, hy + ry * 1.2], [cx + rx * 0.95, hy + ry * 1.2], [cx + rx * 0.55, hy + ry * 2.1], [cx - rx * 0.55, hy + ry * 2.1]], o.collar);
+    rect(cx - rx * 0.38, hy + ry * 0.6, rx * 0.76, ry * 0.75, o.skin);                       // neck
+    rect(cx - rx * 0.38 + rx * 0.4, hy + ry * 0.6, rx * 0.36, ry * 0.75, 'rgba(60,30,20,0.25)');
+    if (o.ruff) for (let i = -4; i <= 4; i++) oval(cx + i * rx * 0.3, hy + ry * 1.3 + Math.abs(i) * 0.25, rx * 0.22, ry * 0.3, i % 2 ? '#e8e2d2' : '#d0c8b6');
+    if (o.veil) oval(cx, hy - ry * 0.05, rx * 1.4, ry * 1.5, o.veil);
+    if (o.long) poly([[cx - rx * 1.05, hy - ry * 0.2], [cx + rx * 1.05, hy - ry * 0.2], [cx + rx * 1.25, hy + ry * 2.0], [cx - rx * 1.25, hy + ry * 2.0]], o.hair);
+    if (o.hair) oval(cx - t * rx * 0.1, hy - ry * 0.18, rx * 1.12, ry * 1.12, o.hair);
+    // the face, softly shaded away from the light
+    oval(cx, hy, rx, ry, o.skin);
+    const sh = g.createRadialGradient(cx - t * rx * 0.35 - rx * 0.2, hy - ry * 0.25, rx * 0.2, cx, hy, rx * 1.2);
+    sh.addColorStop(0, 'rgba(255,235,210,0.18)'); sh.addColorStop(1, 'rgba(50,25,15,0.4)');
+    oval(cx, hy, rx, ry, sh);
+    if (o.hair && !o.bald) poly([[cx - rx * 1.02, hy - ry * 0.2], [cx - rx * 0.3, hy - ry * 1.08], [cx + rx * 0.3, hy - ry * 1.08], [cx + rx * 1.02, hy - ry * 0.2], [cx + rx * 0.55, hy - ry * 0.62], [cx, hy - ry * 0.72], [cx - rx * 0.55, hy - ry * 0.62]], o.hair);
+    // eyes, brows, nose, mouth
+    const ey = hy - ry * 0.05, ex = rx * 0.42, shift = t * rx * 0.15;
+    for (const side of [-1, 1]) {
+      rect(cx + side * ex + shift - 1, ey, 2, 1, '#2a1a12');
+      rect(cx + side * ex + shift - 1, ey - 2, 2, 0.7, 'rgba(60,35,20,0.5)');
+    }
+    rect(cx + shift + t * rx * 0.12, ey + 1.5, 0.8, ry * 0.35, 'rgba(90,50,35,0.45)');       // the nose's shadow
+    rect(cx + shift - rx * 0.2, hy + ry * 0.48, rx * 0.4, 0.9, o.lips || '#7a3a30');
+    if (o.beard) {
+      const len = o.longBeard ? 2.7 : 1.25;
+      poly([[cx - rx * 0.75, hy + ry * 0.35], [cx - rx * 0.55, hy + ry * 0.75], [cx - rx * 0.2, hy + ry * 0.62], [cx + rx * 0.2, hy + ry * 0.62], [cx + rx * 0.55, hy + ry * 0.75],
+        [cx + rx * 0.75, hy + ry * 0.35], [cx + rx * 0.5, hy + ry * len * 0.85], [cx, hy + ry * len], [cx - rx * 0.5, hy + ry * len * 0.85]], o.beard);
+      rect(cx + shift - rx * 0.3, hy + ry * 0.38, rx * 0.6, 1.2, o.beard);                   // moustache
+    }
+    if (o.hat) { oval(cx - t * rx * 0.1, hy - ry * 0.82, rx * 1.3, ry * 0.36, o.hat); oval(cx - t * rx * 0.1, hy - ry * 1.05, rx * 0.95, ry * 0.38, o.hat); }
+    if (o.hands) { oval(w * 0.44, h * 0.9, w * 0.08, h * 0.035, o.skin); oval(w * 0.54, h * 0.92, w * 0.08, h * 0.035, o.skin); oval(w * 0.5, h * 0.91, w * 0.05, h * 0.02, 'rgba(60,30,20,0.3)'); }
+    if (o.extra) o.extra(cx, hy, rx, ry);
+  };
+
+  switch (name) {
+    case 'valley': {
+      rect(0, 0, w, h, grad(0, h * 0.6, '#4a5a7a', '#c88a5a', '#f0c27a'));
+      glow(w * 0.62, h * 0.55, w * 0.35, 'rgba(255,215,140,0.6)');
+      clouds(6, h * 0.08, h * 0.35, 'rgba(240,190,150,0.35)');
+      ridge(h * 0.55, h * 0.12, '#6a7a9a', 1.2);
+      ridge(h * 0.62, h * 0.08, '#4a5a4a', 0.8);
+      ridge(h * 0.72, h * 0.06, '#2e3e26', 1.5);
+      g.strokeStyle = '#e8c890'; g.lineWidth = 2.2; g.beginPath(); g.moveTo(w * 0.62, h * 0.62);   // the river, catching the sky
+      g.bezierCurveTo(w * 0.5, h * 0.72, w * 0.72, h * 0.8, w * 0.45, h); g.stroke();
+      rect(w * 0.3, h * 0.66, w * 0.05, h * 0.04, '#3a2a1e'); poly([[w * 0.29, h * 0.66], [w * 0.325, h * 0.62], [w * 0.36, h * 0.66]], '#2a1a12');
+      rect(w * 0.315, h * 0.675, 1, 1, '#ffd890');                                               // one lit window
+      treeBlob(w * 0.08, h * 0.62, w * 0.09, '#1a2614', '#2e3e20'); treeBlob(w * 0.92, h * 0.6, w * 0.1, '#1a2614', '#2e3e20');
+      break;
+    }
+    case 'forest': {
+      rect(0, 0, w, h, grad(0, h, '#5a6a4a', '#2a3424', '#141a10'));
+      glow(w * 0.55, h * 0.45, w * 0.3, 'rgba(230,220,170,0.45)');
+      poly([[w * 0.5, h * 0.5], [w * 0.58, h * 0.5], [w * 0.85, h], [w * 0.25, h]], '#6a5a3a');   // the path
+      for (let i = 0; i < 14; i++) {
+        const x = rand() * w, near = rand(), tw = 1 + near * w * 0.05;
+        if (Math.abs(x - w * 0.54) < w * 0.07) continue;
+        rect(x, 0, tw, h, near > 0.6 ? '#141a10' : near > 0.3 ? '#2a3222' : '#46503a');
+      }
+      for (let i = 0; i < 4; i++) poly([[w * (0.48 + i * 0.03), 0], [w * (0.52 + i * 0.03), 0], [w * (0.62 + i * 0.05), h], [w * (0.56 + i * 0.05), h]], 'rgba(240,230,180,0.08)');   // light coming down
+      rect(0, h * 0.8, w, h * 0.2, 'rgba(20,26,14,0.5)');
+      break;
+    }
+    case 'moonrise': {
+      rect(0, 0, w, h, grad(0, h * 0.55, '#0e1626', '#2a3a52', '#4a5a6a'));
+      glow(w * 0.3, h * 0.3, w * 0.22, 'rgba(230,230,200,0.4)'); oval(w * 0.3, h * 0.3, w * 0.035, w * 0.035, '#f0ecd6');
+      ridge(h * 0.52, h * 0.1, '#1a2230', 1);
+      poly([[w * 0.66, h * 0.52], [w * 0.7, h * 0.24], [w * 0.75, h * 0.26], [w * 0.77, h * 0.52]], '#141820');   // the ruined tower
+      rect(w * 0.715, h * 0.28, 1, 1, '#ffd890');
+      rect(0, h * 0.55, w, h * 0.45, grad(h * 0.55, h, '#3a4a5a', '#0e141c'));
+      for (let i = 0; i < 9; i++) rect(w * 0.3 - w * 0.03 + rand() * w * 0.06, h * (0.58 + i * 0.045), w * (0.04 + rand() * 0.06), 1, 'rgba(240,236,214,0.5)');
+      for (let x = 0; x < w; x += 4) rect(x, h * 0.55, 3, 1, '#121820');
+      break;
+    }
+    case 'coast': {
+      rect(0, 0, w, h, grad(0, h * 0.6, '#1e2228', '#4a5258', '#8a8a7e'));
+      glow(w * 0.3, h * 0.35, w * 0.25, 'rgba(240,230,200,0.35)');                          // a break in the clouds
+      clouds(8, 0, h * 0.3, 'rgba(20,24,28,0.6)');
+      poly([[w * 0.6, h], [w * 0.62, h * 0.5], [w * 0.75, h * 0.38], [w, h * 0.35], [w, h]], '#2a2620');   // cliffs
+      poly([[w * 0.7, h], [w * 0.74, h * 0.6], [w * 0.85, h * 0.52], [w, h * 0.55], [w, h]], '#3a342a');
+      rect(0, h * 0.6, w * 0.65, h * 0.4, grad(h * 0.6, h, '#3a4a48', '#1a2422'));
+      for (let i = 0; i < 16; i++) oval(rand() * w * 0.68, h * (0.62 + rand() * 0.36), w * (0.03 + rand() * 0.05), 1, 'rgba(235,235,225,0.7)');
+      oval(w * 0.62, h * 0.66, w * 0.06, h * 0.05, 'rgba(240,240,230,0.6)');                   // spray against the rocks
+      break;
+    }
+    case 'field': {
+      rect(0, 0, w, h, grad(0, h * 0.6, '#5a4a6a', '#d0784a', '#f2c070'));
+      glow(w * 0.7, h * 0.58, w * 0.3, 'rgba(255,210,120,0.6)');
+      rect(0, h * 0.6, w, h * 0.4, grad(h * 0.6, h, '#c8a050', '#6a5024'));
+      for (let i = 0; i < 30; i++) rect(rand() * w, h * (0.62 + rand() * 0.36), 1, 2, 'rgba(90,60,20,0.5)');
+      rect(w * 0.33, h * 0.38, 2, h * 0.25, '#2a1e12');                                       // the oak
+      oval(w * 0.335, h * 0.34, w * 0.13, h * 0.12, '#2a2a16'); oval(w * 0.3, h * 0.31, w * 0.07, h * 0.07, '#3e3a20');
+      for (let i = 0; i < 6; i++) rect(w * (0.5 + rand() * 0.4), h * (0.2 + rand() * 0.2), 2, 1, '#1a1410');   // crows
+      rect(w * 0.82, h * 0.56, w * 0.05, h * 0.04, '#3a2a20');                                // a far farmhouse
+      break;
+    }
+    case 'mountains': {
+      rect(0, 0, w, h, grad(0, h * 0.55, '#2a3048', '#7a6a7a', '#d8a888'));
+      ridge(h * 0.5, h * 0.25, '#7a82a0', 0.9);
+      for (let x = 0; x < w; x += 1) { const y = h * 0.5 - h * 0.25 * (0.6 * Math.abs(Math.sin(x / w * 4.5 + 2)) + 0.25); rect(x, y, 1, 2, 'rgba(240,240,250,0.5)'); }   // snow
+      ridge(h * 0.56, h * 0.08, '#3a4a40', 1.6);
+      rect(0, h * 0.6, w, h * 0.4, grad(h * 0.6, h, '#9a8a90', '#2a3040'));
+      for (let i = 0; i < 12; i++) rect(rand() * w, h * (0.62 + rand() * 0.3), w * 0.05, 1, 'rgba(255,235,220,0.3)');
+      for (let i = 0; i < 9; i++) pine(i < 5 ? rand() * w * 0.2 : w * 0.8 + rand() * w * 0.2, h * (0.85 + rand() * 0.15), h * (0.25 + rand() * 0.15), '#121a14');
+      break;
+    }
+    case 'waterfall': {
+      rect(0, 0, w, h, grad(0, h, '#7a8a90', '#4a5a54'));
+      poly([[0, 0], [w * 0.38, 0], [w * 0.42, h * 0.3], [w * 0.36, h], [0, h]], '#3a3a30');   // the gorge walls
+      poly([[w, 0], [w * 0.6, 0], [w * 0.57, h * 0.35], [w * 0.64, h], [w, h]], '#2e3028');
+      for (let i = 0; i < 6; i++) treeBlob(rand() < 0.5 ? rand() * w * 0.3 : w * 0.7 + rand() * w * 0.3, rand() * h * 0.4, w * 0.05, '#1e2a1a', '#34442a');
+      rect(w * 0.44, h * 0.08, w * 0.12, h * 0.7, grad(h * 0.08, h * 0.78, '#e8ece8', '#b8c4c4'));   // the falls
+      for (let i = 0; i < 10; i++) rect(w * (0.44 + rand() * 0.11), h * (0.1 + rand() * 0.6), 1, h * 0.12, 'rgba(120,140,140,0.5)');
+      glow(w * 0.5, h * 0.8, w * 0.25, 'rgba(240,245,245,0.6)');                            // mist
+      rect(w * 0.3, h * 0.85, w * 0.4, h * 0.15, '#3a4a4a');
+      break;
+    }
+    case 'church': {
+      rect(0, 0, w, h, grad(0, h * 0.6, '#3a3a5a', '#a87a6a', '#e0b080'));
+      ridge(h * 0.6, h * 0.05, '#4a5a3a', 1);
+      rect(0, h * 0.62, w, h * 0.38, '#3a4a2a');
+      poly([[w * 0.47, h * 0.6], [w * 0.53, h * 0.6], [w * 0.75, h], [w * 0.25, h]], '#8a7a5a');   // the road
+      rect(w * 0.55, h * 0.48, w * 0.12, h * 0.12, '#e6e0d0'); poly([[w * 0.54, h * 0.48], [w * 0.61, h * 0.4], [w * 0.68, h * 0.48]], '#4a3a3a');
+      rect(w * 0.57, h * 0.3, w * 0.035, h * 0.18, '#e6e0d0'); poly([[w * 0.565, h * 0.3], [w * 0.5875, h * 0.18], [w * 0.61, h * 0.3]], '#4a3a3a');   // the steeple
+      rect(w * 0.6, h * 0.52, 1, 2, '#2a2020');
+      for (let i = 0; i < 8; i++) rect(w * (0.1 + i * 0.04), h * (0.7 + i * 0.03), 1, h * 0.05, '#2a2016');   // fence posts
+      treeBlob(w * 0.82, h * 0.52, w * 0.07, '#1e2a16', '#34421e'); treeBlob(w * 0.15, h * 0.5, w * 0.08, '#1e2a16', '#34421e');
+      break;
+    }
+    case 'lady':
+      portrait({ turn: 0.5, skin: '#d8b090', dress: '#2e3424', hair: '#2a1a10', long: true, veil: 'rgba(20,14,10,0.6)', hands: true, lips: '#8a4a3a',
+        bg: () => { rect(0, 0, w, h, grad(0, h * 0.5, '#6a8070', '#9aa080', '#5a6a50')); ridge(h * 0.45, h * 0.06, '#4a5a48'); ridge(h * 0.5, h * 0.05, '#3a4436'); } });
+      break;
+    case 'nobleman':
+      portrait({ turn: -0.5, skin: '#d0a888', dress: '#141418', hair: '#3a2416', beard: '#4a2e1a', hat: '#0e0e10', ruff: true,
+        bg: grad(0, h, '#3e3a24', '#1e1c12') });
+      break;
+    case 'old-man':
+      portrait({ turn: 0.4, skin: '#c89a7a', dress: '#7a1e18', hair: '#b8b4aa', bald: true, beard: '#d8d4c8', longBeard: true, collar: '#5a3a24',
+        bg: grad(0, h, '#4a1a14', '#1e0a08') });
+      break;
+    case 'pearls':
+      portrait({ turn: -0.7, skin: '#e2bea0', dress: '#8a2a20', hair: '#b88a4a', lips: '#a04a40',
+        bg: () => { rect(0, 0, w, h, grad(0, h * 0.7, '#6a90b8', '#b8c8d0')); ridge(h * 0.7, h * 0.04, '#5a6a5a'); },
+        extra: (cx, hy, rx, ry) => { for (let i = 0; i < 5; i++) rect(cx - rx * 0.6 + i * rx * 0.3, hy - ry * 0.85, 1, 1, '#f4f0e6'); for (let i = 0; i < 9; i++) rect(cx - rx * 0.9 + i * rx * 0.22, hy + ry * 1.45 + Math.abs(i - 4) * 0.4, 1, 1, '#f4f0e6'); } });
+      break;
+    case 'child':
+      portrait({ turn: 0.2, headY: 0.36, headW: 0.18, skin: '#e0c0a8', dress: '#1e1a22', hair: '#4a2e1a', collar: '#e4dccb', lips: '#9a5048',
+        bg: grad(0, h, '#2a2a22', '#121210'),
+        extra: () => { rect(w * 0.55, h * 0.72, 1, h * 0.14, '#1a2a14'); oval(w * 0.555, h * 0.7, w * 0.04, w * 0.04, '#0a0808'); } });   // the flower, painted over black
+      break;
+    case 'widow':
+      portrait({ turn: -0.3, skin: '#d8c0ae', dress: '#0e0c0e', veil: '#16121a', hair: '#1a1214', collar: '#d8d0c0',
+        bg: grad(0, h, '#22202a', '#0a090c') });
+      break;
+  }
+}
+
+function paintings() {
+  // the sheet: each painting fills its square's width or height, keeping its shape
+  const slots = PAINTINGS.map(([, , , , w, h], i) => {
+    const sw = w >= h ? ART : Math.round(ART * w / h), sh = w >= h ? Math.round(ART * h / w) : ART;
+    return { sx: (i % ART_COLS) * ART, sy: Math.floor(i / ART_COLS) * ART, sw, sh };
+  });
+  const size = ART * ART_COLS, mat = surface(0xffffff, 0.85);
+  if (typeof document !== 'undefined') {
+    let seed = 77;
+    const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    mat.map = screenCanvas(size, size, g => {
+      g.imageSmoothingEnabled = false;
+      PAINTINGS.forEach(([name, , , , pw, ph], i) => {
+        const { sx, sy, sw, sh } = slots[i];
+        const lw = pw >= ph ? 64 : Math.round(72 * pw / ph), lh = pw >= ph ? Math.round(64 * ph / pw) : 72;
+        const c = document.createElement('canvas');
+        c.width = lw; c.height = lh;
+        const small2d = c.getContext('2d');
+        paintArt(name, small2d, lw, lh, rand);
+        // old paint: grain, a slightly limited palette, darker corners, yellowed varnish
+        const img = small2d.getImageData(0, 0, lw, lh), d = img.data;
+        for (let k = 0; k < d.length; k += 4) {
+          const x = (k / 4) % lw / lw - 0.5, y = Math.floor(k / 4 / lw) / lh - 0.5;
+          const shade = 1 - 0.3 * Math.min(1, (x * x + y * y) * 2.2), grain = (rand() - 0.5) * 12;
+          [1, 0.95, 0.84].forEach((warm, ch) => { d[k + ch] = Math.min(255, Math.round((d[k + ch] * shade * warm + grain) / 6) * 6); });
+        }
+        small2d.putImageData(img, 0, 0);
+        g.drawImage(c, sx, sy, sw, sh);                                           // blown up with hard pixel edges
+      });
+    });
+    mat.map.magFilter = THREE.NearestFilter;
+    mat.map.anisotropy = 4;
+    // a faint glow of their own, so they read in a dark room
+    mat.emissive.set(0xffffff);
+    mat.emissiveMap = mat.map;
+    mat.emissiveIntensity = 0.28;
+  } else mat.color.set(0x4a3a2a);
+  const frames = { gilt: metal(0x8a6a2e, 0.5), wood: surface(0x2e1e12, 0.6) };
+  const turn = { 'x+': Math.PI / 2, 'x-': -Math.PI / 2, 'z+': 0, 'z-': Math.PI };
+  return named('paintings', ...PAINTINGS.map(([name, face, px, py, w, h, cy, frame, text], i) => {
+    const { sx, sy, sw, sh } = slots[i], f = frame === 'gilt' ? 0.17 : 0.12;
+    const pic = new THREE.PlaneGeometry(w, h), uv = pic.attributes.uv;
+    for (let k = 0; k < uv.count; k++)                                         // its own square of the sheet
+      uv.setXY(k, (sx + uv.getX(k) * sw) / size, 1 - (sy + sh - uv.getY(k) * sh) / size);
+    const bar = (bw, bh, x, y) => tint(solid(new THREE.BoxGeometry(bw, bh, 0.1), [x, y, 0.05]), frames[frame]);
+    const g = new THREE.Group();
+    g.add(tint(solid(pic, [0, 0, 0.03]), mat),
+      bar(w + f * 2, f, 0, h / 2 + f / 2), bar(w + f * 2, f, 0, -h / 2 - f / 2),
+      bar(f, h, -w / 2 - f / 2, 0), bar(f, h, w / 2 + f / 2, 0));
+    const along = face[0] === 'x', sign = face[1] === '+' ? 1 : -1;
+    g.position.set(along ? X(px) + sign * 0.01 : X(px), FLOOR + cy, along ? Z(py) : Z(py) + sign * 0.01);
+    g.rotation.y = turn[face];
+    return small(say(text, g));
+  }));
+}
+
 function roomLamps(lamps) {
   const wallZ = Z(1068), patioZ = Z(345);
   return named('lamps',
     floorLamp(lamps, 'lamp-foyer', 140, 775, 28),
-    tableLamp(lamps, 'lamp-living', 576, 215, 2, 20),
+    ceramicLamp(lamps, 'lamp-living', 576, 215, 2, 20),
     pendant(lamps, 'lamp-dining', 695, 522, 36),
     pendant(lamps, 'lamp-kitchen', 978, 517, 36),
-    tableLamp(lamps, 'lamp-master', 900, 1045, 2.1, 16),
-    tableLamp(lamps, 'lamp-master-2', 1100, 1045, 2.1, 14),               // the other nightstand
+    bedsideLamp(lamps, 'lamp-master', 900, 1045, 2.1, 16),
+    bedsideLamp(lamps, 'lamp-master-2', 1100, 1045, 2.1, 14),               // the other nightstand
     // an end table at the north end of the sectional, so the couch gets light
     endTable('end-table', 345, 400, 248, 294, 1.9),
-    tableLamp(lamps, 'lamp-sofa', 372, 271, 1.9, 22),
+    tiffanyLamp(lamps, 'lamp-sofa', 372, 271, 1.9, 22),
     pullBulb(lamps, 'lamp-laundry', 710, 898, 26),
     pantryLight(lamps),
     ceilingLight('lamp-toilet', 365, 905),          // over the toilet
@@ -3380,7 +4010,7 @@ function paint(scene) {
   scene.traverse(o => {
     if (!o.isMesh) return;
     const glows = o.material.isMeshBasicMaterial || o.userData.noShadow;
-    o.castShadow = !glows;
+    o.castShadow = !glows && !o.userData.small;
     o.receiveShadow = !glows;
   });
 }
@@ -3503,10 +4133,13 @@ function bake(scene) {
         const solidPart = (d.isMesh || d.isLineSegments) && !d.name && !d.userData.reflect &&
           d.onBeforeRender === THREE.Object3D.prototype.onBeforeRender && !d.children.length;
         if (solidPart) {
-          const key = [d.material.uuid, d.layers.mask, d.castShadow, d.receiveShadow, d.isMesh].join();
-          if (!buckets.has(key)) buckets.set(key, { first: d, geos: [] });
+          const sig = d.isMesh ? colourless(d.material) : null;
+          const key = [sig || d.material.uuid, d.layers.mask, d.castShadow, d.receiveShadow, d.isMesh].join('|');
+          if (!buckets.has(key)) buckets.set(key, { first: d, geos: [], sig });
           rel.multiplyMatrices(inv, d.matrixWorld);
-          buckets.get(key).geos.push((d.geometry.index ? d.geometry.toNonIndexed() : d.geometry.clone()).applyMatrix4(rel));
+          const geo = (d.geometry.index ? d.geometry.toNonIndexed() : d.geometry.clone()).applyMatrix4(rel);
+          if (d.isMesh && !geo.attributes.normal) geo.computeVertexNormals();
+          buckets.get(key).geos.push(sig ? paintVertices(geo, d.material) : geo);
           parts++;
         } else if (!d.name && (d.type === 'Group' || d.type === 'Object3D') && d.children.length &&
                    !d.userData.tick && !d.userData.movesParts) {
@@ -3519,9 +4152,10 @@ function bake(scene) {
     walk(g);
     if (parts <= buckets.size) continue;                    // nothing to weld
     const out = [];
-    for (const { first, geos } of buckets.values()) {
+    for (const { first, geos, sig } of buckets.values()) {
       const merged = weld(geos, first.isMesh);
-      const obj = first.isMesh ? new THREE.Mesh(merged, first.material) : new THREE.LineSegments(merged, first.material);
+      const mat = sig ? sharedMaterial(sig, first.material) : first.material;
+      const obj = first.isMesh ? new THREE.Mesh(merged, mat) : new THREE.LineSegments(merged, mat);
       obj.layers.mask = first.layers.mask;
       obj.castShadow = first.castShadow;
       obj.receiveShadow = first.receiveShadow;
@@ -3538,6 +4172,54 @@ function bake(scene) {
     g.clear();
     g.add(...out, ...keep);
   }
+}
+
+/* Each say() wrapper becomes an examine area: a box round its parts,
+   stored with the nearest named group (welding drops the wrapper). In
+   first person, looking at that group only offers the text of the box
+   you're actually looking at. */
+function examineAreas(scene) {
+  scene.updateMatrixWorld(true);
+  scene.traverse(o => {
+    if (!o.userData.say) return;
+    let g = o.parent;
+    while (g && !g.name) g = g.parent;
+    if (g) (g.userData.areas ||= []).push({ box: new THREE.Box3().setFromObject(o).expandByScalar(0.08), text: o.userData.say });
+    delete o.userData.say;
+  });
+}
+
+/* Plain painted surfaces (no pictures, not see-through) that differ only
+   in colour can be one draw: the colour moves into the corners of each
+   triangle, and every such surface in the house shares one material.
+   Lamp glows (MeshBasicMaterial) aren't touched, since the switches dim them. */
+const MAPS = ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'emissiveMap', 'aoMap', 'bumpMap', 'alphaMap', 'envMap', 'lightMap', 'displacementMap'];
+function colourless(m) {
+  if (!m.isMeshStandardMaterial || m.isMeshPhysicalMaterial || m.transparent || MAPS.some(k => m[k]) ||
+      Object.prototype.hasOwnProperty.call(m, 'onBeforeCompile')) return null;
+  return [m.roughness, m.metalness, m.side, m.flatShading, m.emissive.getHex(), m.emissiveIntensity, m.polygonOffset,
+    m.polygonOffsetFactor, m.polygonOffsetUnits, m.alphaTest, m.depthWrite, m.fog, m.wireframe, m.opacity].join();
+}
+function paintVertices(geo, m) {
+  const n = geo.attributes.position.count, out = new Float32Array(n * 3);
+  const had = m.vertexColors ? geo.attributes.color : null;
+  for (let i = 0; i < n; i++) {
+    out[i * 3] = m.color.r * (had ? had.getX(i) : 1);
+    out[i * 3 + 1] = m.color.g * (had ? had.getY(i) : 1);
+    out[i * 3 + 2] = m.color.b * (had ? had.getZ(i) : 1);
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(out, 3));
+  return geo;
+}
+const sharedMaterials = new Map();
+function sharedMaterial(sig, like) {
+  if (!sharedMaterials.has(sig)) {
+    const m = like.clone();
+    m.color.set(0xffffff);
+    m.vertexColors = true;
+    sharedMaterials.set(sig, m);
+  }
+  return sharedMaterials.get(sig);
 }
 
 // join several geometries (already in place) into one
@@ -3595,6 +4277,10 @@ export function buildWorld({ weld = true } = {}) {
     yardAt(bush(), -28, 12),
     yardAt(streetlight(lamps), STREET[0], STREET[1]),
     roomLamps(lamps),
+    stereo(),
+    fiddleFig(338, 198),
+    clutter(),
+    paintings(),
     switchPlates(),
     sky()
   );
@@ -3606,6 +4292,7 @@ export function buildWorld({ weld = true } = {}) {
     scene.traverse(o => { if (o.name === n) o.traverse(m => { m.userData.passable = true; }); });
   for (const n of ['ground', 'forest', 'path', 'path-lamps', 'road', 'driveway'])
     scene.traverse(o => { if (o.name === n) o.traverse(m => { if (m.isMesh) m.castShadow = false; }); });
+  examineAreas(scene);
   if (weld) bake(scene);
   scene.userData.lamps = lamps;
   return scene;
