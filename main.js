@@ -4,7 +4,8 @@
    ============================================================ */
 
 import * as THREE from './vendor/three-r186/three.module.js';
-import { buildWorld, ROOMS, roomAt, GLASS_LAYER, captureReflections, shadowed } from './world.js?v=18';
+import { buildWorld, ROOMS, roomAt, GLASS_LAYER, CULL_LAYER, captureReflections, shadowed } from './world.js?v=25';
+import { buildPVS } from './pvs.js?v=1';
 import { createEmp } from './emp.js?v=6';
 import { CAMS, camAt } from './cams.js?v=8';
 import { createGhoul } from './ghoul.js?v=12';
@@ -26,46 +27,110 @@ const dots    = $('dots');
 
 let state = 'title';
 // filled in by debug.js when ?debug is on
-const debug = { composite: false, free: false, fov: null, tick: null, onCam: null };       // 'title' | 'playing'
+const debug = { composite: false, free: false, fov: null, tick: null, onCam: null, fp: false };
 let camIndex = 0;
-// Shared by gameplay and the debug button. No allocation or rendering in the setter.
 export function setComposite(enabled){debug.composite=Boolean(enabled);}
-
-let renderer, scene, camera, ghoul, ghost, lamps, emp, ticks, ir, tv, analog;
+let renderer, scene, camera, ghoul, ghost, lamps, emp, ticks, ir, tv, analog, pvs;
 const EXPOSURE = 0.75;         // overall brightness of the picture
+const RESOLUTION = 1;          // pixel ratio (window.devicePixelRatio for full retina sharpness, at 4x the cost)
 const buffer = new THREE.Vector2();
 let shiftStart = 0;
 let lastFrame = 0;
 
-/* Shadows are drawn once, then only redrawn for lamps near ghoul1, so
-   his shadow moves with him without redrawing every lamp every frame.
-   A lamp he just walked away from gets one more redraw to clear him. */
+/* Shadows are drawn once, then only redrawn when something moves. Each
+   redraw of a lamp's shadows draws the house around it six times, so:
+   - lamps only redraw for ghoul1 while he's actually here (he casts no
+     shadow while gone, see ghoul.js) and only once he's moved,
+   - and only the lamps whose light the current cam can see: those redraw
+     every frame he moves, so his shadow glides with him. Lamps the cam
+     can't see wait, and catch up all at once when the cam changes,
+   - a lamp he just walked away from gets one more redraw to clear him,
+   - when something else moves (a door, an anomaly), lamps near it redraw. */
 const NEAR_LAMP = 18;          // feet
-let nearLamps = new Set();
-const lampAt = new THREE.Vector3();
+const LIT_REACH = 14;          // a lamp counts as "seen" if the cam sees this close round it
+let nearLamps = new Set(), wasHere = false, camChanged = true;
+const stale = new Set();       // lamps whose shadows changed while the cam couldn't see them
+const lastPos = new THREE.Vector3(), lampAt = new THREE.Vector3(), reach = new THREE.Sphere();
 function refreshShadows() {
+  const here = ghoul.presence > 0.5, pos = ghoul.object.position;     // he casts a shadow while mostly here (ghoul.js)
+  const moved = pos.distanceTo(lastPos) > 0.02;
   const now = new Set();
-  for (const l of lamps) {
-    if (l.isPointLight && l.getWorldPosition(lampAt).distanceTo(ghoul.object.position) < NEAR_LAMP) now.add(l);
+  if (here || wasHere) {
+    for (const l of lamps) if (l.isPointLight && l.getWorldPosition(lampAt).distanceTo(pos) < NEAR_LAMP) now.add(l);
   }
-  // something in the house moved (the closet door, an anomaly): lamps near it redraw too
-  const moved = scene.userData.moved;
-  if (moved) {
-    for (const at of moved) for (const l of lamps) {
-      if (l.isPointLight && l.getWorldPosition(lampAt).distanceTo(at) < NEAR_LAMP) now.add(l);
+  const redraw = new Set();
+  for (const l of now) {
+    reach.set(l.getWorldPosition(lampAt), LIT_REACH);
+    const seen = frustum.intersectsSphere(reach);
+    if (camChanged || (here !== wasHere) || (here && moved && seen)) redraw.add(l);
+  }
+  for (const l of nearLamps) if (!now.has(l)) redraw.add(l);
+  // something else moved (a door swinging, an anomaly): lamps near it that the cam
+  // can see redraw now; the rest catch up when the cam changes (or when it settles)
+  const things = scene.userData.moved;
+  if (things) {
+    for (const at of things) for (const l of lamps) {
+      if (!l.isPointLight || l.getWorldPosition(lampAt).distanceTo(at) >= NEAR_LAMP) continue;
+      reach.set(lampAt, LIT_REACH);
+      if (frustum.intersectsSphere(reach)) redraw.add(l); else stale.add(l);
     }
     scene.userData.moved = null;
   }
-  for (const l of now) l.shadow.needsUpdate = true;
-  for (const l of nearLamps) if (!now.has(l)) l.shadow.needsUpdate = true;
+  for (const l of stale) {                                  // catch up once the cam sees them (or it changes)
+    reach.set(l.getWorldPosition(lampAt), LIT_REACH);
+    if (camChanged || frustum.intersectsSphere(reach)) redraw.add(l);
+  }
+  for (const l of redraw) { l.shadow.needsUpdate = true; stale.delete(l); }
   nearLamps = now;
+  wasHere = here;
+  camChanged = false;
+  lastPos.copy(pos);
+}
+
+/* The light budget. Every light costs every pixel it might touch (and a
+   shadowed one costs a shadow lookup per pixel on top), whether or not a
+   wall is in the way. So only the nearest few of each kind are switched
+   on at any moment, lights in the room you're in counting nearest; the
+   rest are behind walls anyway. The counts never change, so the
+   graphics card never has to rebuild its shaders. Lights that come back
+   on redraw their shadows if anything moved while they were off. */
+const LIGHT_BUDGET = { 'PointLight+shadow': 5, 'SpotLight': 5 };
+let budgeted = null;
+const lightAt = new THREE.Vector3();
+function applyLightBudget(from) {
+  if (!budgeted) {
+    budgeted = {};
+    scene.traverse(l => {
+      const key = l.isLight && l.type + (l.castShadow ? '+shadow' : '');
+      if (key && LIGHT_BUDGET[key]) (budgeted[key] ||= []).push(l);
+    });
+  }
+  const here = roomAt(from.x, from.z);
+  for (const [key, list] of Object.entries(budgeted)) {
+    const score = new Map(list.map(l => {
+      l.getWorldPosition(lightAt);
+      let d = lightAt.distanceTo(from);
+      const r = roomAt(lightAt.x, lightAt.z);
+      if (here && r && r.name === here.name) d *= 0.4;
+      if (l.intensity <= 0) d += 1000;                     // switched off: last
+      return [l, d];
+    }));
+    list.sort((a, b) => score.get(a) - score.get(b));
+    list.forEach((l, i) => { l.visible = i < LIGHT_BUDGET[key]; });
+  }
+}
+
+// what the current cam can see this frame (things like the swaying bulb ask it)
+const frustum = new THREE.Frustum(), viewProj = new THREE.Matrix4(), around = new THREE.Sphere();
+function updateView() {
+  camera.updateMatrixWorld();
+  viewProj.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+  frustum.setFromProjectionMatrix(viewProj);
+  scene.userData.frustum = frustum;
 }
 
 // is ghoul1 anywhere in front of the current cam? (skips the ghost pass if not)
-const frustum = new THREE.Frustum(), viewProj = new THREE.Matrix4(), around = new THREE.Sphere();
 function ghoulInView() {
-  viewProj.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
-  frustum.setFromProjectionMatrix(viewProj);
   around.center.copy(ghoul.object.position);
   around.center.y += 3;
   around.radius = 4;
@@ -82,7 +147,9 @@ function setup() {
     frame.classList.add('no-gl');
     return false;
   }
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  // 1 pixel per screen pixel, even on retina screens: a quarter of the work
+  // at 2x, and security cam footage is meant to look a little soft
+  renderer.setPixelRatio(RESOLUTION);
   // real lighting: shadows from every lamp, and film-like tone mapping
   // so bright lamp light rolls off softly instead of clipping
   renderer.shadowMap.enabled = true;
@@ -90,6 +157,7 @@ function setup() {
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = EXPOSURE;
   scene = buildWorld();
+  const worldRoots = [...scene.children];      // the house and yard (ghoul1 and the EMP come later)
   lamps = scene.userData.lamps;
   tv = createTv(shadowed);
   scene.add(tv.object);
@@ -97,11 +165,17 @@ function setup() {
   // things that move on their own every frame: the clouds, the fire
   ticks = [];
   scene.traverse(o => { if (o.userData.tick) ticks.push(o.userData.tick); });
+  // ...and everything that opens, so openTo() can swing doors smoothly
+  scene.traverse(o => { if (o.userData.step) ticks.push(o.userData.step); });
   ghoul = createGhoul();
   // he lives on his own layer: the normal render skips him and the
   // ghost pass draws him, so he can blur and fade
   ghoul.object.traverse(o => o.layers.set(GHOST_LAYER));
   scene.add(ghoul.object);
+  // ghoul1 is out of the house for now (he'll come back as an anomaly);
+  // ?debug has a button to spawn him
+  ghoul.enabled = false;
+  ghoul.object.visible = false;
   emp = createEmp(scene);
   // the camera's infrared light: off until night vision is on (always in
   // the scene so switching it on doesn't make the browser stall)
@@ -111,7 +185,7 @@ function setup() {
   scene.traverse(o => {
     if (!o.isLight) return;
     o.layers.enable(GHOST_LAYER);
-    if (o.shadow) o.shadow.camera.layers.enable(GHOST_LAYER);
+    if (o.shadow) { o.shadow.camera.layers.enable(GHOST_LAYER); o.shadow.camera.layers.enable(CULL_LAYER); }
   });
   ghost = createGhostPass(renderer);
   analog = createAnalogPass(renderer, {receiverParameters:{comb:true}});
@@ -127,10 +201,14 @@ function setup() {
       analog.setClip(clip);
     }).catch(error=>console.error('Signal recording:',error.message));
   }
+  applyLightBudget(new THREE.Vector3(...CAMS[0].pos));     // before anything's drawn, so shaders are built for the budget
   // each window's reflection: one small snapshot apiece, taken now, never again
   captureReflections(renderer, scene);
   camera = new THREE.PerspectiveCamera(52, 16 / 9, 0.1, 600);
   camera.layers.enable(GLASS_LAYER);        // the main view draws window glass too
+  // per-cam culling: what each cam can see, worked out once (pvs.js)
+  pvs = buildPVS(renderer, scene, worldRoots, CAMS, CULL_LAYER);
+  scene.userData.pvs = pvs;
 
   const fit = () => {
     const w = canvas.clientWidth, h = canvas.clientHeight;
@@ -151,13 +229,13 @@ function setup() {
   // modes) and to poke at the scene from the browser console
   if (new URLSearchParams(location.search).has('debug')) {
     const api = {
-      THREE, scene, camera, renderer, CAMS, showCam, ghoul, lamps, fireEmp, toggleNight, frame, debug, tv, analog,
+      THREE, scene, camera, renderer, CAMS, showCam, ghoul, lamps, fireEmp, toggleNight, frame, debug, tv, analog, pvs,
       resizeAnalog: fit,
       setComposite,
       isNight: () => night, camIndex: () => camIndex
     };
     window.crazyhouse = api;
-    import('./debug.js?v=18').then(m => m.createDebug(api));
+    import('./debug.js?v=19').then(m => m.createDebug(api));
   }
 
   renderer.setAnimationLoop(now => {
@@ -169,12 +247,17 @@ function setup() {
     if(analog.stats.renderStart===undefined)analog.stats.renderStart=now;
     const renderElapsed=now-analog.stats.renderStart;
     if(renderElapsed>=1000){analog.stats.renderFPS=analog.stats.renderFrames*1000/renderElapsed;analog.stats.renderFrames=0;analog.stats.renderStart=now;}
-    ghoul.update(dt, camAt);
+    if (ghoul.enabled) ghoul.update(dt, camAt);
+    else ghoul.presence = 0;
     emp.update(dt);
     tv.update(dt);
     analog.controls.monochrome = night;
     if (debug.tick) debug.tick(dt);
     ir.position.copy(camera.position);
+    // free cam or a changed FOV can see anything, so cull nothing then
+    pvs.apply(debug.free || debug.fov || debug.fp ? null : camIndex);
+    applyLightBudget(camera.position);
+    updateView();
     for (const tick of ticks) tick(dt);
     tickEmp();
     refreshShadows();
@@ -184,7 +267,7 @@ function setup() {
     renderer.setRenderTarget(target);
     renderer.render(scene, camera);
     // blur scales with the picture, so it looks the same at any size
-    if (ghoulInView()) ghost.render(scene, camera, ghoul.presence, ghoul.blur * height * 0.022, target);
+    if (ghoul.enabled && ghoulInView()) ghost.render(scene, camera, ghoul.presence, ghoul.blur * height * 0.022, target);
     if (debug.composite) analog.render(now / 1000);
     else analog.presentClean();
   });
@@ -194,7 +277,9 @@ function setup() {
 /* ─── cams ──────────────────────────────────── */
 
 function showCam(i) {
+  if (debug.fp && debug.leaveFP) debug.leaveFP();        // switching cams leaves first person
   camIndex = (i + CAMS.length) % CAMS.length;
+  camChanged = true;                        // lamps the last cam couldn't see catch up
   const c = CAMS[camIndex];
   camera.position.set(...c.pos);
   camera.fov = debug.fov || c.fov;
@@ -240,7 +325,7 @@ function fireEmp() {
   if (room) {
     emp.fire(room);
     const his = roomAt(ghoul.object.position.x, ghoul.object.position.z);
-    if (his && his.name === room.name) ghoul.zap();
+    if (ghoul.enabled && his && his.name === room.name) ghoul.zap();
   }
   frame.classList.remove('emp-hit');
   void frame.offsetWidth;
@@ -306,6 +391,8 @@ addEventListener('keydown', e => {
   if (e.repeat || e.target.closest?.('input, textarea, select, [contenteditable=true]')) return;
   // the debug free cam owns these keys while it's flying
   if (debug.free && ['w', 'a', 's', 'd', 'c', 'shift', 'control', 'escape'].includes(e.key.toLowerCase())) return;
+  // ...and first person owns everything but night vision
+  if (debug.fp && e.key.toLowerCase() !== 'n') return;
   if (state === 'title') {
     if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); start(); }
     return;

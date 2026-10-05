@@ -10,10 +10,13 @@ import { openSignalFolder } from './signal-clip.js?v=7';
    - FOV slider, for the current cam or all of them.
    - Night vision and fully lit buttons.
    - Copy cam: copies where you are as a line for cams.js.
-   - ghoul1: show him / freeze him.
-   - Open it all: opens (or shuts) every door that can move for
-     anomalies: both closets, the fridge, the freezer, the washer lid,
-     the dryer door and the kitchen cabinets.
+   - First person (P): walk round the house and yard (firstperson.js):
+     WASD, mouse, Shift runs, E opens doors and inspects things.
+   - ghoul1: he's despawned for now; spawn him, show him, freeze him.
+   - Light switches: every circuit as a button, and all on / all off.
+   - Open it all: swings open (or shut) everything that opens: every
+     door, both closets, the fridge and freezer, the washer lid, the dryer
+     door, the kitchen cabinets, the shower door and the bead curtain.
    ============================================================ */
 
 export function createDebug(api) {
@@ -24,6 +27,8 @@ export function createDebug(api) {
   panel.className = 'debug-panel';
   panel.innerHTML = `
     <div class="dbg-title">debug</div>
+    <button data-act="fp">first person (P)</button>
+    <div class="dbg-help">WASD walk · mouse looks · Shift runs · E opens doors and inspects things</div>
     <button data-act="free">free cam (F)</button>
     <div class="dbg-help">WASD move · click view, then mouse looks · Shift up · Ctrl or C down · Esc lets go of the mouse</div>
     <label>speed <input type="range" min="2" max="40" step="1" value="12" data-in="speed"> <span data-out="speed">12</span> ft/s</label>
@@ -34,11 +39,16 @@ export function createDebug(api) {
       <button data-act="lit">fully lit</button>
     </div>
     <div class="dbg-row">
+      <button data-act="spawn">spawn ghoul</button>
       <button data-act="ghoul">show ghoul</button>
       <button data-act="freeze">freeze ghoul</button>
     </div>
     <button data-act="composite" aria-pressed="${!debug.composite}">bypass composite: ${debug.composite ? 'off' : 'on'}</button>
     <button data-act="open">open it all</button>
+    <details class="dbg-lights"><summary>light switches</summary>
+      <div class="dbg-row"><button data-act="lights-on">all on</button><button data-act="lights-off">all off</button></div>
+      <div class="dbg-switches"></div>
+    </details>
     <button data-act="copy">copy cam</button>
     <pre class="dbg-read" data-out="read"></pre>`;
   document.body.appendChild(panel);
@@ -229,6 +239,8 @@ export function createDebug(api) {
   addEventListener('keydown', e => {
     if (e.target.closest && e.target.closest('input, textarea, select, [contenteditable=true]')) return;
     const k = e.key.toLowerCase();
+    if (k === 'p' && !e.repeat) { toggleFP(); return; }
+    if (debug.fp) return;
     if (k === 'f' && !e.repeat) { setFree(!debug.free); return; }
     if (!debug.free) return;
     if (['w', 'a', 's', 'd', 'c', 'shift', 'control'].includes(k)) { keys.add(k); e.preventDefault(); }
@@ -238,6 +250,9 @@ export function createDebug(api) {
 
   const fwd = new THREE.Vector3(), right = new THREE.Vector3();
   debug.tick = dt => {
+    if (debug.fp && fp) fp.update(dt);
+    showSwitches();
+    frameMs = frameMs * 0.95 + dt * 1000 * 0.05;
     if (debug.free) {
       camera.rotation.set(pitch, yaw, 0, 'YXZ');
       fwd.set(-Math.sin(yaw), 0, -Math.cos(yaw));
@@ -249,17 +264,6 @@ export function createDebug(api) {
       if (keys.has('a')) camera.position.addScaledVector(right, -step);
       if (keys.has('shift')) camera.position.y += step;
       if (keys.has('control') || keys.has('c')) camera.position.y -= step;
-    }
-    // swing everything toward where the button sent it
-    if (openGoal !== null) {
-      let done = true;
-      for (const o of openers) {
-        const v = o.userData.open, step = dt * 1.2;
-        const next = Math.abs(openGoal - v) <= step ? openGoal : v + Math.sign(openGoal - v) * step;
-        if (next !== v) o.userData.setOpen(next);
-        if (next !== openGoal) done = false;
-      }
-      if (done) openGoal = null;
     }
     readout();
   };
@@ -299,6 +303,47 @@ export function createDebug(api) {
   });
 
   /* ─── ghoul ─── */
+  /* ─── light switches ─── */
+  const sw = scene.userData.switches, swBox = $('.dbg-switches');
+  for (const name of sw.names) {
+    const b = document.createElement('button');
+    b.textContent = name;
+    b.dataset.circuit = name;
+    b.addEventListener('click', () => { sw.toggle(name); b.blur(); });
+    swBox.appendChild(b);
+  }
+  btn('lights-on').addEventListener('click', () => sw.all(true));
+  btn('lights-off').addEventListener('click', () => sw.all(false));
+  const showSwitches = () => swBox.querySelectorAll('button').forEach(b => b.classList.toggle('on', sw.isOn(b.dataset.circuit)));
+
+  /* ─── first person ─── */
+  let fp = null;
+  import('./firstperson.js?v=2').then(m => { fp = api.fp = m.createFirstPerson({ scene, camera, frame }); });
+  const leaveFP = () => {
+    if (!debug.fp) return;
+    fp.exit();
+    debug.fp = false;
+    btn('fp').classList.remove('on');
+  };
+  debug.leaveFP = leaveFP;
+  function toggleFP() {
+    if (!fp) return;
+    if (debug.fp) { leaveFP(); showCam(api.camIndex()); return; }
+    if (debug.free) setFree(false);
+    debug.fp = true;
+    const ms = fp.enter();
+    if (ms) console.log(`first person: traced the floor map in ${ms} ms`);
+    btn('fp').classList.add('on');
+  }
+  btn('fp').addEventListener('click', e => { toggleFP(); e.currentTarget.blur(); });
+
+  /* ─── ghoul ─── */
+  btn('spawn').addEventListener('click', () => {
+    ghoul.enabled = !ghoul.enabled;
+    ghoul.object.visible = ghoul.enabled;
+    btn('spawn').classList.toggle('on', ghoul.enabled);
+    btn('spawn').textContent = ghoul.enabled ? 'despawn ghoul' : 'spawn ghoul';
+  });
   btn('ghoul').addEventListener('click', () => {
     ghoul.forcePresence = ghoul.forcePresence === null ? 1 : null;
     btn('ghoul').classList.toggle('on', ghoul.forcePresence !== null);
@@ -309,13 +354,12 @@ export function createDebug(api) {
   });
 
   /* ─── open it all ─── */
-  const openers = ['door-closet', 'door-coat-closet', 'fridge-door', 'freezer-door', 'washer-lid', 'dryer-door']
-    .map(n => scene.getObjectByName(n)).filter(Boolean);
-  scene.traverse(o => { if (o.name.startsWith('cabinet-door')) openers.push(o); });
-  let openGoal = null;             // only set while the button is moving things
+  const openers = [];
+  scene.traverse(o => { if (o.userData.openTo) openers.push(o); });
   btn('open').addEventListener('click', () => {
-    openGoal = openers.some(o => o.userData.open > 0.5) ? 0 : 1;
-    btn('open').classList.toggle('on', openGoal === 1);
+    const goal = openers.filter(o => o.userData.open > 0.5).length > openers.length / 2 ? 0 : 1;
+    for (const o of openers) o.userData.openTo(goal, 1.5);
+    btn('open').classList.toggle('on', goal === 1);
   });
 
   /* ─── copy the current view as a cams.js line ─── */
@@ -335,7 +379,7 @@ export function createDebug(api) {
   });
   let copied = '', copiedUntil = 0;
 
-  let lastRead = 0;
+  let lastRead = 0, frameMs = 16;
   function readout() {
     const now = performance.now();
     if(api.analog.clip!==shownClip){showClip();syncParameters();}
@@ -349,7 +393,8 @@ export function createDebug(api) {
     if(stats)out('signal-performance').textContent=stats.error||`${(stats.renderFPS??0).toFixed(1)} render fps · ${stats.receiverMode??"receiver"} · ${stats.buffering?'Buffering · ':''}${stats.signalFPS.toFixed(1)} decoded fps · GPU read ${stats.readMilliseconds.toFixed(1)} ms · receiver ${stats.receiverMilliseconds.toFixed(1)} ms · ${api.analog.clip?.underruns??0} buffer stalls`;
     lastRead = now;
     const p = camera.position;
-    let text = `pos  ${r(p.x)}, ${r(p.y)}, ${r(p.z)}\nfov  ${Math.round(camera.fov)}°  ${debug.free ? '(free cam)' : '(cam ' + (api.camIndex() + 1) + ')'}\nghoul ${ghoul.state}`;
+    const mode = debug.fp ? '(first person)' : debug.free ? '(free cam)' : '(cam ' + (api.camIndex() + 1) + ')';
+    let text = `${Math.round(1000 / frameMs)} fps  (${frameMs.toFixed(1)} ms a frame)\npos  ${r(p.x)}, ${r(p.y)}, ${r(p.z)}\nfov  ${Math.round(camera.fov)}°  ${mode}\nghoul ${ghoul.enabled ? ghoul.state : 'despawned'}`;
     if (now < copiedUntil) text += `\ncopied:\n${copied}`;
     out('read').textContent = text;
     // keep the slider honest when cams switch

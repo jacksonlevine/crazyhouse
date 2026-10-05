@@ -14,14 +14,14 @@
    ============================================================ */
 
 import * as THREE from './vendor/three-r186/three.module.js';
-import { buildWorld } from './world.js?v=18';
+import { buildWorld } from './world.js?v=24';
 import { createGhoul } from './ghoul.js';
 import { camAt } from './cams.js?v=8';
 
 const scene = buildWorld({ weld: false });   // same shapes, unwelded: much quicker to test
 scene.updateMatrixWorld(true);
 const meshes = [];
-scene.traverse(o => { if (o.isMesh) meshes.push(o); });
+scene.traverse(o => { if (o.isMesh && !o.userData.passable) meshes.push(o); });   // he walks through the bead curtain
 
 const ghoul = createGhoul();
 const length = ghoul.curve.getLength();

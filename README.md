@@ -108,10 +108,13 @@ lined up to it.
   (he's on a layer it doesn't draw), like a vampire.
 
 **Things that open, for anomalies.** Each has `setOpen(t)`, 0 shut to
-1 open (anything between works), and `userData.open` says where it is:
+1 open (anything between works, instantly), and `openTo(t, seconds)`,
+which swings it there smoothly, easing in and out. `userData.open` says
+where it is:
 
 ```js
-scene.getObjectByName('fridge-door').userData.setOpen(1)
+scene.getObjectByName('fridge-door').userData.openTo(1, 2)   // open it over 2 seconds
+scene.getObjectByName('door-pocket').userData.setOpen(0)     // slam it shut
 ```
 
 - `door-closet`: the storage closet's 3-panel folding door, facing the couch
@@ -124,6 +127,13 @@ scene.getObjectByName('fridge-door').userData.setOpen(1)
 - `cabinet-door-island-1` and so on: every kitchen cabinet door (under
   the sink, the island, beside the fridge). The cabinets are hollow,
   with shelves, pipes under the sink, pots, plates and cans
+- `door-pocket`: the laundry to bathroom pocket door, sliding out of the
+  wall (it starts open, ghoul1 walks through there)
+- `bead-curtain`: the arched wooden bead curtain from the bedroom to the
+  laundry; opening sweeps the strands aside (ghoul1 walks through it, so
+  `check-route.mjs` ignores it)
+- `door-shower`: the shower's glass door
+- `door-patio-slide`: the sliding patio door
 - every swinging house door too (`door-front`, `door-master`,
   `door-pantry`), where 1 is 90°
 
@@ -140,8 +150,11 @@ muted leaded glass on the pillar by the sofa, teal and plum counter stools with
 chrome posts, almond countertops, an oak vanity with an oval sink and
 brass knobs, frosted glass in a brass shower frame, a mauve bathmat,
 flannel and denim and a couple of shoeboxes in the walk-in closet,
-a blue jug of YEP detergent and a green laundry basket of folded clothes
-on the shelf over the machines, a bed with a rounded mattress, puffy
+a dish drainer and dish soap by the kitchen sink, pizza boxes on the
+island (one open, a couple of pepperoni slices left), a striped afghan
+thrown over the sofa, bottles of Tried and YEP detergent and a green laundry basket of folded
+clothes on the shelf over the machines, photos, a to-do memo, a crayon
+drawing and magnets on the fridge, a bed with a rounded mattress, puffy
 pillows and a plaid flannel comforter with its corner turned back, a
 full bookshelf facing the bed, and a messy computer desk under the
 bedroom window: two beige CRTs (a DOS prompt and a teal desktop), a
@@ -154,19 +167,25 @@ files.
 
 **The fire** (`woodStove()` and `fire()`): the stove is hollow, with
 firebrick inside, and two crossed logs (and one behind) sit on a grate
-over glowing coals, breathing slowly brighter and dimmer. A small light
+over glowing coals, breathing slowly brighter and dimmer. The logs and
+coals are done the Half-Life way: few sides, chunky pixel textures with
+the glowing cracks painted in (`fireTextures()`). A small light
 inside lights the firebrick and a soft spotlight warms the room.
 
 **Texture slots.** Every shadowed light costs a texture slot in every
 material, and graphics cards only have 16. The 13 shadowed lights use
 most of them, so **don't add another shadowed light** without taking one
 away (the shower glass is the first thing to break). The newer lights
-(the fire, the pillar sconce, the round ceiling lights in the pantry
-and over the toilet) have no shadows and are aimed or limited so they
-can't shine through walls.
+(the fire, the pillar sconce, the desk lamp, the standing lamp, the
+pendant over the kitchen sink, the fridge's light, the ceiling light
+over the toilet, the patio lantern, the streetlight) have no shadows and
+are aimed or limited so they can't shine through walls. The pantry and
+the lamp post by the house do have shadows.
 
 **Shadows are live, nothing is painted on.** Every shadow is a real
-shadow map from its light. To keep it cheap, a lamp only redraws its
+shadow map from its light, and lets a little light through
+(`shadow.intensity`), the way light bouncing round a real room fills
+shadows in, so they never go pitch black. To keep it cheap, a lamp only redraws its
 shadows when something near it moves (ghoul1 walking past, a door). The
 laundry's swaying bulb carries its light with it, so its shadows sway
 too; it redraws every other frame at half size and only reaches 16 feet
@@ -179,6 +198,51 @@ only welds furniture parts together so there are fewer things to draw.)
 pantry has a proper door and open shelves of cans and boxes
 (`shelving()`).
 
+**Outside, it's 90s Oregon craftsman**: olive lap siding, a stone skirt
+below the floor line, cream corner boards and wide capped window
+casings (`craftsman()`, set per outside wall in `walls()` with
+`out(face, from, to)`), cedar shingles and knee braces on the gables
+(`gableShingles()`, `kneeBraces()`), and tapered porch columns on stone
+piers (`column()`). Down at the bottom of the hill it's a country
+road: worn asphalt crumbling into gravel shoulders, no curbs. Beside
+the bottom of the walk there's a short gravel driveway to park on (no
+car yet), fanning out of the road's shoulder with two tyre tracks. The
+road and driveway are painted point by point over the land
+(`groundPatch()`), so their edges fade raggedly into the grass.
+
+**Performance.** What keeps it fast, roughly in order of how much it
+matters:
+
+- **Shadow redraws are rationed.** Redrawing one lamp's shadows means
+  drawing the house round it six times. Lamps redraw only when ghoul1
+  is actually here (not while he's gone) and has moved, and only the
+  lamps whose light the current cam can see, so his shadow glides
+  smoothly where you're looking. The others catch up when you switch
+  cams. Before this, five lamps redrew every frame whenever he was near,
+  visible or not, which cost about five times the whole rest of the
+  frame.
+- **A light budget.** Every light costs every pixel it might touch,
+  walls or no walls, so only the 5 nearest shadowed lamps and 5 nearest
+  spotlights are on at any moment (lights in your room count nearest).
+  The count never changes, so the graphics card never rebuilds its
+  shaders. `LIGHT_BUDGET` in `main.js`. This also means more lights
+  could have shadows now (only the nearest 5 use texture slots).
+- **Per-cam culling** (`pvs.js`). The cams never move, so at the start
+  each one works out what it can actually see (drawing the house once
+  in ID colours, every door open) and from then on skips the rest; most
+  cams draw a quarter to a third of the house. Hidden things still cast
+  shadows. If an anomaly moves something somewhere new, call
+  `scene.userData.pvs.always(thing)` so no cam ever culls it.
+- **Resolution.** `RESOLUTION` in `main.js` is 1 pixel per screen
+  pixel, even on retina screens (2x would be four times the pixels).
+- **Welding** (`bake()`): each named thing's parts become one mesh per
+  colour.
+- **Light budget.** Every light costs every pixel, and every shadowed
+  light also costs a texture slot (see Texture slots). New lights are
+  usually spots aimed where they're needed, with a short reach.
+- The ground, forest, walk and driveway don't cast shadows, and the
+  swaying laundry bulb only redraws its shadows while a cam can see it.
+
 **Colours.** Everything is a flat colour, no texture images, so it costs
 nothing extra to draw: green lawn, concrete walk, wood floors, warm
 walls, a red front door, and so on. They're all in `MAT` near the top of
@@ -189,15 +253,22 @@ walls, a red front door, and so on. They're all in `MAT` near the top of
   kitchen island, a lamp on an end table by the sectional, both
   nightstand lamps in the master, a bare bulb on a cord with a pull
   string in the laundry that sways very gently, its light and shadows
-  swaying with it (`pullBulb()`), round ceiling lights in the pantry and
-  over the toilet (`ceilingLight()`), a light bar over the bathroom mirror, a lantern on the patio,
+  swaying with it (`pullBulb()`), round ceiling lights in the pantry
+  (`pantryLight()`) and over the toilet (`ceilingLight()`), a pendant
+  over the kitchen sink, a light in the fridge that comes on when a door
+  opens (`fridgeLight()`), a gooseneck lamp on the computer desk, a
+  floor lamp by the bookshelf, a light bar over the bathroom mirror, a lantern on the patio,
   a lantern on the front porch.
-- **Outside:** a road past the front of the house with curbs and a
-  dashed yellow line (`road()`), a tall streetlight at the curb whose
-  arm reaches out over the road, its wide cone tipped back enough to
-  catch the yard and the front of the house (`streetlight()`), soft moonlight, and a
-  faint fill that keeps dark corners dim rather than pitch black
-  (`sky()`).
+- **Outside:** the land rolls (`groundHeight()`): flat round the
+  house, falling gently toward the road so the front walk winds up to
+  the house, low hills on the horizon, pines near the house and a
+  forest over the hills. The walk (`WALK`) is lined with little 90s
+  pagoda path lights (`pathLamps()`; their pools of light are drawn,
+  not lit, so they cost almost nothing), an old-style lamp post by the
+  pine at the top lights the front of the house (`lampPost()`), and the
+  road is way down at the bottom with its streetlight and the mailbox.
+  Soft moonlight, and a faint fill that keeps dark corners dim rather
+  than pitch black (`sky()`).
 - **Sky:** stars, a moon high up where the moonlight comes from
   (`MOON_DIR`; bright enough to give the grass a soft glow) and a few
   slowly drifting clouds (`heavens()`). Kept cheap: about a dozen draws, no lights or shadows.
@@ -221,6 +292,9 @@ becomes monochrome before composite encoding.
 
 ## ghoul1
 
+**For now he's despawned** (`ghoul.enabled = false` in `main.js`);
+the debug panel's spawn button brings him in.
+
 A thin, hunched figure about 6' tall: a narrow head with two staring
 eyes, hair to his shoulders, arms up in front of him Nosferatu style.
 He lurches round a loop forever, about 90 seconds a lap.
@@ -241,6 +315,34 @@ He lurches round a loop forever, about 90 seconds a lap.
   he touches anything. Add a number to check more laps:
   `node check-route.mjs 2`.
 
+## First person (in ?debug for now)
+
+Press **P** (or the button) in debug mode to stop watching the cams and
+walk round the house yourself (`firstperson.js`): WASD walks, click the
+view and the mouse looks, Shift runs, P goes back to the cams.
+
+- **E on a light switch** turns its lights on or off. Each room's
+  ceiling and wall lights are on a switch plate by its doorway (the
+  porch switch by the front door also runs the lamp post and the path
+  lights); table, floor, desk and bedside lamps switch at the lamp, and
+  the laundry bulb has its pull string. The circuits are `CIRCUITS` in
+  `world.js`; anomaly code can call
+  `scene.userData.switches.set('kitchen', false)`. The debug panel has
+  them all under **light switches**.
+- **E on anything that opens** (every door, the closets, the fridge,
+  cabinets, the washer lid, the bead curtain...) swings it open or shut.
+- **E on something worth a closer look** brings up a text box, typed out
+  old PlayStation horror style; you're frozen until you close it (E,
+  Space, Enter or a click). The texts are `INSPECT` in `world.js`, keyed
+  by the thing's name; add a line there, or set `userData.inspect` on
+  any named thing, and it can be looked at.
+- **Walls and furniture block you.** When first person starts, the game
+  traces everything between your knees and the top of your head into a
+  flat map of the floor (doorways stay open, walls don't); doors get
+  traced again once they stop moving. Surfaces are sliced into thin
+  layers, each judged against the floor right where it is, so you can
+  climb steps (but not jump off the porch). Where the floor is comes from `walkHeight()` in `world.js`.
+
 ## Debugging
 
 Add `?debug` to the URL (http://localhost:8000/?debug, or the live
@@ -256,7 +358,10 @@ in debug mode):
   to try it on all cams.
 - **Night vision** and **fully lit** (strong even light everywhere, no
   fog) buttons.
-- **Show ghoul** pins him visible, **freeze ghoul** stops him walking.
+- **Spawn ghoul**: ghoul1 is out of the house for now (he'll come back
+  as an anomaly); this brings him in, or takes him out again. **Show
+  ghoul** pins him visible, **freeze ghoul** stops him walking.
+- **First person** (P): see First person above.
 - **Open it all** opens (or shuts) everything in the list above that
   anomalies can open.
 - **Copy cam** copies the current view as a line you can paste into
