@@ -4,8 +4,8 @@
    ============================================================ */
 
 import * as THREE from './vendor/three-r186/three.module.js';
-import { buildWorld, ROOMS, roomAt, GLASS_LAYER, CULL_LAYER, captureReflections } from './world.js?v=24';
-import { buildPVS } from './pvs.js?v=1';
+import { buildWorld, ROOMS, roomAt, walkHeight, X, Z, GLASS_LAYER, CULL_LAYER, captureReflections } from './world.js?v=29';
+import { buildPVS } from './pvs.js?v=5';
 import { createEmp } from './emp.js?v=6';
 import { CAMS, camAt } from './cams.js?v=8';
 import { createGhoul } from './ghoul.js?v=12';
@@ -187,7 +187,7 @@ function setup() {
   scene.traverse(o => {
     if (!o.isLight) return;
     o.layers.enable(GHOST_LAYER);
-    if (o.shadow) { o.shadow.camera.layers.enable(GHOST_LAYER); o.shadow.camera.layers.enable(CULL_LAYER); }
+    if (o.shadow) { o.shadow.camera.layers.enable(GHOST_LAYER); if (!o.userData.casterRoom) o.shadow.camera.layers.enable(CULL_LAYER); }
   });
   ghost = createGhostPass(renderer);
   applyLightBudget(new THREE.Vector3(...CAMS[0].pos));     // before anything's drawn, so shaders are built for the budget
@@ -196,8 +196,12 @@ function setup() {
   camera = new THREE.PerspectiveCamera(52, 16 / 9, 0.1, 600);
   camera.layers.enable(GLASS_LAYER);        // the main view draws window glass too
   // per-cam culling: what each cam can see, worked out once (pvs.js)
-  pvs = buildPVS(renderer, scene, worldRoots, CAMS, CULL_LAYER);
+  pvs = buildPVS(renderer, scene, worldRoots, CAMS, CULL_LAYER, roomAt);
   scene.userData.pvs = pvs;
+  // build every shader now, not the first time something new comes into view
+  // (a stall each time, and a long one in Firefox)
+  pvs.apply(null);
+  renderer.compile(scene, camera);
 
   const fit = () => {
     const w = canvas.clientWidth, h = canvas.clientHeight;
@@ -235,7 +239,8 @@ function setup() {
     if (debug.tick) debug.tick(dt);
     ir.position.copy(camera.position);
     // free cam or a changed FOV can see anything, so cull nothing then
-    pvs.apply(debug.free || debug.fov || debug.fp ? null : camIndex);
+    if (debug.fp) firstPersonCulling();
+    else pvs.apply(debug.free || debug.fov ? null : camIndex);
     applyLightBudget(camera.position);
     updateView();
     for (const tick of ticks) tick(dt);
@@ -247,6 +252,42 @@ function setup() {
     if (ghoul.enabled && ghoulInView()) ghost.render(scene, camera, ghoul.presence, ghoul.blur * buffer.y * 0.022);
   });
   return true;
+}
+
+/* First person culls by room: pvs.js works out (a few views a frame, the
+   room you're in first) what can be seen from anywhere in each room, and
+   while you're in one we draw just that. Near a doorway it's both rooms;
+   outside, nothing's culled. */
+const EYE = 5.3;
+let roomsPlanned = false;
+function firstPersonCulling() {
+  const me = camera.position;
+  if (!roomsPlanned) {
+    roomsPlanned = true;
+    const points = ROOMS.map(r => {
+      const list = [];
+      for (const [x0, x1, y0, y1] of r.rects) {
+        const grid = (a, b) => {                                  // spots about 5 feet apart, 1.5 feet off the walls
+          const w = b - a - 3;
+          if (w <= 0) return [(a + b) / 2];
+          const n = Math.max(1, Math.round(w / 5));
+          return Array.from({ length: n }, (_, i) => a + 1.5 + (i + 0.5) * w / n);
+        };
+        for (const x of grid(X(x0), X(x1))) for (const z of grid(Z(y0), Z(y1))) list.push([x, walkHeight(x, z) + EYE, z]);
+      }
+      const near = Math.min(...list.map(([x, , z]) => Math.hypot(x - me.x, z - me.z)));
+      return [r.name, list, near];
+    }).sort((a, b) => a[2] - b[2]);
+    pvs.planRooms(Object.fromEntries(points.map(([n, list]) => [n, list])));
+  }
+  pvs.stepRooms(6);
+  const names = new Set();
+  for (const [dx, dz] of [[0, 0], [2.5, 0], [-2.5, 0], [0, 2.5], [0, -2.5]]) {
+    const r = roomAt(me.x + dx, me.z + dz);
+    if (!r) return pvs.applyRooms([]);                           // outside (or nearly): everything
+    names.add(r.name);
+  }
+  pvs.applyRooms([...names]);
 }
 
 /* ─── cams ──────────────────────────────────── */

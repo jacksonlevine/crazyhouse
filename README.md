@@ -236,10 +236,36 @@ matters:
   cams draw a quarter to a third of the house. Hidden things still cast
   shadows. If an anomaly moves something somewhere new, call
   `scene.userData.pvs.always(thing)` so no cam ever culls it.
+- **Per-room culling in first person.** Walking around, the cams'
+  culling doesn't apply, so the first few frames in first person work
+  out (a few views a frame, your room first) what can be seen from
+  anywhere in each room, and while you're in one only that gets drawn.
+  Near a doorway it's both rooms; outside nothing's culled.
+- **Matte surfaces** (`matte()`). Rough non-metal stuff (paint, wood,
+  cloth, paper) uses the cheap Lambert lighting instead of the full
+  shiny kind. It looks the same at that roughness, and every lamp costs
+  every pixel much less. This was most of what made Firefox crawl.
+  Shiny things (steel, porcelain, glass, counters) keep the shine.
+- **The mirror** draws a second picture of the house, so it only does
+  when you can see it (the cam's culling knows; in first person, from
+  the bathroom or within 9 feet), and only again when the view changes,
+  or every 4th frame otherwise.
+- **The swaying laundry bulb** redraws its shadows every 4th frame, only
+  while the laundry can be seen, and only from what's in the laundry
+  plus the walls (`roomCasters()`), not the whole house six times over.
+- **Shaders are built at the start** (`renderer.compile`), not the first
+  time something comes into view. In Firefox each one stalls for a
+  moment.
 - **Resolution.** `RESOLUTION` in `main.js` is 1 pixel per screen
   pixel, even on retina screens (2x would be four times the pixels).
 - **Welding** (`bake()`): each named thing's parts become one mesh per
-  colour.
+  kind of material. Plain painted surfaces that differ only in colour
+  share one material, with the colour stored in the triangles' corners,
+  so a desk full of differently coloured junk is one draw, not forty.
+
+Firefox is several times slower than Chrome per thing drawn, so it's
+the one to check performance in. The debug panel's fps readout works in
+both.
 - **Light budget.** Every light costs every pixel, and every shadowed
   light also costs a texture slot (see Texture slots). New lights are
   usually spots aimed where they're needed, with a short reach.
