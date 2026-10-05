@@ -83,37 +83,46 @@ function refreshShadows() {
   lastPos.copy(pos);
 }
 
-/* The light budget. Every light costs every pixel it might touch (and a
-   shadowed one costs a shadow lookup per pixel on top), whether or not a
-   wall is in the way. So only the nearest few of each kind are switched
-   on at any moment, lights in the room you're in counting nearest; the
-   rest are behind walls anyway. The counts never change, so the
-   graphics card never has to rebuild its shaders. Lights that come back
-   on redraw their shadows if anything moved while they were off. */
-const LIGHT_BUDGET = { 'PointLight+shadow': 5, 'SpotLight': 5 };
-let budgeted = null;
+/* The shadow budget. A shadowed lamp costs every pixel a shadow lookup,
+   walls or no walls, so only the SHADOW_BUDGET nearest lamps (lamps in
+   the room you're in count nearest) light with shadows. Every other lamp
+   lights through a twin with no shadow: same colour, same brightness,
+   so no lamp ever goes dark, it just stops casting shadows while it's
+   far away. The counts never change, so the graphics card never has to
+   rebuild its shaders. A lamp that gets its shadows back redraws them if
+   anything moved while it was away. */
+const SHADOW_BUDGET = 5;
+const TWIN_REACH = 22;         // feet: a twin's light fades out by here (it can't be blocked by walls)
+let shadowed = null;
 const lightAt = new THREE.Vector3();
 function applyLightBudget(from) {
-  if (!budgeted) {
-    budgeted = {};
-    scene.traverse(l => {
-      const key = l.isLight && l.type + (l.castShadow ? '+shadow' : '');
-      if (key && LIGHT_BUDGET[key]) (budgeted[key] ||= []).push(l);
-    });
+  if (!shadowed) {
+    shadowed = [];
+    scene.traverse(l => { if (l.isPointLight && l.castShadow) shadowed.push(l); });
+    for (const l of shadowed) {
+      const twin = new THREE.PointLight(l.color, 0, TWIN_REACH, l.decay);
+      twin.layers.enable(GHOST_LAYER);
+      l.parent.add(twin);
+      l.userData.twin = twin;
+    }
   }
   const here = roomAt(from.x, from.z);
-  for (const [key, list] of Object.entries(budgeted)) {
-    const score = new Map(list.map(l => {
-      l.getWorldPosition(lightAt);
-      let d = lightAt.distanceTo(from);
-      const r = roomAt(lightAt.x, lightAt.z);
-      if (here && r && r.name === here.name) d *= 0.4;
-      if (l.intensity <= 0) d += 1000;                     // switched off: last
-      return [l, d];
-    }));
-    list.sort((a, b) => score.get(a) - score.get(b));
-    list.forEach((l, i) => { l.visible = i < LIGHT_BUDGET[key]; });
-  }
+  const score = new Map(shadowed.map(l => {
+    l.getWorldPosition(lightAt);
+    let d = lightAt.distanceTo(from);
+    const r = roomAt(lightAt.x, lightAt.z);
+    if (here && r && r.name === here.name) d *= 0.5;
+    return [l, d];
+  }));
+  shadowed.sort((a, b) => score.get(a) - score.get(b));
+  shadowed.forEach((l, i) => {
+    const twin = l.userData.twin, near = i < SHADOW_BUDGET;
+    l.visible = near;
+    twin.visible = !near;
+    twin.position.copy(l.position);                     // (the laundry bulb swings)
+    twin.color.copy(l.color);
+    twin.intensity = l.intensity;                       // follows the light switches
+  });
 }
 
 // what the current cam can see this frame (things like the swaying bulb ask it)
