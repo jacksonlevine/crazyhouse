@@ -4,7 +4,7 @@
    ============================================================ */
 
 import * as THREE from './vendor/three-r186/three.module.js';
-import { buildWorld, ROOMS, roomAt, GLASS_LAYER, CULL_LAYER, captureReflections } from './world.js?v=23';
+import { buildWorld, ROOMS, roomAt, GLASS_LAYER, CULL_LAYER, captureReflections } from './world.js?v=24';
 import { buildPVS } from './pvs.js?v=1';
 import { createEmp } from './emp.js?v=6';
 import { CAMS, camAt } from './cams.js?v=8';
@@ -45,6 +45,7 @@ let lastFrame = 0;
 const NEAR_LAMP = 18;          // feet
 const LIT_REACH = 14;          // a lamp counts as "seen" if the cam sees this close round it
 let nearLamps = new Set(), wasHere = false, camChanged = true;
+const stale = new Set();       // lamps whose shadows changed while the cam couldn't see them
 const lastPos = new THREE.Vector3(), lampAt = new THREE.Vector3(), reach = new THREE.Sphere();
 function refreshShadows() {
   const here = ghoul.presence > 0.5, pos = ghoul.object.position;     // he casts a shadow while mostly here (ghoul.js)
@@ -60,18 +61,59 @@ function refreshShadows() {
     if (camChanged || (here !== wasHere) || (here && moved && seen)) redraw.add(l);
   }
   for (const l of nearLamps) if (!now.has(l)) redraw.add(l);
+  // something else moved (a door swinging, an anomaly): lamps near it that the cam
+  // can see redraw now; the rest catch up when the cam changes (or when it settles)
   const things = scene.userData.moved;
   if (things) {
     for (const at of things) for (const l of lamps) {
-      if (l.isPointLight && l.getWorldPosition(lampAt).distanceTo(at) < NEAR_LAMP) redraw.add(l);
+      if (!l.isPointLight || l.getWorldPosition(lampAt).distanceTo(at) >= NEAR_LAMP) continue;
+      reach.set(lampAt, LIT_REACH);
+      if (frustum.intersectsSphere(reach)) redraw.add(l); else stale.add(l);
     }
     scene.userData.moved = null;
   }
-  for (const l of redraw) l.shadow.needsUpdate = true;
+  for (const l of stale) {                                  // catch up once the cam sees them (or it changes)
+    reach.set(l.getWorldPosition(lampAt), LIT_REACH);
+    if (camChanged || frustum.intersectsSphere(reach)) redraw.add(l);
+  }
+  for (const l of redraw) { l.shadow.needsUpdate = true; stale.delete(l); }
   nearLamps = now;
   wasHere = here;
   camChanged = false;
   lastPos.copy(pos);
+}
+
+/* The light budget. Every light costs every pixel it might touch (and a
+   shadowed one costs a shadow lookup per pixel on top), whether or not a
+   wall is in the way. So only the nearest few of each kind are switched
+   on at any moment, lights in the room you're in counting nearest; the
+   rest are behind walls anyway. The counts never change, so the
+   graphics card never has to rebuild its shaders. Lights that come back
+   on redraw their shadows if anything moved while they were off. */
+const LIGHT_BUDGET = { 'PointLight+shadow': 5, 'SpotLight': 5 };
+let budgeted = null;
+const lightAt = new THREE.Vector3();
+function applyLightBudget(from) {
+  if (!budgeted) {
+    budgeted = {};
+    scene.traverse(l => {
+      const key = l.isLight && l.type + (l.castShadow ? '+shadow' : '');
+      if (key && LIGHT_BUDGET[key]) (budgeted[key] ||= []).push(l);
+    });
+  }
+  const here = roomAt(from.x, from.z);
+  for (const [key, list] of Object.entries(budgeted)) {
+    const score = new Map(list.map(l => {
+      l.getWorldPosition(lightAt);
+      let d = lightAt.distanceTo(from);
+      const r = roomAt(lightAt.x, lightAt.z);
+      if (here && r && r.name === here.name) d *= 0.4;
+      if (l.intensity <= 0) d += 1000;                     // switched off: last
+      return [l, d];
+    }));
+    list.sort((a, b) => score.get(a) - score.get(b));
+    list.forEach((l, i) => { l.visible = i < LIGHT_BUDGET[key]; });
+  }
 }
 
 // what the current cam can see this frame (things like the swaying bulb ask it)
@@ -139,6 +181,7 @@ function setup() {
     if (o.shadow) { o.shadow.camera.layers.enable(GHOST_LAYER); o.shadow.camera.layers.enable(CULL_LAYER); }
   });
   ghost = createGhostPass(renderer);
+  applyLightBudget(new THREE.Vector3(...CAMS[0].pos));     // before anything's drawn, so shaders are built for the budget
   // each window's reflection: one small snapshot apiece, taken now, never again
   captureReflections(renderer, scene);
   camera = new THREE.PerspectiveCamera(52, 16 / 9, 0.1, 600);
@@ -169,7 +212,7 @@ function setup() {
       isNight: () => night, camIndex: () => camIndex
     };
     window.crazyhouse = api;
-    import('./debug.js?v=6').then(m => m.createDebug(api));
+    import('./debug.js?v=7').then(m => m.createDebug(api));
   }
 
   renderer.setAnimationLoop(now => {
@@ -184,6 +227,7 @@ function setup() {
     ir.position.copy(camera.position);
     // free cam or a changed FOV can see anything, so cull nothing then
     pvs.apply(debug.free || debug.fov || debug.fp ? null : camIndex);
+    applyLightBudget(camera.position);
     updateView();
     for (const tick of ticks) tick(dt);
     tickEmp();

@@ -369,3 +369,6 @@ canvas {
    hint only shows while you're looking at something */
 .frame.first-person .hud, .frame.first-person .arrow, .frame.first-person .emp { display: none; }
 .fp-ui:not(.target) .fp-hint { display: none; }
+.debug-panel .dbg-lights summary { cursor: pointer; color: #ccc; }
+.debug-panel .dbg-switches { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-top: 4px; }
+.debug-panel .dbg-switches button { font-size: 11px; padding: 3px 4px; }

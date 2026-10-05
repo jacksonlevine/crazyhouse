@@ -221,6 +221,12 @@ matters:
   cams. Before this, five lamps redrew every frame whenever he was near,
   visible or not, which cost about five times the whole rest of the
   frame.
+- **A light budget.** Every light costs every pixel it might touch,
+  walls or no walls, so only the 5 nearest shadowed lamps and 5 nearest
+  spotlights are on at any moment (lights in your room count nearest).
+  The count never changes, so the graphics card never rebuilds its
+  shaders. `LIGHT_BUDGET` in `main.js`. This also means more lights
+  could have shadows now (only the nearest 5 use texture slots).
 - **Per-cam culling** (`pvs.js`). The cams never move, so at the start
   each one works out what it can actually see (drawing the house once
   in ID colours, every door open) and from then on skips the rest; most
@@ -315,6 +321,14 @@ Press **P** (or the button) in debug mode to stop watching the cams and
 walk round the house yourself (`firstperson.js`): WASD walks, click the
 view and the mouse looks, Shift runs, P goes back to the cams.
 
+- **E on a light switch** turns its lights on or off. Each room's
+  ceiling and wall lights are on a switch plate by its doorway (the
+  porch switch by the front door also runs the lamp post and the path
+  lights); table, floor, desk and bedside lamps switch at the lamp, and
+  the laundry bulb has its pull string. The circuits are `CIRCUITS` in
+  `world.js`; anomaly code can call
+  `scene.userData.switches.set('kitchen', false)`. The debug panel has
+  them all under **light switches**.
 - **E on anything that opens** (every door, the closets, the fridge,
   cabinets, the washer lid, the bead curtain...) swings it open or shut.
 - **E on something worth a closer look** brings up a text box, typed out
@@ -325,8 +339,9 @@ view and the mouse looks, Shift runs, P goes back to the cams.
 - **Walls and furniture block you.** When first person starts, the game
   traces everything between your knees and the top of your head into a
   flat map of the floor (doorways stay open, walls don't); doors get
-  traced again whenever they move. You can climb steps but not jump off
-  the porch. Where the floor is comes from `walkHeight()` in `world.js`.
+  traced again once they stop moving. Surfaces are sliced into thin
+  layers, each judged against the floor right where it is, so you can
+  climb steps (but not jump off the porch). Where the floor is comes from `walkHeight()` in `world.js`.
 
 ## Debugging
 

@@ -11,6 +11,7 @@
    - First person (P): walk round the house and yard (firstperson.js):
      WASD, mouse, Shift runs, E opens doors and inspects things.
    - ghoul1: he's despawned for now; spawn him, show him, freeze him.
+   - Light switches: every circuit as a button, and all on / all off.
    - Open it all: swings open (or shut) everything that opens: every
      door, both closets, the fridge and freezer, the washer lid, the dryer
      door, the kitchen cabinets, the shower door and the bead curtain.
@@ -41,6 +42,10 @@ export function createDebug(api) {
       <button data-act="freeze">freeze ghoul</button>
     </div>
     <button data-act="open">open it all</button>
+    <details class="dbg-lights"><summary>light switches</summary>
+      <div class="dbg-row"><button data-act="lights-on">all on</button><button data-act="lights-off">all off</button></div>
+      <div class="dbg-switches"></div>
+    </details>
     <button data-act="copy">copy cam</button>
     <pre class="dbg-read" data-out="read"></pre>`;
   document.body.appendChild(panel);
@@ -91,6 +96,8 @@ export function createDebug(api) {
   const fwd = new THREE.Vector3(), right = new THREE.Vector3();
   debug.tick = dt => {
     if (debug.fp && fp) fp.update(dt);
+    showSwitches();
+    frameMs = frameMs * 0.95 + dt * 1000 * 0.05;
     if (debug.free) {
       camera.rotation.set(pitch, yaw, 0, 'YXZ');
       fwd.set(-Math.sin(yaw), 0, -Math.cos(yaw));
@@ -141,9 +148,22 @@ export function createDebug(api) {
   });
 
   /* ─── ghoul ─── */
+  /* ─── light switches ─── */
+  const sw = scene.userData.switches, swBox = $('.dbg-switches');
+  for (const name of sw.names) {
+    const b = document.createElement('button');
+    b.textContent = name;
+    b.dataset.circuit = name;
+    b.addEventListener('click', () => { sw.toggle(name); b.blur(); });
+    swBox.appendChild(b);
+  }
+  btn('lights-on').addEventListener('click', () => sw.all(true));
+  btn('lights-off').addEventListener('click', () => sw.all(false));
+  const showSwitches = () => swBox.querySelectorAll('button').forEach(b => b.classList.toggle('on', sw.isOn(b.dataset.circuit)));
+
   /* ─── first person ─── */
   let fp = null;
-  import('./firstperson.js?v=1').then(m => { fp = api.fp = m.createFirstPerson({ scene, camera, frame }); });
+  import('./firstperson.js?v=2').then(m => { fp = api.fp = m.createFirstPerson({ scene, camera, frame }); });
   const leaveFP = () => {
     if (!debug.fp) return;
     fp.exit();
@@ -204,14 +224,14 @@ export function createDebug(api) {
   });
   let copied = '', copiedUntil = 0;
 
-  let lastRead = 0;
+  let lastRead = 0, frameMs = 16;
   function readout() {
     const now = performance.now();
     if (now - lastRead < 150) return;
     lastRead = now;
     const p = camera.position;
     const mode = debug.fp ? '(first person)' : debug.free ? '(free cam)' : '(cam ' + (api.camIndex() + 1) + ')';
-    let text = `pos  ${r(p.x)}, ${r(p.y)}, ${r(p.z)}\nfov  ${Math.round(camera.fov)}°  ${mode}\nghoul ${ghoul.enabled ? ghoul.state : 'despawned'}`;
+    let text = `${Math.round(1000 / frameMs)} fps  (${frameMs.toFixed(1)} ms a frame)\npos  ${r(p.x)}, ${r(p.y)}, ${r(p.z)}\nfov  ${Math.round(camera.fov)}°  ${mode}\nghoul ${ghoul.enabled ? ghoul.state : 'despawned'}`;
     if (now < copiedUntil) text += `\ncopied:\n${copied}`;
     out('read').textContent = text;
     // keep the slider honest when cams switch

@@ -5,6 +5,8 @@
    - WASD walks, the mouse looks (click the view to grab the mouse),
      Shift runs.
    - E on a door (or anything else that opens) swings it open or shut.
+   - E on a light switch (or a lamp you switch at the lamp, or the
+     laundry bulb's pull string) turns its lights on or off.
    - E on something with something to say (userData.inspect) brings up
      a text box; you're frozen until you've read it (E, Space, Enter or
      a click to close it).
@@ -16,7 +18,7 @@
    ============================================================ */
 
 import * as THREE from './vendor/three-r186/three.module.js';
-import { walkHeight } from './world.js?v=23';
+import { walkHeight } from './world.js?v=24';
 
 const EYE = 5.3;               // eye height, feet
 const RADIUS = 0.6;            // how close you can get to things (doorways are under 3 feet)
@@ -30,7 +32,7 @@ export function createFirstPerson({ scene, camera, frame }) {
   const fixed = new Uint8Array(W * D), moving = new Uint8Array(W * D);
   const openers = [];
   scene.traverse(o => { if (o.userData.setOpen) openers.push(o); });
-  let openState = '';
+  let openState = '', settle = 0;
 
   /* ---- the floor map ---- */
   // the floor height under each foot of the map, worked out once (the land is slow to ask)
@@ -46,24 +48,21 @@ export function createFirstPerson({ scene, camera, frame }) {
     const i = Math.floor((x - MAP.x0) * MAP.res), k = Math.floor((z - MAP.z0) * MAP.res);
     if (i >= 0 && k >= 0 && i < W && k < D) grid[k * W + i] = 1;
   };
-  const line = (grid, a, b) => {
-    const n = Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[2] - a[2]) * MAP.res * 1.5));
-    for (let t = 0; t <= n; t++) mark(grid, a[0] + (b[0] - a[0]) * t / n, a[2] + (b[2] - a[2]) * t / n);
-  };
-  // keep the part of a triangle between heights lo and hi (it's the outline that blocks)
-  const clip = (pts, lo, hi) => {
-    const cut = (poly, inside, at) => {
-      const out = [];
-      for (let i = 0; i < poly.length; i++) {
-        const p = poly[i], q = poly[(i + 1) % poly.length], pi = inside(p), qi = inside(q);
-        if (pi) out.push(p);
-        if (pi !== qi) { const t = (at - p[1]) / (q[1] - p[1]); out.push([p[0] + (q[0] - p[0]) * t, at, p[2] + (q[2] - p[2]) * t]); }
-      }
-      return out;
-    };
-    return cut(cut(pts, p => p[1] >= lo, lo), p => p[1] <= hi, hi);
-  };
+  /* Each surface is sliced into flat layers a few inches apart; a slice
+     blocks a cell of the map only where it's between your knees and the
+     top of your head *for the floor right there*. So a porch's edge
+     blocks along the lawn but not at the top of its steps, a step's riser
+     never blocks (you can climb it), and walls always do. */
+  const LO = STEP + 0.05, HI = EYE - 0.1, SLICE = 0.4;
   const v = new THREE.Vector3();
+  const sliceLine = (grid, a, b, h) => {
+    const n = Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[2] - a[2]) * MAP.res * 1.5));
+    for (let t = 0; t <= n; t++) {
+      const x = a[0] + (b[0] - a[0]) * t / n, z = a[2] + (b[2] - a[2]) * t / n, g = floorAt(x, z);
+      if (h >= g + LO && h <= g + HI) mark(grid, x, z);
+    }
+  };
+  const tri = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
   const trace = (grid, root, skipOpeners) => {
     root.updateMatrixWorld(true);
     root.traverse(o => {
@@ -73,7 +72,6 @@ export function createFirstPerson({ scene, camera, frame }) {
         if (skipOpeners && p !== root && p.userData.setOpen) return;
       }
       const pos = o.geometry.attributes.position, idx = o.geometry.index, m = o.matrixWorld;
-      const tri = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
       const count = idx ? idx.count : pos.count;
       for (let t = 0; t < count; t += 3) {
         for (let j = 0; j < 3; j++) {
@@ -81,12 +79,23 @@ export function createFirstPerson({ scene, camera, frame }) {
           tri[j][0] = v.x; tri[j][1] = v.y; tri[j][2] = v.z;
         }
         const cx = (tri[0][0] + tri[1][0] + tri[2][0]) / 3, cz = (tri[0][2] + tri[1][2] + tri[2][2]) / 3;
-        if (cx < MAP.x0 || cz < MAP.z0 || cx > MAP.x0 + MAP.w || cz > MAP.z0 + MAP.d) continue;
-        const g = floorAt(cx, cz), lo = g + 0.6, hi = g + EYE - 0.1;
+        if (cx < MAP.x0 - 20 || cz < MAP.z0 - 20 || cx > MAP.x0 + MAP.w + 20 || cz > MAP.z0 + MAP.d + 20) continue;
         const minY = Math.min(tri[0][1], tri[1][1], tri[2][1]), maxY = Math.max(tri[0][1], tri[1][1], tri[2][1]);
-        if (maxY < lo || minY > hi) continue;
-        const poly = clip(tri.map(a => a.slice()), lo, hi);
-        for (let i = 0; i < poly.length; i++) line(grid, poly[i], poly[(i + 1) % poly.length]);
+        if (maxY - minY < 0.02) {                                     // flat: a tabletop, a seat; its outline blocks
+          for (let e = 0; e < 3; e++) sliceLine(grid, tri[e], tri[(e + 1) % 3], minY);
+          continue;
+        }
+        for (let h = Math.ceil(minY / SLICE) * SLICE; h <= maxY; h += SLICE) {
+          const cut = [];
+          for (let e = 0; e < 3; e++) {
+            const a = tri[e], b = tri[(e + 1) % 3];
+            if ((a[1] - h) * (b[1] - h) <= 0 && a[1] !== b[1]) {
+              const k = (h - a[1]) / (b[1] - a[1]);
+              cut.push([a[0] + (b[0] - a[0]) * k, h, a[2] + (b[2] - a[2]) * k]);
+            }
+          }
+          if (cut.length >= 2) sliceLine(grid, cut[0], cut[1], h);
+        }
       }
     });
   };
@@ -161,6 +170,7 @@ export function createFirstPerson({ scene, camera, frame }) {
     const hit = ray.intersectObjects(candidates(), false)[0];
     if (!hit) return null;
     for (let o = hit.object; o; o = o.parent) {
+      if (o.userData.switch) return { o, kind: 'switch' };
       if (o.userData.inspect) return { o, kind: 'inspect' };
       if (o.userData.openTo) return { o, kind: 'open' };
     }
@@ -170,7 +180,8 @@ export function createFirstPerson({ scene, camera, frame }) {
     if (reading) { advance(); return; }
     const t = look();
     if (!t) return;
-    if (t.kind === 'inspect') say(t.o.userData.inspect);
+    if (t.kind === 'switch') scene.userData.switches.toggle(t.o.userData.switch);
+    else if (t.kind === 'inspect') say(t.o.userData.inspect);
     else t.o.userData.openTo(t.o.userData.open > 0.5 ? 0 : 1, 0.9);
   };
 
@@ -235,9 +246,10 @@ export function createFirstPerson({ scene, camera, frame }) {
     },
     update(dt) {
       if (!on) return;
-      // the doors moved? trace them again (once they've settled)
+      // a door moved? trace the doors again once they've stopped (not every frame of the swing)
       const state = openers.map(o => o.userData.open.toFixed(2)).join();
-      if (state !== openState) traceMoving();
+      if (state !== openState) { openState = state; settle = 0.15; }
+      else if (settle > 0 && (settle -= dt) <= 0) traceMoving();
       if (reading) {
         shown = Math.min(reading.length, shown + dt * 45);         // the text types itself out
         para.textContent = reading.slice(0, Math.floor(shown));
@@ -262,7 +274,8 @@ export function createFirstPerson({ scene, camera, frame }) {
       if (sinceLook > 0.15 && !reading) {
         sinceLook = 0;
         target = look();
-        hint.textContent = !target ? '' : target.kind === 'inspect' ? 'E  look' : target.o.userData.open > 0.5 ? 'E  close' : 'E  open';
+        hint.textContent = !target ? '' : target.kind === 'inspect' ? 'E  look' : target.kind === 'switch' ? 'E  light'
+          : target.o.userData.open > 0.5 ? 'E  close' : 'E  open';
       }
       ui.classList.toggle('target', !!target && !reading);
     },

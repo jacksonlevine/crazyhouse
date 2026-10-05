@@ -3385,6 +3385,99 @@ function paint(scene) {
   });
 }
 
+/* ─── light switches ────────────────────────── */
+
+/* A circuit is a few lamps switched together: each room's ceiling and
+   wall lights hang off a switch plate by its doorway; lamps you switch
+   at the lamp itself are circuits of their own (E on the lamp, or the
+   laundry bulb's pull string). In first person, E on a switch plate or
+   one of those lamps flips it; ?debug has them all as buttons; anomaly
+   code can call scene.userData.switches.set('kitchen', false). */
+export const CIRCUITS = {
+  'porch light': ['lamp-porch', 'lamp-post', 'path-lamps'],
+  'living room': ['lamp-pillar', 'lamp-dining'],
+  'kitchen': ['lamp-kitchen', 'lamp-sink'],
+  'patio': ['lamp-patio'],
+  'pantry': ['lamp-pantry'],
+  'bathroom': ['lamp-bathroom', 'lamp-toilet'],
+  'bedroom': ['lamp-standing'],
+  'foyer lamp': ['lamp-foyer'], 'table lamp': ['lamp-living'], 'sofa lamp': ['lamp-sofa'],
+  'nightstand': ['lamp-master'], 'nightstand 2': ['lamp-master-2'], 'desk lamp': ['lamp-desk'],
+  'standing lamp': ['lamp-standing'], 'laundry bulb': ['lamp-laundry']
+};
+// lamps that switch at the lamp itself
+const AT_THE_LAMP = ['foyer lamp', 'table lamp', 'sofa lamp', 'nightstand', 'nightstand 2', 'desk lamp', 'standing lamp', 'laundry bulb'];
+// switch plates: [circuit, x px, y px, which way the plate faces]
+const PLATES = [
+  ['porch light', 124, 724, 'x+'], ['living room', 315, 668, 'x+'], ['patio', 1036, 364, 'z+'], ['kitchen', 1050, 364, 'z+'],
+  ['pantry', 1072, 700, 'x+'], ['bathroom', 525, 825, 'z+'], ['bedroom', 815, 824, 'x+']
+];
+
+function switchPlates() {
+  const plates = PLATES.map(([circuit, px, py, face]) => {
+    const alongX = face === 'z+', x = X(px), z = Z(py), y = FLOOR + 4;
+    const lever = solid(new THREE.BoxGeometry(0.05, 0.13, 0.05), [0, 0.03, 0]);
+    const pivot = new THREE.Group();
+    pivot.add(lever);
+    pivot.position.set(alongX ? 0 : 0.035, 0, alongX ? 0.035 : 0);
+    const g = named('switch-' + circuit.replace(/ /g, '-'),
+      solid(alongX ? new THREE.BoxGeometry(0.27, 0.42, 0.03) : new THREE.BoxGeometry(0.03, 0.42, 0.27), [0, 0, 0]), pivot);
+    g.position.set(x + (alongX ? 0 : 0.015), y, z + (alongX ? 0.015 : 0));
+    g.userData.switch = circuit;
+    g.userData.lever = pivot;
+    g.userData.leverAxis = alongX ? 'x' : 'z';
+    g.userData.movesParts = true;                       // the lever flips; don't weld it into the plate
+    return tint(g, MAT.trim);
+  });
+  return named('switch-plates', ...plates);
+}
+
+function wireLights(scene) {
+  const groups = new Map();
+  for (const names of Object.values(CIRCUITS)) for (const n of names) {
+    const g = scene.getObjectByName(n);
+    if (!g || groups.has(n)) continue;
+    // its own copy of each glowing material, so this lamp can go dark on its own
+    const copies = new Map(), glows = [];
+    g.traverse(o => {
+      if (!o.isMesh) return;
+      const m = o.material;
+      if (!m || !m.isMeshBasicMaterial) return;
+      if (!copies.has(m)) { const c = m.clone(); copies.set(m, c); glows.push({ mat: c, color: c.color.clone(), add: c.blending === THREE.AdditiveBlending }); }
+      o.material = copies.get(m);
+    });
+    g.userData.glows = glows;
+    g.userData.lit = true;
+    groups.set(n, g);
+  }
+  for (const c of AT_THE_LAMP) for (const n of CIRCUITS[c]) { const g = groups.get(n); if (g) g.userData.switch = c; }
+  const plates = [];
+  scene.traverse(o => { if (o.userData.lever) plates.push(o); });
+  const setGroup = (g, on) => {
+    g.userData.lit = on;
+    g.traverse(o => {
+      if (o.isLight) { if (o.userData.base === undefined) o.userData.base = o.intensity; o.intensity = on ? o.userData.base : 0; }
+      if (o.isSprite) o.visible = on;
+    });
+    for (const { mat, color, add } of g.userData.glows) mat.color.copy(color).multiplyScalar(on ? 1 : add ? 0 : 0.12);
+  };
+  const isOn = name => CIRCUITS[name].some(n => groups.get(n) && groups.get(n).userData.lit);
+  const set = (name, on) => {
+    for (const n of CIRCUITS[name]) if (groups.get(n)) setGroup(groups.get(n), on);
+    for (const p of plates) {                                      // flick the levers to match
+      const up = isOn(p.userData.switch) ? -0.35 : 0.35;
+      p.userData.lever.rotation[p.userData.leverAxis] = p.userData.leverAxis === 'x' ? up : -up;
+    }
+  };
+  scene.userData.switches = {
+    names: Object.keys(CIRCUITS),
+    isOn, set,
+    toggle: name => set(name, !isOn(name)),
+    all: on => Object.keys(CIRCUITS).forEach(n => set(n, on))
+  };
+  scene.userData.switches.all(true);
+}
+
 /* ─── fewer, bigger draws ───────────────────── */
 
 /* Every piece of furniture is lots of little boxes, and the graphics
@@ -3502,9 +3595,11 @@ export function buildWorld({ weld = true } = {}) {
     yardAt(bush(), -28, 12),
     yardAt(streetlight(lamps), STREET[0], STREET[1]),
     roomLamps(lamps),
+    switchPlates(),
     sky()
   );
   paint(scene);
+  wireLights(scene);
   for (const [name, text] of Object.entries(INSPECT)) scene.traverse(o => { if (o.name === name) o.userData.inspect = text; });
   // ghoul1 never goes outside, so check-route.mjs needn't test him against the yard
   for (const n of ['ground', 'forest', 'road', 'path', 'path-lamps', 'lamp-post', 'mailbox', 'streetlight', 'pine', 'bush', 'heavens', 'driveway'])
